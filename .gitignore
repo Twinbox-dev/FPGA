@@ -1,0 +1,17 @@
+# TD 生成物与运行痕迹
+board/**/Runs/
+board/**/log/
+board/**/*.db
+board/**/*.timing
+*.logw
+# Verilator 构建输出（源码在仓内，产物一律不进库）
+build*/
+# 卡镜像与生成媒体（scripts/gen_card.sh 可再生）
+img/bmp/
+img/wav/
+img/*.img
+img/*.bin
+img/golden/
+# 波形
+*.vcd
+*.fst
