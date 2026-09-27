@@ -178,3 +178,53 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
 - [x] 上板其余判读：面板 C8F8xx/C9F2xx 解读=系统健康（flagA=F、fat
       MOUNTED↔STREAM、disp_buf 翻转、HDMI 锁定）；"切图没音频"=卡内容只有
       首图配 WAV，非 bug（用户换卡后确认音频正常，d0=8 印证音频位干净）。
+
+## 2026-09-27 第七轮：UART 交互通道 v1（仿真全绿，待重综合 + 上板）
+
+- [x] 硬件：uart_rx=F12（PULLUP）/ uart_tx=D12（DS8），8N1 @1Mbaud
+      （CH340G 桥，参数化 BAUD/CLK_FREQ_HZ）；clk=sd_card_clk 域免 CDC，
+      1M=整 100 拍/位。
+- [x] 协议：命令帧 [CMD,~CMD] 成对校验（N 下一张/A 自动轮播/S 状态回读/
+      H 心跳开关，未知不成对静默丢）；虚拟按键=50ms 低脉冲与物理键线相与，
+      复用 sd_card_bmp 去抖零侵入；状态包 8 字节 A5|state|fat|flagA|flagB|
+      underrun|00|00（与面板 d5..d0 同源）；心跳默认关，开后 1s/包。
+- [x] board/uart_link.v + uart_tx_byte（5 状态 FSM，停止位独立 TX_STOPBIT
+      状态保证满 1 位宽，否则连发帧错）；top_tf_hdmi_audio 挂实例 + dbg 线、
+      sd_card_bmp 键线相与。
+- [x] tb_uart.v 8 项全绿（make -C boardtest uart）：脉冲宽度/不成对拒收/
+      未知拒收/状态包内容/心跳开关/毛刺拒收（VK_PULSE_CYC=5000、
+      HEARTBEAT_CYC=2M 缩短参数，波特率语义不变）。
+- [x] **坑三连（详见 docs/uart_link.md 调试记录）**：pkt_idx 双 always 多驱动；
+      判发条件 pkt_idx<pkt_len 恒错（idx 递增 len 递减，和恒 8，只能发 5 字节）；
+      tx_load 未屏蔽 done 拍（done 拍 st 已 IDLE 而 len 递减下一拍才生效 →
+      多装 1 字节 + len 4 位下溢失控连发）。
+- [x] PC 端 scripts/uart_console.py（pyserial，单键即发，状态包自动解码）；
+      文档 docs/uart_link.md。
+- [ ] **上板（等用户重综合）**：N/A 切图、S 状态包（uart_console 解码对照
+      面板读数）、H 心跳；通过后提交（Boxchan，无尾注）。
+
+## 2026-09-28 第八轮：HDMI 改口 + UART 虚拟按键不触发（已修，待重综合）
+
+- [x] HDMI 换口：pin.adc 六处引脚 C3/G5/F1/E1/P2/R2 → K1/F5/E3/B3/P1/R1
+      （信号名/电平属性不动）。**上板验证通过——此后 HDMI 使用 HDMI1 接口**，
+      提交时在 commit message 注明。
+- [x] UART 按 N 不切图（用户上板反馈）：根因 = 虚拟按键脉冲宽度与消费方
+      去抖窗零裕量。key_press_debounce（DEBOUNCE_MS=50）需连续 5,000,000 个
+      低采样沿才发 press_pulse；而 uart_link 脉冲实际只有 VK_PULSE_CYC−1 拍
+      （vk_cnt 从 CYC−1 递减的 off-by-one），50ms 参数 → 4,999,999 拍 < 5M，
+      **确定性不触发**。物理键无恙（人手按压 ≫50ms）。
+- [x] 修复：VK_PULSE_CYC 5M→10M（100ms），uart_link.v 默认值 + top 实例
+      override 两处；tb_uart 脉宽断言从 ±100 收紧为精确 [VK−2,VK] 锁死；
+      8 项回归全绿（实测脉宽恰 = VK，与推演吻合）。教训入 docs/uart_link.md。
+- [ ] 上板（等用户重综合）：按 n 切图、a 自动轮播、s 状态包、h 心跳；通过后
+      提交（Boxchan 无尾注，commit message 注明 HDMI 已改用 HDMI1 接口）。
+- [x] 上板结果（2026-09-28 02:30，重综合含 10M 修复后）：s 状态回读 ✓、
+      h 心跳 1s/包 ✓（RX 解码/TX 回传/引脚方向/波特率全部打通）；
+      **n/a 虚拟按键仍不生效**（buf 不翻转、fat 恒 0x08）——10M 脉冲下
+      仍复现，脉冲宽度假设被证伪，根因待查（下一步方向：确认 bitstream
+      里 VK_PULSE_CYC 实际值；查 sd_card_bmp 侧 key_next_press 生成与
+      fat_mounted 条件；注意 fat 状态机对 key_next_press 有
+      bmp_cnt!=0 等前置条件）。
+- [ ] 待解疑：02:30:59 无 UART 命令时 state 0x1→0x4、fat 0x08→0x02
+      且 3s 内未回 0x1/0x08（buf 恒 0）——当时未发任何命令，可能是物理
+      按键或装载流程卡住，复测时留意。

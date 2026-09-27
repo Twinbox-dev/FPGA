@@ -4,6 +4,8 @@ module top(
     input                       rst_n,
     input                       key1,           // 手动下一张
     input                       key2,           // 自动播放 开/关
+    input                       uart_rx,        // CH340G USB-UART（1Mbaud 8N1）
+    output                      uart_tx,
 
 	output [5:0]                seg_sel,
 	output [7:0]                seg_data,
@@ -197,6 +199,29 @@ always @(posedge clk) begin
 end
 assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
 
+// ===================== UART 交互通道（v1：虚拟按键 + 状态回读） =====================
+// sd_card_clk 域，命令消费方（sd_card_bmp 去抖）同域免 CDC；协议见 uart_link.v 头
+wire vk_next_n, vk_auto_n;
+
+uart_link #(
+    .CLK_FREQ_HZ    (100_000_000),
+    .BAUD           (1_000_000),
+    .VK_PULSE_CYC   (10_000_000),      // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
+    .HEARTBEAT_CYC  (100_000_000)
+) uart_link_m0(
+    .clk            (sd_card_clk),
+    .rst            (rst_all),
+    .rx             (uart_rx),
+    .tx             (uart_tx),
+    .vk_next_n      (vk_next_n),
+    .vk_auto_n      (vk_auto_n),
+    .state_code     (state_code),
+    .dbg_fat_state  (dbg_fat_state),
+    .flag_a         ({video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}),
+    .flag_b         ({hdmi_locked, dbg_fat_err, disp_buf_idx[1], disp_buf_idx[0]}),
+    .dbg_underrun   (dbg_underrun)
+);
+
 // 保持你原来的 TF / SDRAM / video 时钟
 sys_pll sys_pll_m0(
     .refclk     (clk),
@@ -232,8 +257,8 @@ sd_card_bmp #(
 ) sd_card_bmp_m0(
     .clk               (sd_card_clk),
     .rst               (rst_all),
-    .key_next          (key1),
-    .key_auto          (key2),
+    .key_next          (key1 & vk_next_n),   // 物理按键与 UART 虚拟键相与（均低有效）
+    .key_auto          (key2 & vk_auto_n),
     .state_code        (state_code),
     .bmp_width         (16'd1280),
     .bmp_height        (16'd720),

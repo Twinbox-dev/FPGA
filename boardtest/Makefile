@@ -43,3 +43,8 @@ readeng:
 vdelay:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_vdelay vsrc/tb_vdelay.v 		../board/user_source/hdl_source/SD/video_delay.v 		-o sim_vdelay --Mdir build_vdelay
 	./build_vdelay/sim_vdelay
+
+# uart_link 交互通道自检（命令成对校验/虚拟按键/状态包/心跳——2026-09-27 补）
+uart:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_uart vsrc/tb_uart.v 		../board/user_source/hdl_source/SD/uart_link.v 		-o sim_uart --Mdir build_uart
+	./build_uart/sim_uart

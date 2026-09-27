@@ -2,37 +2,37 @@ standard
 ***Report Model: top Device: EG4S20BG256***
 
 IO Statistics
-#IO                        28
-  #input                    5
-  #output                  22
+#IO                        30
+  #input                    6
+  #output                  23
   #inout                    1
 
 Gate Statistics
-#Basic gates             8213
-  #and                    639
+#Basic gates             8459
+  #and                    644
   #nand                     0
-  #or                     410
+  #or                     425
   #nor                      0
   #xor                    130
   #xnor                     0
   #buf                      0
-  #not                    495
+  #not                    534
   #bufif1                  33
-  #MX21                  1714
+  #MX21                  1734
   #FADD                     0
-  #DFF                   4792
+  #DFF                   4959
   #LATCH                    0
-#MACRO_ADD                249
-#MACRO_EQ                 226
+#MACRO_ADD                258
+#MACRO_EQ                 239
 #MACRO_MULT                 1
-#MACRO_MUX               2293
+#MACRO_MUX               2415
 #MACRO_OTHERS              20
 
 Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |3421   |4792   |496    |
+|top                                       |top                                               |3500   |4959   |518    |
 |  U3                                      |sdram                                             |86     |515    |6      |
 |    u2_ram                                |sdr_as_ram                                        |86     |515    |6      |
 |      u1_init_ref                         |sdr_init_ref                                      |19     |81     |1      |
@@ -52,18 +52,18 @@ Report Hierarchy Area:
 |      ram_inst                            |ram_infer_wfifo_32_32_512                         |0      |0      |1      |
 |      rd_to_wr_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
 |      wr_to_rd_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
-|  sd_card_bmp_m0                          |sd_card_bmp                                       |2409   |2212   |214    |
-|    sd_card_top_m0                        |sd_card_top                                       |407    |181    |13     |
-|      sd_card_cmd_m0                      |sd_card_cmd                                       |275    |48     |8      |
+|  sd_card_bmp_m0                          |sd_card_bmp                                       |2404   |2212   |214    |
+|    sd_card_top_m0                        |sd_card_top                                       |408    |181    |13     |
+|      sd_card_cmd_m0                      |sd_card_cmd                                       |276    |48     |8      |
 |      sd_card_sec_read_write_m0           |sd_card_sec_read_write                            |120    |89     |0      |
 |      spi_master_m0                       |spi_master                                        |12     |44     |5      |
 |    u_adapter                             |sd_adapter                                        |5      |43     |0      |
 |    u_bmp                                 |bmp_dec                                           |76     |168    |30     |
-|    u_fat                                 |fat32_ro                                          |932    |938    |96     |
+|    u_fat                                 |fat32_ro                                          |929    |938    |96     |
 |    u_key_auto                            |key_press_debounce                                |30     |27     |2      |
 |    u_key_next                            |key_press_debounce                                |30     |27     |2      |
 |    u_wav                                 |wav_reader                                        |161    |259    |33     |
-|  seg_decoder_m0                          |seg_decoder                                       |3      |0      |0      |
+|  seg_decoder_m0                          |seg_decoder                                       |1      |0      |0      |
 |  seg_scan_m0                             |seg_scan                                          |51     |33     |4      |
 |  sys_pll_m0                              |sys_pll                                           |0      |0      |1      |
 |  u_hdmi2phy_wrapper                      |hdmi_phy_wrapper                                  |2      |47     |4      |
@@ -101,6 +101,8 @@ Report Hierarchy Area:
 |  u_seg_underrun                          |seg_decoder                                       |2      |0      |0      |
 |  u_startup_pulse                         |startup_pulse                                     |3      |22     |2      |
 |  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |5      |20     |0      |
+|  uart_link_m0                            |uart_link                                         |82     |167    |22     |
+|    u_tx                                  |uart_tx_byte                                      |18     |34     |4      |
 |  video_delay_m0                          |video_delay                                       |18     |59     |0      |
 |  video_pll_m0                            |video_pll                                         |0      |0      |1      |
 |  video_timing_data_m0                    |video_timing_data                                 |10     |33     |9      |
