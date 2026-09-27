@@ -1,7 +1,6 @@
 // csrc/sd_card_model.cpp — SD 卡 SPI 模式从机模型实现
 #include "sd_card_model.h"
 #include <cstdio>
-#include <cstdlib>
 
 bool SdCardModel::load(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -184,8 +183,6 @@ void SdCardModel::on_command(uint8_t idx, uint32_t arg, uint8_t crc) {
             byte_addr = arg;
         }
         if (byte_addr / 512 >= sector_count()) {
-            std::printf("[sd] !! CMD17 lba=%u OUT OF RANGE (sectors=%zu)\n",
-                        arg, sector_count());
             reply1(0x40);                           // 越界：参数错
             break;
         }

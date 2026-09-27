@@ -31,6 +31,8 @@ parameter BUSRT_BITS    = 10;
 parameter FRAME_PIXELS  = 24'd307200;   // 640*480
 parameter BUF0_ADDR     = 24'd0;
 parameter BUF1_ADDR     = FRAME_PIXELS;
+parameter BUF2_ADDR     = 24'd614400;   // 音频 BUF2（基址字，=2×FRAME_PIXELS）
+parameter BUF3_ADDR     = 24'd1331200;  // 音频 BUF3（=3×FRAME_PIXELS）
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -52,6 +54,12 @@ wire        display_valid;
 
 wire [3:0]  state_code;
 wire [6:0]  seg_data_0;
+// ---- 板级调试面板（数码管 6 位，只读，不影响功能）----
+wire [7:0]  dbg_fat_state;   // fat32_ro FSM 状态（0=RST 1=ISSUE 2=STREAM 3=MOUNT
+                             //  4=BPBDEC 5=FATDEC 6=DIRDONE 7=DATADONE 8=MOUNTED
+                             //  9=ERR 10=OPEN 11=LBA 12=BPB2）
+wire        dbg_fat_err;     // fat32 错误锁存（1=进了 S_ERR）
+wire        hdmi_locked;
 
 wire        video_read_req;
 wire        video_read_req_ack;
@@ -62,11 +70,27 @@ wire        sd_card_write_en;
 wire [31:0] sd_card_write_data;
 wire        sd_card_write_req;
 wire        sd_card_write_req_ack;
+wire [20:0] sd_card_write_len;
 wire        frame_write_finish;
 reg         frame_write_toggle_mem;
 
 wire [1:0]  write_buf_idx;
 wire [1:0]  disp_buf_idx;
+
+// ---- 音频播放（S4：sd_card_clk 域输出，aud_valid 每样本保持 2084 clk，跨 25M 采样安全）----
+wire        aud_valid;
+wire [23:0] aud_l;
+wire [23:0] aud_r;
+wire        aud_play_done;
+wire        aud_underrun;
+wire        aud_pair_on;
+wire        sd_aud_rd_req;
+wire        sd_aud_rd_en;
+wire [1:0]  sd_aud_rd_addr_idx;
+wire [20:0] sd_aud_rd_len;
+wire        sd_aud_rd_req_ack;
+wire        sd_aud_rd_finish;
+wire [31:0] sd_aud_rd_data;
 
 wire App_rd_en;
 wire [ADDR_BITS-1:0] App_rd_addr;
@@ -154,7 +178,7 @@ always @(posedge ext_mem_clk or posedge rst_all) begin
         frame_write_toggle_mem <= ~frame_write_toggle_mem;
 end
 
-// ===================== TF 多图扫描与缓存（双缓冲） =====================
+// ===================== TF 多图扫描与缓存（双缓冲）+ 同名 WAV 音画同步（S4） =====================
 sd_card_bmp #(
     .CLK_FREQ_HZ       (100_000_000),
     .SCAN_START_SECTOR (32'd0),
@@ -178,10 +202,36 @@ sd_card_bmp #(
     .write_req_ack     (sd_card_write_req_ack),
     .write_en          (sd_card_write_en),
     .write_data        (sd_card_write_data),
+    .write_len         (sd_card_write_len),
+    // 音频观测/播放口
+    .aud_smp           (),
+    .aud_sval          (),
+    .aud_item_done     (),
+    .aud_scan_done     (),
+    .wav_hdr_ok        (),
+    .wav_fmt_err      (),
+    .wav_data_bytes   (),
+    .aud_valid         (aud_valid),
+    .aud_l             (aud_l),
+    .aud_r             (aud_r),
+    .aud_play_done     (aud_play_done),
+    .aud_underrun      (aud_underrun),
+    .aud_tick          (),
+    .aud_pair_on       (aud_pair_on),
+    // 音频读口（frame_read_write 音频通道）
+    .rd_req            (sd_aud_rd_req),
+    .rd_en             (sd_aud_rd_en),
+    .rd_addr_idx       (sd_aud_rd_addr_idx),
+    .rd_len            (sd_aud_rd_len),
+    .rd_req_ack        (sd_aud_rd_req_ack),
+    .rd_finish         (sd_aud_rd_finish),
+    .rd_data           (sd_aud_rd_data),
     .SD_nCS            (sd_ncs),
     .SD_DCLK           (sd_dclk),
     .SD_MOSI           (sd_mosi),
-    .SD_MISO           (sd_miso)
+    .SD_MISO           (sd_miso),
+    .dbg_fat_state     (dbg_fat_state),
+    .dbg_fat_err       (dbg_fat_err)
 );
 
 seg_decoder seg_decoder_m0(
@@ -189,16 +239,29 @@ seg_decoder seg_decoder_m0(
     .seg_data          (seg_data_0)
 );
 
+// 调试面板：digit4=fat状态高4位 digit3=fat状态低4位
+// digit2={video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}
+// digit1={hdmi_locked, dbg_fat_err, disp_buf_idx[1:0]}（bit3..0）
+wire [6:0] seg_fat_hi, seg_fat_lo, seg_flag_a, seg_flag_b;
+seg_decoder u_seg_fat_hi (.bin_data(dbg_fat_state[7:4]), .seg_data(seg_fat_hi));
+seg_decoder u_seg_fat_lo (.bin_data(dbg_fat_state[3:0]), .seg_data(seg_fat_lo));
+seg_decoder u_seg_flag_a (.bin_data({video_pll_lock, sys_pll_lock,
+                                     Sdr_init_done, display_valid}),
+                          .seg_data(seg_flag_a));
+seg_decoder u_seg_flag_b (.bin_data({hdmi_locked, dbg_fat_err,
+                                     disp_buf_idx[1], disp_buf_idx[0]}),
+                          .seg_data(seg_flag_b));
+
 seg_scan seg_scan_m0(
     .clk               (clk),
     .rst_n             (rst_n),
     .seg_sel           (seg_sel),
     .seg_data          (seg_data),
     .seg_data_0        ({1'b1,7'b1111_111}),
-    .seg_data_1        ({1'b1,7'b1111_111}),
-    .seg_data_2        ({1'b1,7'b1111_111}),
-    .seg_data_3        ({1'b1,7'b1111_111}),
-    .seg_data_4        ({1'b1,7'b1111_111}),
+    .seg_data_4        ({1'b1,seg_fat_hi}),
+    .seg_data_3        ({1'b1,seg_fat_lo}),
+    .seg_data_2        ({1'b1,seg_flag_a}),
+    .seg_data_1        ({1'b1,seg_flag_b}),
     .seg_data_5        ({1'b1,seg_data_0})
 );
 
@@ -252,8 +315,8 @@ frame_read_write #(
     .read_finish       (),
     .read_addr_0       (BUF0_ADDR),
     .read_addr_1       (BUF1_ADDR),
-    .read_addr_2       (24'd0),
-    .read_addr_3       (24'd0),
+    .read_addr_2       (BUF2_ADDR),
+    .read_addr_3       (BUF3_ADDR),
     .read_addr_index   (disp_buf_idx),
     .read_len          (FRAME_PIXELS),
     .read_en           (video_read_en),
@@ -270,12 +333,20 @@ frame_read_write #(
     .write_finish      (frame_write_finish),
     .write_addr_0      (BUF0_ADDR),
     .write_addr_1      (BUF1_ADDR),
-    .write_addr_2      (24'd0),
-    .write_addr_3      (24'd0),
+    .write_addr_2      (BUF2_ADDR),
+    .write_addr_3      (BUF3_ADDR),
     .write_addr_index  (write_buf_idx),
-    .write_len         (FRAME_PIXELS),
+    .write_len         (sd_card_write_len),
     .write_en          (sd_card_write_en),
-    .write_data        (sd_card_write_data)
+    .write_data        (sd_card_write_data),
+
+    .aud_read_req      (sd_aud_rd_req),
+    .aud_read_req_ack  (sd_aud_rd_req_ack),
+    .aud_read_finish   (sd_aud_rd_finish),
+    .aud_read_addr_index(sd_aud_rd_addr_idx),
+    .aud_read_len      ({1'b0, sd_aud_rd_len}),
+    .aud_rd_en         (sd_aud_rd_en),
+    .aud_rd_data       (sd_aud_rd_data)
 );
 
 sdram U3(
@@ -348,14 +419,14 @@ hdmi_1_4b_transmitter_core_wrapper #(
     .I_axis_s_data      (axis_s_data),
     .O_axis_s_ready     (axis_s_ready),
 
-    .I_audio_valid      (1'b0),
-    .I_audio_left_data  (24'd0),
-    .I_audio_right_data (24'd0),
-    .I_acr_valid        (1'b0),
-    .I_acr_cts          (20'd0),
-    .I_acr_n            (20'd0),
+    .I_audio_valid      (aud_valid),
+    .I_audio_left_data  (aud_l),
+    .I_audio_right_data (aud_r),
+    .I_acr_valid        (1'b1),
+    .I_acr_cts          (20'd25008),
+    .I_acr_n            (20'd6144),
 
-    .O_video_locked     (),
+    .O_video_locked     (hdmi_locked),
     .O_ddc_scl          (HDMI_DDC_SCL),
     .IO_ddc_sda         (HDMI_DDC_SDA),
 

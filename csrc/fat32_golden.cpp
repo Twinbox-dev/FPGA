@@ -82,7 +82,7 @@ GoldenFs fat32_parse_golden(const std::vector<uint8_t> &img) {
                 if (is_bmp || is_wav) {
                     GoldenFile f;
                     f.is_wav = is_wav;
-                    for (int k = 0; k < 8; k++) f.name[k] = en[k];   // 主名（8.3 短名）
+                    f.name.assign((const char *)en, 8);   // 8 字节主名（原始填充）
                     f.first_cluster = ((uint32_t)le16(en + 20) << 16) | le16(en + 26);
                     f.size = le32(en + 28);
                     // 沿簇链收集（截至 size），并统计碎片段数

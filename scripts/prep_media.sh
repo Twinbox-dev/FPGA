@@ -4,7 +4,8 @@
 # 设计立场（2026-09-23 决定）：**不在 FPGA 里做兼容，在入卡前把格式收窄**。
 #   现实素材格式极杂（JPG/PNG/HEIC、MP3/AAC/44.1k/单声道…），硬件侧全兼容
 #   等于把解码器和重采样器搬进控制路径——开发地狱且占资源。图片早已走这条
-#   路（必须是 640x480x24bit 非压缩 BMP），音频照抄：统一转 48k/16bit PCM。
+#   路（必须是 640x480x24bit 非压缩 BMP），音频照抄：统一转 24kHz/8bit/单声道
+#   （板载 ×2 上采样到 HDMI 核 48k；u8→s16 = (u8−128)<<8）。
 #   硬件侧只负责：格式不对时**响亮地拒绝**（fmt_err/头校验），不负责将就。
 #
 # 用法:
@@ -72,18 +73,18 @@ if [ -n "$IMG_SRC" ]; then
     fi
 fi
 
-# ---- 音频: 任意格式(含 mp3) → 48kHz 16bit 立体声 PCM WAV ----
+# ---- 音频: 任意格式(含 mp3) → 24kHz 8bit 单声道 PCM WAV（板级规格）----
 if [ -n "$AUD_SRC" ]; then
     [ -f "$AUD_SRC" ] || { echo "找不到音频: $AUD_SRC"; exit 1; }
     ffmpeg -y -loglevel error -i "$AUD_SRC" \
-        -ar 48000 -ac 2 -c:a pcm_s16le -f wav \
+        -ar 24000 -ac 1 -c:a pcm_u8 -f wav \
         "img/wav/$NAME.WAV"
     sz=$(stat -c%s "img/wav/$NAME.WAV")
-    secs=$(python3 -c "print(f'{max(0,$sz-44)/192000:.2f}')")
-    echo "音频 → img/wav/$NAME.WAV ($sz B, ${secs}s @48k/16bit/stereo)"
-    # SDRAM 侧音频缓存按 1MB 规划 ≈ 5.4 秒，超了要么截断要么加大缓存
-    if [ "$sz" -gt 1048576 ]; then
-        echo "  ⚠ 超过 1MB（音频缓存规划容量 ≈5.4s），播放会被截断"
+    secs=$(python3 -c "print(f'{max(0,$sz-44)/24000:.2f}')")
+    echo "音频 → img/wav/$NAME.WAV ($sz B, ${secs}s @24k/8bit/mono)"
+    # 音频乒乓缓冲各 716800 字 ≈ 2.8MB ≈ 119s @24KB/s；规范 ≤90s
+    if [ "$sz" -gt 2867200 ]; then
+        echo "  ⚠ 超过 2.8MB（单缓冲容量 ≈119s），播放会被截断"
     fi
 fi
 

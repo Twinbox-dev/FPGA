@@ -1,0 +1,22 @@
+Location         : C:\Users\23506\Desktop\anlogic\board\td_project\lab_ex5_i2s_v1.0_Runs\phy_1
+Running with     : Tang Dynasty v6.2.168116
+                   Copyright (c) 2012-2025 Anlogic Inc.
+Top Model        : top
+Device           : EG4S20BG256
+Speed            : NA
+
+Timing Mode      : final
+Setup            : WNS -6565ps  TNS  -295430ps  NUM_FEPS    76
+Hold             : WNS    11ps  TNS        0ps  NUM_FEPS     0
+
+Flow Statistics  :
+--------------------------------------------------------------------------------------------------
+     command     |  #calls  |  wall time  |  cpu time(s)  |  used memory(mb)  |  peak memory(mb)  
+--------------------------------------------------------------------------------------------------
+      route      |    2     |  1m5s(72%)  |    83(65%)    |        771        |        771        
+      place      |    2     |  25s(27%)   |    44(34%)    |        751        |        766        
+    import_db    |    1     |   0s(0%)    |     0(0%)     |        182        |        182        
+  import_device  |    1     |   0s(0%)    |     0(0%)     |        83         |        83         
+--------------------------------------------------------------------------------------------------
+      total      |    6     |    1m30s    |      127      |        771        |        771        
+--------------------------------------------------------------------------------------------------

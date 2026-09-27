@@ -1,0 +1,41 @@
+===== board sd_card_bmp 验证 (img/card_diag.img, golden: OK, 9 项) =====
+  期望顺序: 首图=0 第二=1 第三=2
+      [t=31] state=0 disp=0 dv=0 pixbuf=0 wft=0
+      [t=215109] state=2 disp=0 dv=0 pixbuf=0 wft=0
+      [t=251033] state=1 disp=0 dv=0 pixbuf=0 wft=0
+      [t=251034] state=4 disp=0 dv=0 pixbuf=0 wft=0
+      [t=251035] state=3 disp=0 dv=0 pixbuf=0 wft=0
+      [t=251038] state=4 disp=0 dv=0 pixbuf=0 wft=0
+      [t=34608748] state=1 disp=0 dv=1 pixbuf=307200 wft=1
+      [终态] state=1 disp=0 dv=1 pixbuf=307200 wft_set=1
+  PASS: S1 首图装载并提交（display_valid 上升）
+  PASS: S1b 写口握手发生过（write_req 曾拉高）
+  PASS: S1c 首图像素与 golden 逐像素比对
+  PASS: SA 音频扫描完成（aud_scan_done）
+  PASS: SA0 扫描项数与 golden 一致
+  PASS: SA0 项#5 合法 WAV：PCM 24000 字节逐字节比对 + data_bytes=24000
+  PASS: SB0 项#5 BUF2 内容：6144 字 + 0x80 填充逐字节比对（RTL 6144 字, len=6144）
+  PASS: SA1 项#6 合法 WAV：PCM 24000 字节逐字节比对 + data_bytes=24000
+  PASS: SB1 项#6 BUF2 内容：6144 字 + 0x80 填充逐字节比对（RTL 6144 字, len=6144）
+  PASS: SA2 项#7 合法 WAV：PCM 24000 字节逐字节比对 + data_bytes=24000
+  PASS: SB2 项#7 BUF2 内容：6144 字 + 0x80 填充逐字节比对（RTL 6144 字, len=6144）
+  PASS: SA3 项#8 合法 WAV：PCM 24000 字节逐字节比对 + data_bytes=24000
+  PASS: SB3 项#8 BUF2 内容：6144 字 + 0x80 填充逐字节比对（RTL 6144 字, len=6144）
+      配对表: [#0→TST0    ] [#1→TST1    ] [#2→TST2    ] [#3→静音] [#4→TST4    ] 
+[#0→TST0    ] [#1→TST1    ] [#2→TST2    ] [#3→静音] [#4→TST4    ] 
+  PASS: SC 首图配对播放（BUF3 循环）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
+  PASS: S2 按键切换 → 第二张提交
+  PASS: S2b 第二图像素与 golden 比对
+  PASS: SD 随图切换音频（原子提交）：BUF2 49152 样本逐字节比对（×2 上采样, len=6144）
+  PASS: S3 按键切换 → 第三张提交
+  PASS: S3b 第三图像素与 golden 比对
+  PASS: SE 随图切换音频（原子提交）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
+  PASS: S4 第四张提交
+  PASS: S4b 第四图像素与 golden 比对
+  PASS: SF 第四图无配对：静音态（pair_on=0、样本全 0x80、无读请求）
+  PASS: SCb 播放零欠采样（underrun 应恒 0）
+  PASS: S5 下一项处理正确（合法图提交 / 坏图跳过）
+  PASS:       像素与 golden 比对
+      卡自检：索引 6 非合法图，验证跳过路径
+  PASS: S6 下一项处理正确（合法图提交 / 坏图/WAV 跳过）
+===== 27 passed, 0 failed | 530.2 Mcyc, 139.1s, 3.8 Mcyc/s =====

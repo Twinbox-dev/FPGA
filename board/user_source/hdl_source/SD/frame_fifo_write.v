@@ -50,6 +50,12 @@ localparam [ADDR_BITS - 1:0] VFLIP_FIRST_ADDR_OFFSET = (FRAME_HEIGHT - 1) * FRAM
 localparam [ADDR_BITS - 1:0] VFLIP_LINE_JUMP         = (FRAME_WIDTH * 2) - 1;
 localparam [15:0]            VFLIP_LINE_LAST_X       = FRAME_WIDTH - 1;
 
+// 垂直翻转只对图像写通道（index 0/1）生效；音频（index 2/3）必须顺序写。
+// 曾对全部通道翻转：音频字被打散进 640 字行块倒排地址，播放顺序读 =
+// 读到没写过的区域 = 噪声（TST 静音仍静音/正弦变噪声/切图爆音），且
+// 仿真（C++ 写模型无地址概念）不可见。2026-09-27 板级实锤后修复。
+wire vflip_en = WRITE_V_FLIP && (write_addr_index_d1[1] == 1'b0);
+
 //write state machine code
 localparam S_IDLE                    = 0;                        //idle state,waiting for write
 localparam S_ACK                     = 1;                        //written request response
@@ -134,17 +140,17 @@ begin
 			begin
 				wr_x <= 16'd0;
 				if(write_addr_index_d1 == 2'd0)
-					App_wr_addr_r <= WRITE_V_FLIP ? (write_addr_0 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_0;
+					App_wr_addr_r <= vflip_en ? (write_addr_0 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_0;
 				else if(write_addr_index_d1 == 2'd1)
-					App_wr_addr_r <= WRITE_V_FLIP ? (write_addr_1 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_1;
+					App_wr_addr_r <= vflip_en ? (write_addr_1 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_1;
 				else if(write_addr_index_d1 == 2'd2)
-					App_wr_addr_r <= WRITE_V_FLIP ? (write_addr_2 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_2;
+					App_wr_addr_r <= vflip_en ? (write_addr_2 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_2;
 				else if(write_addr_index_d1 == 2'd3)
-					App_wr_addr_r <= WRITE_V_FLIP ? (write_addr_3 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_3;
+					App_wr_addr_r <= vflip_en ? (write_addr_3 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_3;
 			end
 		else if(App_wr_en)
 			begin
-				if(WRITE_V_FLIP)
+				if(vflip_en)
 				begin
 					if(wr_x == VFLIP_LINE_LAST_X)
 					begin

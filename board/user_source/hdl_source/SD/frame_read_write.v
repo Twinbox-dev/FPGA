@@ -44,6 +44,14 @@ module frame_read_write
 	input[ADDR_BITS - 1:0]           read_len,                   // data read module read request data length
 	input                            read_en,                    // data read module read request for one data, read_data valid next clock
 	output[READ_DATA_BITS  - 1:0]    read_data,                  // read data
+    // ---- 音频读通道（S4 新增；消费侧时钟复用 write_clk = sd_card_clk）----
+    input                            aud_read_req,               // 电平请求，保持到 ack
+    output                           aud_read_req_ack,           // 电平响应
+    output                           aud_read_finish,            // 电平：整段读完保持，至新请求上升沿清零
+    input[1:0]                       aud_read_addr_index,        // 2=BUF2 / 3=BUF3
+    input[ADDR_BITS - 1:0]           aud_read_len,               // 字数（256 整数倍）
+    input                            aud_rd_en,                  // 音频消费侧取字（下一拍有效并保持到下次取）
+    output[READ_DATA_BITS - 1:0]     aud_rd_data,
 	/*
 	output                           wr_burst_req,               // to external memory controller,send out a burst write request
 	output[BURST_BITS - 1:0]         wr_burst_len,               // to external memory controller,data length of the burst write request, not bytes
@@ -74,6 +82,9 @@ module frame_read_write
 );
 wire[BURST_BITS - 1:0]                           wrusedw;                    // write used words
 wire[BURST_BITS - 1:0]                           rdusedw;                    // read used words
+wire[9:0]                                        aud_wrusedw;                // 音频 FIFO 写侧已用字
+wire                                             aud_fifo_aclr;              // 音频 FIFO 异步清
+wire                                             aud_ch_active;              // 读数据归属：1=音频
 
 wire 								 App_rd_busy;
 wire								 App_wr_busy;
@@ -140,20 +151,36 @@ frame_fifo_write_m0
 	.rdusedw                 	(rdusedw                  )
 );
 
-//instantiate an asynchronous FIFO 
+//instantiate an asynchronous FIFO（视频通道：读数据仅在本通道突发期间写入）
 rfifo_32_32_512 read_buf
 	(
 	.clkr                     	(read_clk                   ),          // Read side clock
 	.clkw                     	(mem_clk                    ),          // Write side clock
 	.rst                      	(read_fifo_aclr             ),          // Asynchronous clear
-	.we                     	(Sdr_rd_en       			),          // Write Request
+	.we                     	(Sdr_rd_en & ~aud_ch_active ),          // Write Request
 	.re                     	(read_en                    ),          // Read Request
 	.di                      	(Sdr_rd_dout                ),          // Input Data
 	.empty_flag					(                           ),          // Read side Empty flag
 	.full_flag					(                           ),          // Write side Full flag
-	.wrusedw                	(wrusedw         	  	  		 ),          // Read Used Words
+	.wrusedw                	(wrusedw         	  	  	 ),          // Read Used Words
 	.rdusedw                	(                  			 ),          // Write Used Words
 	.dout						(read_data                  )
+);
+
+//instantiate an asynchronous FIFO（音频通道：S4 新增，消费侧 = sd_card_clk）
+rfifo_32_32_512 aud_read_buf
+	(
+	.clkr                     	(write_clk                  ),          // Read side clock (sd_card_clk)
+	.clkw                     	(mem_clk                    ),          // Write side clock
+	.rst                      	(aud_fifo_aclr              ),          // Asynchronous clear
+	.we                     	(Sdr_rd_en &  aud_ch_active ),          // Write Request
+	.re                     	(aud_rd_en                  ),          // Read Request
+	.di                      	(Sdr_rd_dout                ),          // Input Data
+	.empty_flag					(                           ),          // Read side Empty flag
+	.full_flag					(                           ),          // Write side Full flag
+	.wrusedw                	(aud_wrusedw                ),          // Write Used Words
+	.rdusedw                	(                  			 ),          // Read Used Words
+	.dout						(aud_rd_data                )
 );
 
 frame_fifo_read
@@ -184,10 +211,19 @@ frame_fifo_read_m0
 	.read_addr_1                (read_addr_1              ),
 	.read_addr_2                (read_addr_2              ),
 	.read_addr_3                (read_addr_3              ),
-	.read_addr_index            (read_addr_index          ),    
+	.read_addr_index            (read_addr_index          ),
 	.read_len                   (read_len                 ),
 	.fifo_aclr                  (read_fifo_aclr           ),
-	.wrusedw                	(wrusedw                  )
+	.wrusedw                	(wrusedw                  ),
+
+    .aud_read_req               (aud_read_req             ),
+    .aud_read_req_ack           (aud_read_req_ack         ),
+    .aud_read_finish            (aud_read_finish          ),
+    .aud_read_addr_index        (aud_read_addr_index      ),
+    .aud_read_len               (aud_read_len             ),
+    .aud_fifo_aclr              (aud_fifo_aclr            ),
+    .aud_wrusedw                (aud_wrusedw              ),
+    .aud_ch_active              (aud_ch_active            )
 );
 
 endmodule

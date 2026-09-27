@@ -46,11 +46,20 @@ module fat32_ro (
     output reg  [5:0]  o_file_cnt,   // 播放列表文件数（图片+音频）
     output reg  [5:0]  o_bmp_cnt,    // 其中 BMP 数
     output reg  [5:0]  o_wav_cnt,    // 其中 WAV 数
-    output reg  [5:0]  o_type_map,   // 低位优先的类型位图（1=WAV，0=BMP），仅前 6 项
+    output reg  [5:0]  o_type_map,   // 低位优先的类型位图（1=WAV，0=BMP），仅前 6 项（遗留，未用）
+    output reg  [5:0]  o_first_bmp,  // 首个 BMP 的播放列表索引（轮播起点）
+    output reg  [191:0] o_bmp_nxt,   // BMP 轮播下一跳表：项 i（6bit × 32，i=file_idx）→ 循环序下一个 BMP 索引
+                                     // 挂载扫目录时逐拍建立，替代 sd_card_bmp 里 33 级组合链的 next_bmp_idx
     output reg         o_err,        // 挂载失败 / 索引越界，一拍
     output reg         o_cur_is_wav, // 当前/最近请求的文件是否为 WAV
     output wire        o_file_idle,  // 空闲（在 MOUNTED 态，可接受 file_req）
-    output wire [7:0]  o_dbg_state
+    output wire [7:0]  o_dbg_state,
+
+    // ---- 播放列表查找口（供上层做同名配对，如 IMG001.BMP <-> IMG001.WAV）----
+    input  wire [4:0]  i_pl_idx,     // 查找索引（0..pl_cnt-1 有效）
+    output wire [63:0] o_pl_name,    // 该条目的 8 字节主名（字节 k 在 [8k+7:8k]）
+    output wire        o_pl_is_wav,  // 该条目是否 WAV
+    output wire        o_pl_valid    // i_pl_idx < pl_cnt
 );
 
     // ---------------- 参数 ----------------
@@ -68,7 +77,10 @@ module fat32_ro (
         S_DIRDONE  = 8'd6,   // 目录扇区完成：簇内推进 / 查 FAT / 扫描完成
         S_DATADONE = 8'd7,   // 数据扇区完成：簇内推进 / 查 FAT / 文件完成
         S_MOUNTED  = 8'd8,   // 挂载完成，等 file_req
-        S_ERR      = 8'd9;   // 挂载失败，卡死
+        S_ERR      = 8'd9,   // 挂载失败，卡死
+        S_OPEN     = 8'd10,  // 文件请求拍2：减2+按spc移位存 clu_lba（与查表分拍）
+        S_LBA      = 8'd11,  // 簇→LBA 拍3：rd_lba = first_data + clu_lba（单加法）
+        S_BPB2     = 8'd12;  // BPB 派生拍2：first_data / 首目录簇移位（乘法已独拍）
 
     // 扇区流种类
     localparam [2:0]
@@ -81,6 +93,10 @@ module fat32_ro (
     reg [7:0] state;
     assign o_dbg_state = state;
     assign o_file_idle = (state == S_MOUNTED);
+    // 播放列表查找（组合读）
+    assign o_pl_name   = pl_name[i_pl_idx];
+    assign o_pl_is_wav = pl_is_wav[i_pl_idx];
+    assign o_pl_valid  = ({1'b0, i_pl_idx} < pl_cnt);
 
     // spc 为 2 的幂（FAT 规格保证，BPB 处有一热校验）
     function [2:0] log2s;
@@ -116,7 +132,12 @@ module fat32_ro (
     reg [7:0]  mbr_type;
 
     // ---------------- 派生 ----------------
+    // 时序：簇号→LBA = 减2、按 spc 变量移位、加 first_data，曾合一拍被 STA 报
+    // -1.78ns（spc→桶形移位→加法链→rd_lba，109 端点，上板 mount 永远完不成）。
+    // 拆流水：拍1 算 (簇-2)<<spc_log2 存 clu_lba，拍2（S_LBA）单加法出 rd_lba。
     reg [31:0] part_lba, fat_start, first_data;
+    reg [31:0] fat_mul, part_rsvd;     // BPB 派生中间值（乘法/第一级加法各自独拍）
+    reg [31:0] clu_lba;                // (簇-2)<<spc_log2 流水寄存器
     wire [2:0] spc_log2 = log2s(spc);
 
     // ---------------- FAT 查询 ----------------
@@ -130,6 +151,7 @@ module fat32_ro (
     reg [4:0]  entry_ph;         // 32B 项内字节相位 0..31
     reg        dir_end;          // 见到 0x00 项，扫描提前结束
     reg        ent_skip;         // 当前项跳过（E5 / LFN / 卷标 / 子目录）
+    reg [63:0] name_reg;         // 8 字节主名捕获（字节 k 在 [8k+7:8k]）
     reg [7:0]  ext1, ext2, ext3;
     reg [15:0] clus_hi, clus_lo;
     reg [23:0] fsize_le;              // 大小前 3 字节（第 4 字节直通）
@@ -139,7 +161,10 @@ module fat32_ro (
     reg [31:0] pl_cluster [0:31];
     reg [31:0] pl_size    [0:31];
     reg        pl_is_wav  [0:31];
+    reg [63:0] pl_name    [0:31];   // 8 字节主名（字节 k 在 [8k+7:8k]），供同名配对
     reg [5:0]  pl_cnt;
+    reg [5:0]  last_bmp;        // 建 BMP 下一跳表：上一个 BMP 索引
+    reg        bmp_seen;        // 已见首个 BMP
 
     // ---------------- 文件读 ----------------
     reg [31:0] file_cluster;
@@ -151,10 +176,6 @@ module fat32_ro (
     wire ext_is_bmp = (ext1 == 8'h42) && (ext2 == 8'h4D) && (ext3 == 8'h50);  // "BMP"
     wire ext_is_wav = (ext1 == 8'h57) && (ext2 == 8'h41) && (ext3 == 8'h56);  // "WAV"
     wire ext_hit    = ext_is_bmp || ext_is_wav;
-
-    // 目录/数据簇 c 的首扇区 LBA
-    wire [31:0] dir_lba_now  = first_data + ((dir_cluster  - 32'd2) << spc_log2);
-    wire [31:0] file_lba_now = first_data + ((file_cluster - 32'd2) << spc_log2);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -169,10 +190,13 @@ module fat32_ro (
             o_bmp_cnt <= 6'd0;
             o_wav_cnt <= 6'd0;
             o_type_map <= 6'd0;
+            o_first_bmp <= 6'd0;
+            o_bmp_nxt <= 192'd0;
             o_cur_is_wav <= 1'b0;
             o_err <= 1'b0;
             rd_kind <= K_LBA0;
-            rd_lba <= 32'd0;
+            rd_lba  <= 32'd0;
+            clu_lba <= 32'd0;
             sec_bc <= 9'd0;
             retry <= 2'd0;
             is_mbr <= 1'b0;
@@ -197,6 +221,7 @@ module fat32_ro (
             entry_ph <= 5'd0;
             dir_end <= 1'b0;
             ent_skip <= 1'b0;
+            name_reg <= 64'd0;
             ext1 <= 8'd0;
             ext2 <= 8'd0;
             ext3 <= 8'd0;
@@ -208,6 +233,9 @@ module fat32_ro (
             file_sec <= 8'd0;
             file_bytes <= 32'd0;
             cur_size <= 32'd0;
+            last_bmp <= 6'd0;
+            bmp_seen <= 1'b0;
+            o_first_bmp <= 6'd0;
         end
         else begin
             // 默认：脉冲清零
@@ -299,6 +327,10 @@ module fat32_ro (
 
                             // ---- 目录扇区：32B 项流式解析 ----
                             K_DIR: if (!dir_end) begin
+                                // 捕获 8 字节主名（字节 k 落位 [8k+7:8k]）
+                                if (entry_ph < 5'd8) begin
+                                    name_reg[8*entry_ph +: 8] <= i_data;
+                                end
                                 case (entry_ph)
                                     5'd0: begin
                                         if (i_data == 8'h00) begin
@@ -331,6 +363,7 @@ module fat32_ro (
                                             pl_cluster[pl_cnt[4:0]] <= {clus_hi, clus_lo};
                                             pl_size[pl_cnt[4:0]]    <= {i_data, fsize_le};
                                             pl_is_wav[pl_cnt[4:0]]  <= ext_is_wav;
+                                            pl_name[pl_cnt[4:0]]    <= name_reg;
                                             pl_cnt <= pl_cnt + 6'd1;
                                             if (ext_is_wav) begin
                                                 o_wav_cnt <= o_wav_cnt + 6'd1;
@@ -339,6 +372,13 @@ module fat32_ro (
                                             end
                                             else begin
                                                 o_bmp_cnt <= o_bmp_cnt + 6'd1;
+                                                // 建轮播下一跳表：前一 BMP → 本 BMP（每拍一项，无组合链）
+                                                if (bmp_seen)
+                                                    o_bmp_nxt[6*last_bmp[4:0] +: 6] <= pl_cnt;
+                                                else
+                                                    o_first_bmp <= pl_cnt;
+                                                last_bmp  <= pl_cnt;
+                                                bmp_seen  <= 1'b1;
                                             end
                                         end
                                         ent_skip <= 1'b0;
@@ -419,16 +459,30 @@ module fat32_ro (
                         state <= S_ERR;
                     end
                     else begin
-                        fat_start    <= part_lba + {16'd0, rsvd_le};
-                        first_data   <= part_lba + {16'd0, rsvd_le} + {24'd0, nfats} * fatsz_le;
-                        dir_cluster  <= rootclus_le;
-                        dir_sec      <= 8'd0;
-                        entry_ph     <= 5'd0;
-                        rd_kind      <= K_DIR;
-                        rd_lba       <= part_lba + {16'd0, rsvd_le} + {24'd0, nfats} * fatsz_le
-                                        + ((rootclus_le - 32'd2) << spc_log2);
-                        state        <= S_ISSUE;
+                        // 派生拆拍：乘法 nfats*fatsz 独占一拍（原与三级加法+簇移位
+                        // 合一拍，STA 违例 → 挂载首目录扇区地址错，mount 卡死）
+                        part_rsvd    <= part_lba + {16'd0, rsvd_le};
+                        fat_mul      <= {24'd0, nfats} * fatsz_le;
+                        state        <= S_BPB2;
                     end
+                end
+
+                // ===== BPB 派生拍2：first_data / 首目录簇移位 =====
+                S_BPB2: begin
+                    fat_start    <= part_rsvd;
+                    first_data   <= part_rsvd + fat_mul;
+                    dir_cluster  <= rootclus_le;
+                    dir_sec      <= 8'd0;
+                    entry_ph     <= 5'd0;
+                    rd_kind      <= K_DIR;
+                    clu_lba      <= (rootclus_le - 32'd2) << spc_log2;
+                    state        <= S_LBA;
+                end
+
+                // ===== 簇→LBA 拍3：单加法出扇区地址（全 FSM 共用）=====
+                S_LBA: begin
+                    rd_lba  <= first_data + clu_lba;
+                    state   <= S_ISSUE;
                 end
 
                 // ===== FAT 项捕获齐：按用途分派 =====
@@ -438,14 +492,16 @@ module fat32_ro (
                         if (fat_val >= 32'h0FFFFFF8) begin
                             o_mounted  <= 1'b1;
                             o_file_cnt <= pl_cnt;
+                            if (bmp_seen)
+                                o_bmp_nxt[6*last_bmp[4:0] +: 6] <= o_first_bmp;
                             state      <= S_MOUNTED;
                         end
                         else begin
                             dir_cluster <= fat_val;
                             dir_sec     <= 8'd0;
                             rd_kind     <= K_DIR;
-                            rd_lba      <= first_data + ((fat_val - 32'd2) << spc_log2);
-                            state       <= S_ISSUE;
+                            clu_lba     <= (fat_val - 32'd2) << spc_log2;
+                            state       <= S_LBA;
                         end
                     end
                     else begin
@@ -458,8 +514,8 @@ module fat32_ro (
                             file_cluster <= fat_val;
                             file_sec     <= 8'd0;
                             rd_kind      <= K_DATA;
-                            rd_lba       <= first_data + ((fat_val - 32'd2) << spc_log2);
-                            state        <= S_ISSUE;
+                            clu_lba      <= (fat_val - 32'd2) << spc_log2;
+                            state        <= S_LBA;
                         end
                     end
                 end
@@ -470,6 +526,8 @@ module fat32_ro (
                         // 提前收工（见到 0x00 项）
                         o_mounted  <= 1'b1;
                         o_file_cnt <= pl_cnt;
+                        if (bmp_seen)
+                            o_bmp_nxt[6*last_bmp[4:0] +: 6] <= o_first_bmp;
                         state      <= S_MOUNTED;
                     end
                     else begin
@@ -483,8 +541,10 @@ module fat32_ro (
                             state          <= S_ISSUE;
                         end
                         else begin
+                            // 簇内推进：rd_lba 即刚读完扇区的 LBA，+1 即下一扇区，
+                            // 免去簇基址重算（此点曾是 -1.78ns 长链终点）
                             rd_kind <= K_DIR;
-                            rd_lba  <= dir_lba_now + {24'd0, dir_sec} + 32'd1;
+                            rd_lba  <= rd_lba + 32'd1;
                             state   <= S_ISSUE;
                         end
                     end
@@ -507,14 +567,18 @@ module fat32_ro (
                             state          <= S_ISSUE;
                         end
                         else begin
+                            // 簇内推进：同 S_DIRDONE，rd_lba+1 即可
                             rd_kind <= K_DATA;
-                            rd_lba  <= file_lba_now + {24'd0, file_sec} + 32'd1;
+                            rd_lba  <= rd_lba + 32'd1;
                             state   <= S_ISSUE;
                         end
                     end
                 end
 
                 // ===== 挂载完成：等文件请求 =====
+                // 三拍打开：拍1 查表（32×32 簇号 mux），拍2 减2+按 spc 移位
+                // （S_OPEN），拍3 加 first_data（S_LBA）。合一拍时 i_file_idx→
+                // rd_lba 是长链（STA 曾报 -3.6ns），扇区地址算错 = 读错簇 = 图花。
                 S_MOUNTED: begin
                     if (i_file_req) begin
                         if ({1'b0, i_file_idx} >= pl_cnt) begin
@@ -527,11 +591,14 @@ module fat32_ro (
                             file_bytes   <= 32'd0;
                             file_sec     <= 8'd0;
                             rd_kind      <= K_DATA;
-                            rd_lba       <= first_data
-                                            + ((pl_cluster[i_file_idx] - 32'd2) << spc_log2);
-                            state        <= S_ISSUE;
+                            state        <= S_OPEN;
                         end
                     end
+                end
+
+                S_OPEN: begin
+                    clu_lba <= (file_cluster - 32'd2) << spc_log2;
+                    state   <= S_LBA;
                 end
 
                 default: ;   // S_ERR：终态

@@ -5,6 +5,7 @@
 // 簇链收集。测试据此断言 RTL 的行为（文件数、文件内容、碎片化程度）。
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 
 struct GoldenFile {
@@ -12,6 +13,7 @@ struct GoldenFile {
     uint32_t size = 0;
     uint32_t fragments = 0;          // 簇链中连续段数（=1 即连续）
     bool     is_wav = false;         // 扩展名类型：false=BMP true=WAV
+    std::string name;                // 8 字节主名（FAT 原始填充，与 RTL pl_name 一致，供同名配对）
     std::vector<uint8_t> data;       // 文件内容（沿簇链收集，截至 size）
 };
 

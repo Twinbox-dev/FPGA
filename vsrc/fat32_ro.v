@@ -50,13 +50,7 @@ module fat32_ro (
     output reg         o_err,        // 挂载失败 / 索引越界，一拍
     output reg         o_cur_is_wav, // 当前/最近请求的文件是否为 WAV
     output wire        o_file_idle,  // 空闲（在 MOUNTED 态，可接受 file_req）
-    output wire [7:0]  o_dbg_state,
-
-    // ---- 播放列表查找口（供上层做同名配对，如 IMG001.BMP <-> IMG001.WAV）----
-    input  wire [4:0]  i_pl_idx,     // 查找索引（0..pl_cnt-1 有效）
-    output wire [63:0] o_pl_name,    // 该条目的 8 字节主名（字节 k 在 [8k+7:8k]）
-    output wire        o_pl_is_wav,  // 该条目是否 WAV
-    output wire        o_pl_valid    // i_pl_idx < pl_cnt
+    output wire [7:0]  o_dbg_state
 );
 
     // ---------------- 参数 ----------------
@@ -84,13 +78,9 @@ module fat32_ro (
         K_DIR  = 3'd3,
         K_DATA = 3'd4;
 
-    reg [7:0] state;
+    reg [7:0] state             /*verilator public_flat_rd*/;
     assign o_dbg_state = state;
     assign o_file_idle = (state == S_MOUNTED);
-    // 播放列表查找（组合读）
-    assign o_pl_name   = pl_name[i_pl_idx];
-    assign o_pl_is_wav = pl_is_wav[i_pl_idx];
-    assign o_pl_valid  = ({1'b0, i_pl_idx} < pl_cnt);
 
     // spc 为 2 的幂（FAT 规格保证，BPB 处有一热校验）
     function [2:0] log2s;
@@ -140,7 +130,6 @@ module fat32_ro (
     reg [4:0]  entry_ph;         // 32B 项内字节相位 0..31
     reg        dir_end;          // 见到 0x00 项，扫描提前结束
     reg        ent_skip;         // 当前项跳过（E5 / LFN / 卷标 / 子目录）
-    reg [63:0] name_reg;         // 8 字节主名捕获（字节 k 在 [8k+7:8k]）
     reg [7:0]  ext1, ext2, ext3;
     reg [15:0] clus_hi, clus_lo;
     reg [23:0] fsize_le;              // 大小前 3 字节（第 4 字节直通）
@@ -150,14 +139,13 @@ module fat32_ro (
     reg [31:0] pl_cluster [0:31];
     reg [31:0] pl_size    [0:31];
     reg        pl_is_wav  [0:31];
-    reg [63:0] pl_name    [0:31];   // 8 字节主名（字节 k 在 [8k+7:8k]），供同名配对
     reg [5:0]  pl_cnt;
 
     // ---------------- 文件读 ----------------
-    reg [31:0] file_cluster;
+    reg [31:0] file_cluster  /*verilator public_flat_rd*/;
     reg [7:0]  file_sec;
     reg [31:0] file_bytes;       // 已输出字节数
-    reg [31:0] cur_size;
+    reg [31:0] cur_size       /*verilator public_flat_rd*/;
 
     // 扩展名匹配：ext1..3 为目录项的 8.3 扩展名三字节
     wire ext_is_bmp = (ext1 == 8'h42) && (ext2 == 8'h4D) && (ext3 == 8'h50);  // "BMP"
@@ -209,7 +197,6 @@ module fat32_ro (
             entry_ph <= 5'd0;
             dir_end <= 1'b0;
             ent_skip <= 1'b0;
-            name_reg <= 64'd0;
             ext1 <= 8'd0;
             ext2 <= 8'd0;
             ext3 <= 8'd0;
@@ -312,10 +299,6 @@ module fat32_ro (
 
                             // ---- 目录扇区：32B 项流式解析 ----
                             K_DIR: if (!dir_end) begin
-                                // 捕获 8 字节主名（字节 k 落位 [8k+7:8k]）
-                                if (entry_ph < 5'd8) begin
-                                    name_reg[8*entry_ph +: 8] <= i_data;
-                                end
                                 case (entry_ph)
                                     5'd0: begin
                                         if (i_data == 8'h00) begin
@@ -348,7 +331,6 @@ module fat32_ro (
                                             pl_cluster[pl_cnt[4:0]] <= {clus_hi, clus_lo};
                                             pl_size[pl_cnt[4:0]]    <= {i_data, fsize_le};
                                             pl_is_wav[pl_cnt[4:0]]  <= ext_is_wav;
-                                            pl_name[pl_cnt[4:0]]    <= name_reg;
                                             pl_cnt <= pl_cnt + 6'd1;
                                             if (ext_is_wav) begin
                                                 o_wav_cnt <= o_wav_cnt + 6'd1;
