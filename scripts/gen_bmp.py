@@ -2,7 +2,7 @@
 """生成确定性测试 BMP（纯标准库，无 PIL 依赖）。
 
 用法: python3 scripts/gen_bmp.py [-o 输出目录]
-生成 4 张 640x480 24bit 测试图（渐变/条纹/棋盘/对角）+ 1 张 641x481 非法尺寸图
+生成 4 张 1280x720 24bit 测试图（渐变/条纹/棋盘/对角）+ 1 张 1281x721 非法尺寸图
 （后者专测 BMP 解析器的行填充与尺寸拒绝路径）。
 所有图确定性再生，是 golden difftest 的像素基准来源。
 """
@@ -35,7 +35,7 @@ def write_bmp(path, w, h, pix):
 def main():
     out = sys.argv[sys.argv.index('-o') + 1] if '-o' in sys.argv else 'img/bmp'
     os.makedirs(out, exist_ok=True)
-    W, H = 640, 480
+    W, H = 1280, 720
     pats = {
         'IMG001.BMP':  lambda x, y: (x * 255 // W, 0, 0),
         'IMG002.BMP': lambda x, y: (0, 255 if (x // 80) % 2 else 64, 0),
@@ -46,10 +46,10 @@ def main():
     for name, fn in pats.items():
         write_bmp(os.path.join(out, name), W, H, fn)
         print('generated', os.path.join(out, name))
-    # 非法尺寸: 宽 641 -> 行填充 1 字节 + 尺寸拒绝测试
-    write_bmp(os.path.join(out, 'ZBADSIZE.BMP'), 641, 481,
+    # 非法尺寸: 宽 1281 -> 行填充 1 字节 + 尺寸拒绝测试
+    write_bmp(os.path.join(out, 'ZBADSIZE.BMP'), 1281, 721,
               lambda x, y: (255, 255, 0))
-    print('generated', os.path.join(out, 'ZBADSIZE.BMP'), '(641x481, 拒绝测试)')
+    print('generated', os.path.join(out, 'ZBADSIZE.BMP'), '(1281x721, 拒绝测试)')
 
 
 if __name__ == '__main__':

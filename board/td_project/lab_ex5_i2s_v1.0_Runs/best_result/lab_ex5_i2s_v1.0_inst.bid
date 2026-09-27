@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- HMAC is: ed18e5d15672570f577551eda1a31f884bfb7d536fce659cafcefcd7bd66a351 -->
+<!-- HMAC is: f1a3774e0599b2fb0d736c7d43e8949058681b458782a14477d886064236bc1e -->
 <All_Bram_Infos>
-    <Ucode>01010001</Ucode>
+    <Ucode>00111010</Ucode>
     <AL_PHY_BRAM>
         <INST_1>
             <rid>0X0004</rid>
@@ -71,11 +71,11 @@
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
-            <name>frame_read_write_m0/read_buf/ram_inst/ramread0_syn_7</name>
+            <name>frame_read_write_m0/read_buf/ram_inst/ramread0_syn_6</name>
             <width_a>18</width_a>
             <width_b>18</width_b>
             <logic_name>frame_read_write_m0/read_buf/ram_inst/ramread0_syn_4</logic_name>
-            <logic_width>24</logic_width>
+            <logic_width>32</logic_width>
             <logic_depth>512</logic_depth>
             <sub_bid_info>
                 <address_offset>0</address_offset>
@@ -83,7 +83,7 @@
                 <depth>512</depth>
                 <width>18</width>
                 <num_section>1</num_section>
-                <section_size>24</section_size>
+                <section_size>32</section_size>
                 <width_per_section>18</width_per_section>
                 <bytes_in_per_section>1</bytes_in_per_section>
                 <working_mode>
@@ -102,26 +102,26 @@
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
-            <name>frame_read_write_m0/read_buf/ram_inst/ramread0_syn_26</name>
-            <width_a>9</width_a>
-            <width_b>9</width_b>
+            <name>frame_read_write_m0/read_buf/ram_inst/ramread0_syn_25</name>
+            <width_a>18</width_a>
+            <width_b>18</width_b>
             <logic_name>frame_read_write_m0/read_buf/ram_inst/ramread0_syn_4</logic_name>
-            <logic_width>24</logic_width>
+            <logic_width>32</logic_width>
             <logic_depth>512</logic_depth>
             <sub_bid_info>
                 <address_offset>0</address_offset>
                 <data_offset>18</data_offset>
                 <depth>512</depth>
-                <width>6</width>
+                <width>14</width>
                 <num_section>1</num_section>
-                <section_size>24</section_size>
-                <width_per_section>6</width_per_section>
+                <section_size>32</section_size>
+                <width_per_section>14</width_per_section>
                 <bytes_in_per_section>1</bytes_in_per_section>
                 <working_mode>
                     <address_step>1</address_step>
-                    <depth>1024</depth>
+                    <depth>512</depth>
                     <mode_type>159</mode_type>
-                    <width>9</width>
+                    <width>18</width>
                     <num_byte>1</num_byte>
                     <ecc>0</ecc>
                 </working_mode>

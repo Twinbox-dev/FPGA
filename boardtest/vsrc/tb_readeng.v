@@ -16,7 +16,8 @@ module tb_readeng;
     localparam ADDR_BITS = 21;
     localparam BURST     = 16;
     localparam DEPTH     = 512;
-    localparam integer BUF0 = 0, BUF1 = 307200, BUF2 = 614400, BUF3 = 1331200;
+    // 720p 布局：视频 A/B 各 460800 字，音频 A/B 各 587776 字
+    localparam integer BUF0 = 0, BUF1 = 460800, BUF2 = 921600, BUF3 = 1509376;
 
     reg clk = 0;
     always #5 clk = ~clk;
@@ -65,7 +66,7 @@ module tb_readeng;
     wire [9:0]  w_usedw;
     wire        w_aclr;
 
-    frame_fifo_write #(.BURST_SIZE(BURST)) u_wr (
+    frame_fifo_write #(.BURST_SIZE(BURST), .FRAME_WIDTH(640), .FRAME_HEIGHT(720)) u_wr (
         .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b1),
         .Sdr_busy(1'b0), .App_rd_busy(1'b0), .O_wr_busy(),
         .App_wr_en(app_wr_en), .App_wr_addr(app_wr_addr),
@@ -278,7 +279,7 @@ module tb_readeng;
         if (!wr_fin) fail_msg("T2 write timeout");
         repeat (20) @(posedge clk);
         for (i = 0; i < 64; i = i + 1)
-            if (sdram[BUF0 + 479*640 + i] !== i[31:0]) fail_msg("T2 image flip lost");
+            if (sdram[BUF0 + 719*640 + i] !== i[31:0]) fail_msg("T2 image flip lost");
         $display("T2 image write vflip kept: PASS");
 
         // ---- T3: 音频整段读 + 视频频繁抢占（fix B 核心）----

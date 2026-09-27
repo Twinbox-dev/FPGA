@@ -2,12 +2,12 @@
   期望顺序: 首图=0 第二=1 第三=2
       [t=31] state=0 disp=0 dv=0 pixbuf=0 wft=0
       [t=215109] state=2 disp=0 dv=0 pixbuf=0 wft=0
-      [t=286951] state=1 disp=0 dv=0 pixbuf=0 wft=0
-      [t=286952] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=286953] state=3 disp=0 dv=0 pixbuf=0 wft=0
-      [t=286956] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=34644666] state=1 disp=0 dv=1 pixbuf=307200 wft=1
-      [终态] state=1 disp=0 dv=1 pixbuf=307200 wft_set=1
+      [t=268991] state=1 disp=0 dv=0 pixbuf=0 wft=0
+      [t=268992] state=4 disp=0 dv=0 pixbuf=0 wft=0
+      [t=268993] state=3 disp=0 dv=0 pixbuf=0 wft=0
+      [t=268996] state=4 disp=0 dv=0 pixbuf=0 wft=0
+      [t=103324156] state=1 disp=0 dv=1 pixbuf=460800 wft=1
+      [终态] state=1 disp=0 dv=1 pixbuf=460800 wft_set=1
   PASS: S1 首图装载并提交（display_valid 上升）
   PASS: S1b 写口握手发生过（write_req 曾拉高）
   PASS: S1c 首图像素与 golden 逐像素比对
@@ -32,4 +32,4 @@
   PASS:       像素与 golden 比对
   PASS: S6 下一项处理正确（合法图提交 / 坏图/WAV 跳过）
   PASS:       像素与 golden 比对
-===== 22 passed, 0 failed | 432.9 Mcyc, 121.8s, 3.6 Mcyc/s =====
+===== 22 passed, 0 failed | 845.0 Mcyc, 338.5s, 2.5 Mcyc/s =====

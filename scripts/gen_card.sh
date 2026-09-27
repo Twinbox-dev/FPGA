@@ -46,8 +46,9 @@ dd if=/dev/zero bs=512 count=2047 >> img/card_mbr.img 2>/dev/null
 cat img/fs.tmp >> img/card_mbr.img
 
 # ---- 3. 碎片卡：填满盘 → 删中间洞 → 拷 IMG004，迫使簇链跨洞 ----
-# 布局: junk_a(大) | junk_s(100簇,删) | junk_b(50簇) | 尾部空闲(~60簇)
-# IMG004 需 113 簇，洞(100)和尾(~60)都装不下 → 簇链必然两段，与分配策略无关
+# 布局: junk_a(大) | junk_s(hole簇,删) | junk_b(50簇) | 尾部空闲(tail簇)
+# IMG004 需 338 簇（1280x720 BMP / 8KB 簇）：洞(250)和尾(100)各自装不下、
+# 合计 350 又装得下 → 簇链必然两段，与分配策略无关
 mkfs_img img/card_frag.img
 python3 - <<'EOF'
 import struct
@@ -57,7 +58,10 @@ def le32(o): return struct.unpack_from('<I', img, o)[0]
 spc, rsvd, nfats, fatsz, totsec = img[13], le16(14), img[16], le32(36), le32(32)
 data_clusters = (totsec - rsvd - nfats * fatsz) // spc - 1   # 减根目录簇
 CL = spc * 512
-hole, tail, jb = 100, 60, 50
+img4_cl = (2764854 + CL - 1) // CL        # IMG004 占簇数（720p BMP）
+hole = img4_cl * 3 // 4                   # 各自 < img4_cl，合计 > img4_cl
+tail = img4_cl * 3 // 10
+jb = 50
 a = data_clusters - hole - tail - jb - 2
 def w(path, clusters):
     with open(path, 'wb') as f:
@@ -66,7 +70,7 @@ def w(path, clusters):
 w('img/junk_a.bin', a)
 w('img/junk_s.bin', hole)
 w('img/junk_b.bin', jb)
-print(f"碎片卡: junk_a={a}簇 junk_s={hole}簇(将删) junk_b={jb}簇 尾空闲≈{tail}簇, IMG004=113簇")
+print(f"碎片卡: junk_a={a}簇 junk_s={hole}簇(将删) junk_b={jb}簇 尾空闲≈{tail}簇, IMG004={img4_cl}簇")
 EOF
 mcopy -i img/card_frag.img img/junk_a.bin img/junk_s.bin img/junk_b.bin ::
 mdel -i img/card_frag.img ::junk_s.bin
@@ -80,5 +84,9 @@ rm -f img/fs.tmp img/mbr.bin
 
 for c in img/card.img img/card_mbr.img img/card_frag.img img/card_empty.img; do
     echo "== $c =="
-    mdir -i "$c" :: | tail -n +4
+    if [ "$c" = img/card_mbr.img ]; then
+        mdir -i "$c@@1048576" :: | tail -n +4   # MBR 卡：分区起 LBA 2048
+    else
+        mdir -i "$c" :: | tail -n +4
+    fi
 done

@@ -319,18 +319,55 @@ module sd_card_bmp #(
         end
     endfunction
 
+    // ==================== 图像 RGB565 打包器（720p，2 像素/字）====================
+    // bmp_dec 仍吐 24b {R,G,B} 像素流；此处两两打包进 1 个 32 位字：
+    //   word = {pix1[15:0], pix0[15:0]}，pix = {R[7:3], G[7:2], B[7:3]}（标准 RGB565）
+    // 低半字 = 先出的（偶数下标）像素，与读侧解包/串行化约定一致（video_delay）。
+    // 帧缓冲 1 字 = 2 像素：720p 双缓冲 460800 字，SDRAM 余量换音频容量（各 ~98s），
+    // 显示读带宽同步减半（720p 下 888 需 74.25M 字/s，565 仅 37.1M）。
+    wire [15:0] pix565 = {pix[23:19], pix[15:10], pix[7:3]};
+    reg  [15:0] img_pix0_hold;
+    reg         img_have_pix0;
+    reg         img_word_val;
+    reg  [31:0] img_word;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            img_pix0_hold <= 16'd0;
+            img_have_pix0 <= 1'b0;
+            img_word_val  <= 1'b0;
+            img_word      <= 32'd0;
+        end
+        else begin
+            img_word_val <= 1'b0;
+            if (load_start_pulse)
+                img_have_pix0 <= 1'b0;      // 新图从像素 0 对齐（防奇偶错位残留）
+            else if (pix_val) begin
+                if (!img_have_pix0) begin
+                    img_pix0_hold <= pix565;
+                    img_have_pix0 <= 1'b1;
+                end
+                else begin
+                    img_word_val  <= 1'b1;
+                    img_word      <= {pix565, img_pix0_hold};
+                    img_have_pix0 <= 1'b0;
+                end
+            end
+        end
+    end
+
     // ==================== 组合赋值 ====================
-    // ---- 写口 mux：图像装载走 pix_val/{pix,8'h0}（buf 0/1），音频走打包器。
+    // ---- 写口 mux：图像装载走 565 打包器（buf 0/1），音频走打包器。
     // 音频目标缓冲：扫描相位固定 BUF2；随图装载（ald）写入 aud_disp_buf 对侧 BUF2/3。
     // 三相位互斥（扫描/ald/图像装载两两不重叠），write_req/ack 握手天然无竞争。
     wire aud_wr_phase = aud_scan_active | ald_active;
     assign write_req      = write_req_r | aud_wr_req;
-    assign write_en       = aud_wr_phase  ? aud_word_val : pix_val;
-    assign write_data     = aud_wr_phase  ? aud_word     : {pix, 8'b0};
+    assign write_en       = aud_wr_phase  ? aud_word_val : img_word_val;
+    assign write_data     = aud_wr_phase  ? aud_word     : img_word;
     assign write_buf_idx  = aud_scan_active ? 2'd2
                           : ald_active      ? ald_buf
                           :                   write_buf_idx_r;
-    assign write_len      = aud_wr_phase  ? aud_wr_len   : 21'd307200;
+    // 720p 帧缓冲 = 1280*720/2 = 460800 字（RGB565，2 像素/字）
+    assign write_len      = aud_wr_phase  ? aud_wr_len   : 21'd460800;
     assign write_finish_pulse = wrfin_tgl_sync[2] ^ wrfin_tgl_sync[1];
     assign auto_tick  = (auto_cnt == (CLK_FREQ_HZ - 1));
     assign next_idx   = bmp_nxt_map[6*img_idx[4:0] +: 6];
@@ -696,7 +733,7 @@ module sd_card_bmp #(
                             end
                         end
                     end
-                    else if (load_timeout_cnt > 32'd100_000_000) begin
+                    else if (load_timeout_cnt > 32'd300_000_000) begin // 3s @100MHz：720p 装载(SPI+SDRAM)约 1s+，留裕量
                         // 超时（坏卡/坏文件卡住）：强制释放，恢复按键
                         load_busy        <= 1'b0;
                         load_timeout_cnt <= 32'd0;

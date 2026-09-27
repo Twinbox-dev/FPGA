@@ -37,3 +37,9 @@ clean:
 readeng:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_readeng vsrc/tb_readeng.v 		../board/user_source/hdl_source/SD/frame_fifo_read.v 		../board/user_source/hdl_source/SD/frame_fifo_write.v 		-o sim_readeng --Mdir build_readeng
 	./build_readeng/sim_readeng
+
+# video_delay 565 解包/2:1 串行化自检（视频读通道不在主仿真内，
+# 相邻像素互换 bug 漏网于此——2026-09-27 补）
+vdelay:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_vdelay vsrc/tb_vdelay.v 		../board/user_source/hdl_source/SD/video_delay.v 		-o sim_vdelay --Mdir build_vdelay
+	./build_vdelay/sim_vdelay

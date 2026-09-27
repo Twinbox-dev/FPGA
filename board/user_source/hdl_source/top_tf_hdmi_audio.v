@@ -28,11 +28,14 @@ module top(
 parameter MEM_DATA_BITS = 32;
 parameter ADDR_BITS     = 21;
 parameter BUSRT_BITS    = 10;
-parameter FRAME_PIXELS  = 24'd307200;   // 640*480
+// 720p + RGB565：1 字 = 2 像素，帧缓冲 = 1280*720/2 = 460800 字
+// SDRAM 布局（21 位地址 = 2M 字 = 8MB，恰好用满）：
+//   BUF0/1 = 视频 A/B（各 460800 字），BUF2/3 = 音频 A/B（各 587776 字 ≈ 98s）
+parameter FRAME_WORDS   = 24'd460800;
 parameter BUF0_ADDR     = 24'd0;
-parameter BUF1_ADDR     = FRAME_PIXELS;
-parameter BUF2_ADDR     = 24'd614400;   // 音频 BUF2（基址字，=2×FRAME_PIXELS）
-parameter BUF3_ADDR     = 24'd1331200;  // 音频 BUF3（=3×FRAME_PIXELS）
+parameter BUF1_ADDR     = 24'd460800;
+parameter BUF2_ADDR     = 24'd921600;
+parameter BUF3_ADDR     = 24'd1509376;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -60,6 +63,14 @@ wire [7:0]  dbg_fat_state;   // fat32_ro FSM 状态（0=RST 1=ISSUE 2=STREAM 3=M
                              //  9=ERR 10=OPEN 11=LBA 12=BPB2）
 wire        dbg_fat_err;     // fat32 错误锁存（1=进了 S_ERR）
 wire        hdmi_locked;
+
+// ---- d0 诊断位：视频 FIFO 下溢 / 音频欠载粘滞标志（置位后保持，复位才清）----
+wire        vid_rd_empty;    // frame_read_write 视频读 FIFO 空标志（video_clk 域）
+reg         vid_und_stick_v; // video_clk 域粘滞
+reg  [1:0]  vid_und_sync;    // 2FF 同步进 clk 域
+reg         vid_und_stick;   // clk 域粘滞
+reg         aud_und_stick;   // clk 域音频欠载粘滞
+wire [3:0]  dbg_underrun;
 
 wire        video_read_req;
 wire        video_read_req_ack;
@@ -152,6 +163,40 @@ end
 
 assign rst_all = rst_all_reg;
 
+// 视频读 FIFO 下溢粘滞：显示活动期（de 高）而 FIFO 空 = 带宽不够。
+// 跳过每帧第一条活动行：帧首 SDRAM 突发尚未填满 FIFO 属正常竞态，不算下溢。
+reg de_0_d, line_seen;
+always @(posedge video_clk or posedge rst_all) begin
+    if (rst_all) begin
+        vid_und_stick_v <= 1'b0;
+        de_0_d   <= 1'b0;
+        line_seen <= 1'b0;
+    end else begin
+        de_0_d <= de_0;
+        if (vs_0)
+            line_seen <= 1'b0;
+        else if (de_0_d && !de_0)
+            line_seen <= 1'b1;
+        if (de_0 && vid_rd_empty && line_seen)
+            vid_und_stick_v <= 1'b1;
+    end
+end
+// 2FF 同步 video_clk → clk（同步复位，与本文件 rst_cnt 块同风格）
+always @(posedge clk) begin
+    if (!rst_n) begin
+        vid_und_sync <= 2'b00;
+        vid_und_stick <= 1'b0;
+        aud_und_stick <= 1'b0;
+    end else begin
+        vid_und_sync  <= {vid_und_sync[0], vid_und_stick_v};
+        if (vid_und_sync[1])
+            vid_und_stick <= 1'b1;
+        if (aud_underrun)
+            aud_und_stick <= 1'b1;
+    end
+end
+assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
+
 // 保持你原来的 TF / SDRAM / video 时钟
 sys_pll sys_pll_m0(
     .refclk     (clk),
@@ -190,8 +235,8 @@ sd_card_bmp #(
     .key_next          (key1),
     .key_auto          (key2),
     .state_code        (state_code),
-    .bmp_width         (16'd640),
-    .bmp_height        (16'd480),
+    .bmp_width         (16'd1280),
+    .bmp_height        (16'd720),
     .display_valid     (display_valid),
 
     .write_finish_toggle(frame_write_toggle_mem),
@@ -242,7 +287,7 @@ seg_decoder seg_decoder_m0(
 // 调试面板：digit4=fat状态高4位 digit3=fat状态低4位
 // digit2={video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}
 // digit1={hdmi_locked, dbg_fat_err, disp_buf_idx[1:0]}（bit3..0）
-wire [6:0] seg_fat_hi, seg_fat_lo, seg_flag_a, seg_flag_b;
+wire [6:0] seg_fat_hi, seg_fat_lo, seg_flag_a, seg_flag_b, seg_und;
 seg_decoder u_seg_fat_hi (.bin_data(dbg_fat_state[7:4]), .seg_data(seg_fat_hi));
 seg_decoder u_seg_fat_lo (.bin_data(dbg_fat_state[3:0]), .seg_data(seg_fat_lo));
 seg_decoder u_seg_flag_a (.bin_data({video_pll_lock, sys_pll_lock,
@@ -251,13 +296,15 @@ seg_decoder u_seg_flag_a (.bin_data({video_pll_lock, sys_pll_lock,
 seg_decoder u_seg_flag_b (.bin_data({hdmi_locked, dbg_fat_err,
                                      disp_buf_idx[1], disp_buf_idx[0]}),
                           .seg_data(seg_flag_b));
+// d0 = {vid_und_stick, aud_und_stick, 2'b00}：视频 FIFO 下溢 / 音频欠载粘滞
+seg_decoder u_seg_underrun (.bin_data(dbg_underrun), .seg_data(seg_und));
 
 seg_scan seg_scan_m0(
     .clk               (clk),
     .rst_n             (rst_n),
     .seg_sel           (seg_sel),
     .seg_data          (seg_data),
-    .seg_data_0        ({1'b1,7'b1111_111}),
+    .seg_data_0        ({1'b1,seg_und}),
     .seg_data_4        ({1'b1,seg_fat_hi}),
     .seg_data_3        ({1'b1,seg_fat_lo}),
     .seg_data_2        ({1'b1,seg_flag_a}),
@@ -280,7 +327,7 @@ video_delay video_delay_m0(
     .video_clk         (video_clk),
     .rst               (rst_all),
     .read_en           (video_read_en),
-    .read_data         (video_read_data[31:8]),
+    .read_data         (video_read_data),      // 32 位：RGB565 双像素字
     .hs                (hs_0),
     .vs                (vs_0),
     .de                (de_0),
@@ -295,8 +342,8 @@ assign vout_data = display_valid ? vout_data_raw : 24'd0;
 
 frame_read_write #(
     .WRITE_V_FLIP     (1),
-    .FRAME_WIDTH      (640),
-    .FRAME_HEIGHT     (480)
+    .FRAME_WIDTH      (640),   // 每行字数（RGB565 两像素/字：1280 像素/行 = 640 字）
+    .FRAME_HEIGHT     (720)
 ) frame_read_write_m0(
     .mem_clk           (ext_mem_clk),
     .rst               (rst_all),
@@ -318,9 +365,10 @@ frame_read_write #(
     .read_addr_2       (BUF2_ADDR),
     .read_addr_3       (BUF3_ADDR),
     .read_addr_index   (disp_buf_idx),
-    .read_len          (FRAME_PIXELS),
+    .read_len          (FRAME_WORDS),
     .read_en           (video_read_en),
     .read_data         (video_read_data),
+    .o_vid_rd_empty    (vid_rd_empty),
 
     .App_wr_en         (App_wr_en),
     .App_wr_addr       (App_wr_addr),
@@ -367,6 +415,7 @@ sdram U3(
 );
 
 // ===================== RGB/DE 转 AXIS 视频 =====================
+// RGB/DE 转 AXIS（模块名带 640x480 仅为历史遗留，逻辑分辨率无关）
 video_rgb_to_axis_640x480 u_video_rgb_to_axis_640x480(
     .I_clk         (video_clk),
     .I_rst         (rst_all),
@@ -391,17 +440,17 @@ startup_pulse #(
 // ===================== HDMI 1.4b 发射 =====================
 hdmi_1_4b_transmitter_core_wrapper #(
     .DEVICE                 ( "EG"       ),
-    .HTOTAL                 ( 800        ),
-    .HSA                    ( 96         ),
-    .HFP                    ( 16         ),
-    .HBP                    ( 48         ),
-    .HACTIVE                ( 640        ),
-    .VTOTAL                 ( 525        ),
-    .VSA                    ( 2          ),
-    .VFP                    ( 10         ),
-    .VBP                    ( 33         ),
-    .VACTIVE                ( 480        ),
-    .VIDEO_VIC              ( 1          ),
+    .HTOTAL                 ( 1650       ),
+    .HSA                    ( 40         ),
+    .HFP                    ( 110        ),
+    .HBP                    ( 220        ),
+    .HACTIVE                ( 1280       ),
+    .VTOTAL                 ( 750        ),
+    .VSA                    ( 5          ),
+    .VFP                    ( 5          ),
+    .VBP                    ( 20         ),
+    .VACTIVE                ( 720        ),
+    .VIDEO_VIC              ( 4          ),
     .VIDEO_TPG              ( "Disable"  ),
     .VIDEO_FORMAT           ( "RGB"      ),
     .AUDIO_SAMPLE_RATE      ( "48K"      ),
@@ -423,7 +472,8 @@ hdmi_1_4b_transmitter_core_wrapper #(
     .I_audio_left_data  (aud_l),
     .I_audio_right_data (aud_r),
     .I_acr_valid        (1'b1),
-    .I_acr_cts          (20'd25008),
+    .I_acr_cts          (20'd75000),   // 实际像素时钟 75MHz（PLL 从 50M 整数分频到不了 74.25），
+                                       // CTS = 像素时钟kHz（N=6144、48kHz），保证音频音准
     .I_acr_n            (20'd6144),
 
     .O_video_locked     (hdmi_locked),

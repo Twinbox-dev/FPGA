@@ -5,7 +5,7 @@
 // 板级：原样搬
 // 全局视图见 docs/architecture.md
 //
-// 消费 fat32_ro 的文件字节流：校验 BMP 头（BM/640x480/24bpp/不压缩）→
+// 消费 fat32_ro 的文件字节流：校验 BMP 头（BM/1280x720/24bpp/不压缩）→
 // 数据流 3 字节组 1 像素（BGR → RGB）→ 以 o_pix_val/o_pix 线性吐出。
 // 头校验失败 o_img_err；全部字节处理完 o_img_ok。
 // 轮播切换时由 i_restart 复位全部解析状态（含撤销 img_ok/img_err）。
@@ -41,8 +41,8 @@ module bmp_dec (
     output wire [7:0]  o_dbg_state
 );
 
-    localparam [19:0] HDR_BYTES   = 20'd54;
-    localparam [19:0] TOTAL_BYTES = 20'd921654;   // 54 + 640*480*3
+    localparam [22:0] HDR_BYTES   = 23'd54;
+    localparam [22:0] TOTAL_BYTES = 23'd2764854;  // 54 + 1280*720*3
 
     localparam [7:0]
         S_RUN = 8'd0,
@@ -52,7 +52,7 @@ module bmp_dec (
     reg [7:0] state;
     assign o_dbg_state = state;
 
-    reg [19:0] byte_cnt;             // 文件内字节序号
+    reg [22:0] byte_cnt;             // 文件内字节序号
     reg [31:0] w_le, h_le, comp_le;  // 头部字段收集（小端右插）
     reg [15:0] bpp_le;
     reg [15:0] pix_sh;               // 像素组装（B、G 两字节，R 直通）
@@ -119,7 +119,7 @@ module bmp_dec (
                             comp_le <= {i_byte, comp_le[31:8]};
                         end
                         20'd53: begin
-                            if (w_le != 32'd640 || h_le != 32'd480 ||
+                            if (w_le != 32'd1280 || h_le != 32'd720 ||
                                 bpp_le != 16'd24 || comp_le != 32'd0) begin
                                 state     <= S_HDR;
                                 o_img_err <= 1'b1;

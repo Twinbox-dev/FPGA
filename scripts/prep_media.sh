@@ -4,7 +4,8 @@
 # 设计立场（2026-09-23 决定）：**不在 FPGA 里做兼容，在入卡前把格式收窄**。
 #   现实素材格式极杂（JPG/PNG/HEIC、MP3/AAC/44.1k/单声道…），硬件侧全兼容
 #   等于把解码器和重采样器搬进控制路径——开发地狱且占资源。图片早已走这条
-#   路（必须是 640x480x24bit 非压缩 BMP），音频照抄：统一转 24kHz/8bit/单声道
+#   路（必须是 1280x720x24bit 非压缩 BMP，SDRAM 内以 RGB565 双像素/字存放），
+#   音频照抄：统一转 24kHz/8bit/单声道
 #   （板载 ×2 上采样到 HDMI 核 48k；u8→s16 = (u8−128)<<8）。
 #   硬件侧只负责：格式不对时**响亮地拒绝**（fmt_err/头校验），不负责将就。
 #
@@ -58,18 +59,18 @@ fi
 
 mkdir -p img/bmp img/wav
 
-# ---- 图片: 任意格式 → 640x480 24bit 非压缩 BMP ----
+# ---- 图片: 任意格式 → 1280x720 24bit 非压缩 BMP ----
 # 缩放策略: 等比缩放后 letterbox 补黑边（不裁剪，保持完整构图）
 if [ -n "$IMG_SRC" ]; then
     [ -f "$IMG_SRC" ] || { echo "找不到图片: $IMG_SRC"; exit 1; }
     ffmpeg -y -loglevel error -i "$IMG_SRC" \
-        -vf "scale=640:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2:black" \
+        -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black" \
         -pix_fmt bgr24 -f image2 -vcodec bmp \
         "img/bmp/$NAME.BMP"
     sz=$(stat -c%s "img/bmp/$NAME.BMP")
     echo "图片 → img/bmp/$NAME.BMP ($sz B)"
-    if [ "$sz" -ne 921654 ]; then
-        echo "  ⚠ 大小非 921654（标准 640x480x24bit），bmp_dec 可能拒绝——检查 ffmpeg 输出格式"
+    if [ "$sz" -ne 2764854 ]; then
+        echo "  ⚠ 大小非 2764854（标准 1280x720x24bit），bmp_dec 可能拒绝——检查 ffmpeg 输出格式"
     fi
 fi
 
@@ -82,9 +83,9 @@ if [ -n "$AUD_SRC" ]; then
     sz=$(stat -c%s "img/wav/$NAME.WAV")
     secs=$(python3 -c "print(f'{max(0,$sz-44)/24000:.2f}')")
     echo "音频 → img/wav/$NAME.WAV ($sz B, ${secs}s @24k/8bit/mono)"
-    # 音频乒乓缓冲各 716800 字 ≈ 2.8MB ≈ 119s @24KB/s；规范 ≤90s
-    if [ "$sz" -gt 2867200 ]; then
-        echo "  ⚠ 超过 2.8MB（单缓冲容量 ≈119s），播放会被截断"
+    # 音频乒乓缓冲各 587776 字 = 2351104 B ≈ 98s @24KB/s（720p SDRAM 布局）
+    if [ "$sz" -gt 2351104 ]; then
+        echo "  ⚠ 超过 2351104 B（单缓冲容量 ≈98s），播放会被截断"
     fi
 fi
 

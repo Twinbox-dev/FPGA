@@ -6,8 +6,8 @@
       [t=251034] state=4 disp=0 dv=0 pixbuf=0 wft=0
       [t=251035] state=3 disp=0 dv=0 pixbuf=0 wft=0
       [t=251038] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=34608748] state=1 disp=0 dv=1 pixbuf=307200 wft=1
-      [终态] state=1 disp=0 dv=1 pixbuf=307200 wft_set=1
+      [t=103306198] state=1 disp=0 dv=1 pixbuf=460800 wft=1
+      [终态] state=1 disp=0 dv=1 pixbuf=460800 wft_set=1
   PASS: S1 首图装载并提交（display_valid 上升）
   PASS: S1b 写口握手发生过（write_req 曾拉高）
   PASS: S1c 首图像素与 golden 逐像素比对
@@ -41,4 +41,4 @@
   PASS: S7b 自动轮播图像素与 golden 比对
   PASS: S7c 自动轮播音频（原子提交）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
   PASS: S7d 自动轮播关闭后停止切换
-===== 29 passed, 0 failed | 677.5 Mcyc, 163.7s, 4.1 Mcyc/s =====
+===== 29 passed, 0 failed | 1089.8 Mcyc, 385.9s, 2.8 Mcyc/s =====

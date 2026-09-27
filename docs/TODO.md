@@ -130,3 +130,51 @@
 - [ ] boardtest/vsrc 副本的 public_flat 探针与 board/ 重新对齐（或保留并文档化）
 - [ ] board_sim.cpp 调试打印取舍（WR_OPEN/FAT/PSTATE 已 gate 在 SD_VERBOSE，可留）
 - [ ] img/*.img.bak 删除
+
+## 2026-09-27 第六轮：720p + RGB565 改造（仿真全绿，等上板）
+
+架构决策：**原生 1280×720@60 + SDRAM 1 字存 2 像素（RGB565 双像素字）**（方案乙）。
+SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字（**98s** @24k/8b/mono）。
+565 解包级定位为后续拓展（字幕/亮度/叠加）的天然 888 域注入点。
+
+- [x] RTL：video_define 宏切 VIDEO_1280_720；bmp_dec 720p（两副本）；
+      sd_card_bmp 加 565 打包器 + 装载超时 100M→300M（两副本）；
+      video_delay 整体重写（565 解包 + 2:1 串行化，`re=de_d[18]&~p`、
+      `vout<=~pd?lo:hi`，低半字=偶数下标像素）；frame_read_write 新增
+      `o_vid_rd_empty` 下溢诊断口；top_tf_hdmi_audio：FRAME_WORDS=460800、
+      BUF 0/460800/921600/1509376、HDMI 核 720p 时序 + VIDEO_VIC(4)、
+      CTS 74250、面板 d0={视频下溢,音频欠载} 粘滞位。
+- [x] 仿真：board_sim.cpp N_WORDS=460800 + pack565 字比对；
+      tb_readeng 换新布局 + FRAME(640,720)；board_top.v 720p。
+- [x] 素材：gen_bmp.py 1280×720（ZBADSIZE 1281×721）；prep_media.sh 720p 规格
+      + 音频告警阈值 2351104B；7 张卡全部重建（TST/用户 BMP 均 ffmpeg letterbox
+      720p，card_user 重建为真 64MB MBR 卡）。
+- [x] **坑：gen_card.sh 碎片卡洞/尾簇数必须随图放大**——8KB 簇下 720p BMP=338 簇，
+      原洞100+尾60 装不下→Disk full；改洞 250+尾 101（各自<338、合计>338）。
+- [x] 7 卡回归 + readeng 全绿（2026-09-27）。
+- [ ] **上板（等用户）**：TD 重配 video_pll → 74.25MHz / 371.25MHz（5×）；
+      重综合后查 hdmi_5x_clk 371M 组与 clk0 组时序；上板验画质（565 位复制
+      与打包是否逐位对）、音画同步、面板 d0 下溢位恒 0；通过后提交并补文档。
+- [ ] 已知 stale：旧 `vsrc/`（top.v/mem_sim.v 等）与 `boardtest/logs/` 仍是 640p
+      资产，不在回归范围内；docs 中 640×480 历史表述待随本轮提交统一修订。
+
+## 2026-09-27 第六轮上板判读一：图像"异常锐利" = 相邻像素互换（已修，待重综合）
+
+- [x] 现象：上板图像边缘异常锐利/不自然，与笔记本 100% 缩放查看同一 BMP 对比
+      明显不对（用户坚持排查代码，正确）。
+- [x] 根因：**video_delay.v 2:1 串行化的 lo/hi 分支对调** → 每对相邻像素左右
+      互换。逐拍推导：显示偏移 o 的捕获拍 c=o+1 上 pd(c)=o mod 2、
+      read_data=word⌊o/2⌋，故 o 偶应取 lo（偶数像素）、o 奇应取 hi——原代码
+      写反。平滑区不可见、边缘 1px 重影="锐利"；压缩前推导本来是 `~pd?lo:hi`，
+      实现时写反（注释还忠实记录了错误行为）。
+- [x] **仿真盲区教训（第二轮）**：视频读通道完全不在 boardtest 内（C++ 模型
+      替代 frame_read_write，video_delay 根本不编译）→ 写侧 565 打包有 golden
+      比对护住，读侧解包裸奔。补 `make -C boardtest vdelay`
+      （tb_vdelay.v：行为级 FIFO 桩逐拍比对 3 行像素序 + 位复制 + 跨行连续；
+      已验证对 bug 版本判 FAIL、修复版 PASS，有判别力）。
+- [x] 同批待综合改动：top_tf_hdmi_audio.v（面板 d0 下溢检测跳过每帧首行，
+      消除帧首 SDRAM 未填满的正常竞态误报；seg_und 独立线修双驱动）；
+      video_pll.v（TD6.2 生成版手工加回 extlock 端口）；CTS=75000（实跑 75MHz）。
+- [x] 上板其余判读：面板 C8F8xx/C9F2xx 解读=系统健康（flagA=F、fat
+      MOUNTED↔STREAM、disp_buf 翻转、HDMI 锁定）；"切图没音频"=卡内容只有
+      首图配 WAV，非 bug（用户换卡后确认音频正常，d0=8 印证音频位干净）。

@@ -27,7 +27,8 @@
 #include "sd_card_model.h"
 #include "fat32_golden.h"
 
-static const size_t N_PIX = (size_t)640 * 480;
+// 720p + RGB565：帧缓冲 1 字 = 2 像素，460800 字/帧
+static const size_t N_WORDS = (size_t)1280 * 720 / 2;
 
 static VerilatedContext *ctx = new VerilatedContext;
 static const std::chrono::steady_clock::time_point g_t0 = std::chrono::steady_clock::now();
@@ -67,7 +68,7 @@ static bool loadable_bmp(const std::vector<uint8_t> &d) {
     uint16_t bpp = (uint16_t)d[28] | ((uint16_t)d[29] << 8);
     uint32_t comp = (uint32_t)d[30] | ((uint32_t)d[31] << 8)
                   | ((uint32_t)d[32] << 16) | ((uint32_t)d[33] << 24);
-    return (w == 640 && h == 480 && bpp == 24 && comp == 0);
+    return (w == 1280 && h == 720 && bpp == 24 && comp == 0);
 }
 
 // ---- 写口模型（近似 frame_read_write）：图像 buf 0/1、音频 BUF2/BUF3 分缓冲重建 ----
@@ -106,10 +107,10 @@ static void sample_write() {
     int idx = dut->write_buf_idx;
     if (dut->write_en) {
         if (idx == 2 || idx == 3) aud_buf_for(idx)->push_back((uint32_t)dut->write_data);
-        else if (pixbuf.size() < N_PIX) pixbuf.push_back((uint32_t)dut->write_data);
+        else if (pixbuf.size() < N_WORDS) pixbuf.push_back((uint32_t)dut->write_data);
     }
     // 整帧/整音频落盘 → 翻转 write_finish_toggle（长度以 RTL 声明的 write_len 为准）
-    uint32_t exp_len = (idx == 2 || idx == 3) ? (uint32_t)dut->write_len : (uint32_t)N_PIX;
+    uint32_t exp_len = (idx == 2 || idx == 3) ? (uint32_t)dut->write_len : (uint32_t)N_WORDS;
     size_t   cur_sz  = (idx == 2 || idx == 3) ? aud_buf_for(idx)->size() : pixbuf.size();
     if (dut->write_en && cur_sz >= exp_len && !wft_set) {
         wft ^= 1;
@@ -229,20 +230,29 @@ static void diag() {
     }
 }
 
-// pixbuf 与 golden BMP（文件序，BGR）逐像素比对
+// pack565：与 sd_card_bmp 打包器一致 {R[7:3],G[7:2],B[7:3]}
+static inline uint16_t pack565(uint32_t R, uint32_t G, uint32_t B) {
+    return (uint16_t)(((R >> 3) << 11) | ((G >> 2) << 5) | (B >> 3));
+}
+
+// pixbuf（RGB565 双像素字，低半字 = 偶数下标像素）与 golden BMP（文件序，BGR）比对
 static bool compare_pixbuf(const std::vector<uint8_t> &bm) {
-    if (pixbuf.size() != N_PIX) {
-        std::printf("      pixbuf=%zu 需 %zu\n", pixbuf.size(), N_PIX);
+    if (pixbuf.size() != N_WORDS) {
+        std::printf("      pixbuf=%zu 需 %zu\n", pixbuf.size(), N_WORDS);
         return false;
     }
-    for (size_t i = 0; i < N_PIX; i++) {
-        uint32_t got = (uint32_t)(pixbuf[i] >> 8);   // {R,G,B}
-        uint32_t exp = ((uint32_t)bm[54 + 3 * i + 2] << 16)
-                     | ((uint32_t)bm[54 + 3 * i + 1] << 8)
-                     |  (uint32_t)bm[54 + 3 * i];
-        if (got != exp) {
-            std::printf("      首个失配 像素#%zu: got=%06x exp=%06x\n",
-                        i, got, exp);
+    auto px = [&](size_t i) {   // golden 像素 i 的 24b {R,G,B}
+        return ((uint32_t)bm[54 + 3 * i + 2] << 16)
+             | ((uint32_t)bm[54 + 3 * i + 1] << 8)
+             |  (uint32_t)bm[54 + 3 * i];
+    };
+    for (size_t j = 0; j < N_WORDS; j++) {
+        uint32_t p0 = px(2 * j), p1 = px(2 * j + 1);
+        uint32_t exp = ((uint32_t)pack565(p1 >> 16, (p1 >> 8) & 0xFF, p1 & 0xFF) << 16)
+                     |  (uint32_t)pack565(p0 >> 16, (p0 >> 8) & 0xFF, p0 & 0xFF);
+        if (pixbuf[j] != exp) {
+            std::printf("      首个失配 字#%zu: got=%08x exp=%08x (pix %zu/%zu)\n",
+                        j, pixbuf[j], exp, 2 * j, 2 * j + 1);
             return false;
         }
     }

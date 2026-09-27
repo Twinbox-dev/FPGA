@@ -8,22 +8,22 @@
 |     FMAX                  |    68.292MHz                |
 |     SWNS path clock period |       8000ps                |
 |     Hold WNS              |          -11                |
-|     Hold TNS              |         -297                |
-|     Num of violated H-EP  |           27                |
+|     Hold TNS              |         -440                |
+|     Num of violated H-EP  |           40                |
 -----------------------------------------------------------
 | Routing Resource          |                             |
-|     Wire length           |       470091                |
+|     Wire length           |       457401                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #slices               |         4424                |
-|     slices percentage     |       45.14%                |
+|     #slices               |         4426                |
+|     slices percentage     |       45.16%                |
 |     #RAMs                 |           23                |
 |     #DSPs                 |            2                |
 |     #DRAMHARDCON          |            0                |
 -----------------------------------------------------------
 | Congestion                |                             |
-|     Top 1% tile util      |           40                |
-|     Top 1% tile avg util  |       44.07%                |
+|     Top 1% tile util      |           39                |
+|     Top 1% tile avg util  |       42.10%                |
 |     Over 100% util #tile  |            0                |
 -----------------------------------------------------------
 Report place stage QoR done.

@@ -44,6 +44,7 @@ module frame_read_write
 	input[ADDR_BITS - 1:0]           read_len,                   // data read module read request data length
 	input                            read_en,                    // data read module read request for one data, read_data valid next clock
 	output[READ_DATA_BITS  - 1:0]    read_data,                  // read data
+	output                           o_vid_rd_empty,             // 视频 FIFO 空（读侧观测：720p 下溢诊断，板级调试面板用）
     // ---- 音频读通道（S4 新增；消费侧时钟复用 write_clk = sd_card_clk）----
     input                            aud_read_req,               // 电平请求，保持到 ack
     output                           aud_read_req_ack,           // 电平响应
@@ -82,6 +83,7 @@ module frame_read_write
 );
 wire[BURST_BITS - 1:0]                           wrusedw;                    // write used words
 wire[BURST_BITS - 1:0]                           rdusedw;                    // read used words
+wire[BURST_BITS - 1:0]                           vid_rdusedw;                // 视频 FIFO 读侧已用字（下溢诊断）
 wire[9:0]                                        aud_wrusedw;                // 音频 FIFO 写侧已用字
 wire                                             aud_fifo_aclr;              // 音频 FIFO 异步清
 wire                                             aud_ch_active;              // 读数据归属：1=音频
@@ -163,9 +165,12 @@ rfifo_32_32_512 read_buf
 	.empty_flag					(                           ),          // Read side Empty flag
 	.full_flag					(                           ),          // Write side Full flag
 	.wrusedw                	(wrusedw         	  	  	 ),          // Read Used Words
-	.rdusedw                	(                  			 ),          // Write Used Words
+	.rdusedw                	(vid_rdusedw                ),          // Read Used Words（下溢诊断）
 	.dout						(read_data                  )
 );
+
+// 视频 FIFO 读空标志：显示活动期间 read_en 有效而 FIFO 空 = 下溢（720p 带宽诊断）
+assign o_vid_rd_empty = (vid_rdusedw == {BURST_BITS{1'b0}});
 
 //instantiate an asynchronous FIFO（音频通道：S4 新增，消费侧 = sd_card_clk）
 rfifo_32_32_512 aud_read_buf
