@@ -12,10 +12,10 @@
 //   RX：命令帧 = 2 字节 [CMD, ~CMD]（异或校验，两字节必须相邻接收）。
 //       'N'(4E)=下一张   'A'(41)=自动轮播开关   ——以 100ms 低脉冲注入按键线，
 //       复用 sd_card_bmp 现有去抖，零侵入
-//       'S'(53)=回读一包状态    'H'(48)=心跳开关（默认关）
+//       'S'(53)=回读一包状态
 //       未知/不成对字节静默丢弃
 //   TX：状态包 8 字节 = A5 | state_code | fat_state | flagA | flagB | underrun
-//       （与调试面板 d5..d0 同源；心跳开启时每 1s 一包）
+//       （与调试面板 d5..d0 同源；'S' 请求一包，无心跳）
 //
 // flagA={video_pll_lock,sys_pll_lock,Sdr_init_done,display_valid}
 // flagB={hdmi_locked,fat_err,disp_buf[1:0]}  underrun={vid_stick,aud_stick,2'b00}
@@ -24,11 +24,10 @@
 module uart_link #(
     parameter CLK_FREQ_HZ  = 100_000_000,
     parameter BAUD         = 1_000_000,
-    parameter VK_PULSE_CYC = 10_000_000,     // 虚拟按键低脉冲 100ms @100MHz
+    parameter VK_PULSE_CYC = 10_000_000      // 虚拟按键低脉冲 100ms @100MHz
                                              // （实际脉宽 = CYC-1 拍；必须明显大于
                                              // 消费方 sd_card_bmp 的 50ms 去抖窗，
                                              // 设成 50ms 时差 1 拍永远不触发）
-    parameter HEARTBEAT_CYC = 100_000_000    // 心跳周期 1s @100MHz
 )(
     input               clk,          // sd_card_clk 域
     input               rst,
@@ -112,17 +111,15 @@ module uart_link #(
     end
 
     // ================= 命令解码：[CMD, ~CMD] 相邻两字节 =================
-    localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41,
-               CMD_STAT = 8'h53, CMD_HB   = 8'h48;
+    localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_STAT = 8'h53;
     reg [7:0] prev_byte;
     reg       prev_val;                       // 上一字节待配对
-    reg       hb_en;
 
     reg cmd_next, cmd_auto, cmd_stat;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            prev_byte <= 0; prev_val <= 0; hb_en <= 0;
+            prev_byte <= 0; prev_val <= 0;
             cmd_next <= 0; cmd_auto <= 0; cmd_stat <= 0;
         end else begin
             cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_stat <= 1'b0;
@@ -134,7 +131,6 @@ module uart_link #(
                         CMD_NEXT: cmd_next <= 1'b1;
                         CMD_AUTO: cmd_auto <= 1'b1;
                         CMD_STAT: cmd_stat <= 1'b1;
-                        CMD_HB:   hb_en    <= ~hb_en;
                         default: ;
                     endcase
                 end else begin
@@ -146,7 +142,9 @@ module uart_link #(
     end
 
     // ================= 虚拟按键：100ms 低脉冲 =================
-    reg [22:0] vk_cnt;                    // ≥ 5_000_000
+    // vk_cnt 必须 ≥ VK_PULSE_CYC-1 位宽：曾用 23 位（上限 8.38M），VK 改 10M
+    // 后装载值 9,999,999 被截断成 1,609,599（≈16ms），板上永远过不了 50ms 去抖
+    reg [31:0] vk_cnt;
     reg        vk_next, vk_auto;
     assign vk_next_n = ~vk_next;
     assign vk_auto_n = ~vk_auto;
@@ -181,21 +179,8 @@ module uart_link #(
     reg [7:0] pkt [0:7];
     reg [3:0] pkt_len;                    // 剩余字节数（含第 8 字节需 4 位）
     reg [3:0] pkt_idx;                    // 已发送字节数
-    reg       hb_tick;
 
-    reg [31:0] hb_cnt;
-    always @(posedge clk or posedge rst) begin
-        if (rst)                hb_cnt <= 0;
-        else if (hb_cnt >= HEARTBEAT_CYC - 1) begin
-            hb_cnt  <= 0;
-            hb_tick <= 1'b1;
-        end else begin
-            hb_cnt  <= hb_cnt + 1'b1;
-            hb_tick <= 1'b0;
-        end
-    end
-
-    wire pkt_req = cmd_stat | (hb_en & hb_tick);
+    wire pkt_req = cmd_stat;
 
     always @(posedge clk or posedge rst) begin
         if (rst) pkt_len <= 0;

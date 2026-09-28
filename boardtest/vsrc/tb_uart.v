@@ -1,9 +1,10 @@
 // tb_uart.v — uart_link 独立自检测试台
 //
 // 覆盖：RX 位中心采样、[CMD,~CMD] 成对校验（含不成对/未知命令拒收）、
-// 虚拟按键脉冲宽度、状态包内容、心跳开关、毛刺拒收。
-// TB 用缩短参数（VK_PULSE_CYC=5000 拍、HEARTBEAT_CYC=2_000_000 拍）加速，
-// 波特率与协议语义不变。
+// 虚拟按键脉冲宽度、状态包内容、毛刺拒收，以及全真实参数（10M）脉宽
+// 位宽截断回归。
+// TB 用缩短参数（VK_PULSE_CYC=5000 拍）加速，波特率与协议语义不变；
+// 宽度类问题由第二实例 dut_full（全部真实默认参数）的 T7 覆盖。
 `timescale 1ns/1ps
 module tb_uart;
     localparam BIT_NS = 1000;             // 1Mbaud @100MHz = 1us/bit
@@ -25,8 +26,7 @@ module tb_uart;
     uart_link #(
         .CLK_FREQ_HZ    (100_000_000),
         .BAUD           (1_000_000),
-        .VK_PULSE_CYC   (5000),           // TB: 50us（原 50ms）
-        .HEARTBEAT_CYC  (2_000_000)       // TB: 20ms（原 1s）
+        .VK_PULSE_CYC   (5000)            // TB: 50us（原 50ms）
     ) dut (
         .clk           (clk),
         .rst           (rst),
@@ -41,9 +41,25 @@ module tb_uart;
         .dbg_underrun  (dbg_underrun)
     );
 
+    // 第二实例：全部真实默认参数（VK_PULSE_CYC=10M），专测计数器位宽——
+    // 短参数测试测不出 vk_cnt 位宽截断（23 位时 10M 被截成 16ms，板上
+    // 永远过不了 50ms 去抖，仿真却全绿）
+    wire tx_full, vk_next_n_full, vk_auto_n_full;
+    uart_link dut_full (
+        .clk           (clk),
+        .rst           (rst),
+        .rx            (rx),
+        .tx            (tx_full),
+        .vk_next_n     (vk_next_n_full),
+        .vk_auto_n     (vk_auto_n_full),
+        .state_code    (state_code),
+        .dbg_fat_state (dbg_fat_state),
+        .flag_a        (flag_a),
+        .flag_b        (flag_b),
+        .dbg_underrun  (dbg_underrun)
+    );
+
     integer errors = 0;
-    integer rxq_n_save;
-    reg     hb_timed_out;
     task fail_msg(input [255:0] m);
         begin
             errors = errors + 1;
@@ -167,32 +183,35 @@ module tb_uart;
         end else
             $display("T5 status packet: PASS");
 
-        // T6: 'H' 开心跳 → 20ms 周期，40ms 内应到一包（join_any + 标志位，
-        // 不用 disable fork——Verilator 不支持）
-        uart_send_pair(8'h48);
-        hb_timed_out = 0;
-        fork
-            uart_recv(8);
-            begin
-                repeat (4000000) @(posedge clk);   // 40ms 超时
-                hb_timed_out = 1;
-            end
-        join_any
-        if (hb_timed_out) fail_msg("T6 心跳超时未收到");
-        else if (rxq_n == 16) $display("T6 heartbeat on: PASS");
-
-        // T7: 再 'H' 关心跳 → 70ms（≫20ms 周期）内不再来包
-        uart_send_pair(8'h48);
-        rxq_n_save = rxq_n;
-        repeat (7000000) @(posedge clk);
-        if (rxq_n != rxq_n_save) fail_msg("T7 关心跳后仍在发包");
-        else $display("T7 heartbeat off: PASS");
-
-        // T8: RX 毛刺（1/4 位低脉冲）不触发任何动作
+        // T6: RX 毛刺（1/4 位低脉冲）不触发任何动作
         rx = 0; #(BIT_NS/4); rx = 1;
         repeat (50000) @(posedge clk);
-        if (vk_next_n === 1'b0 || vk_auto_n === 1'b0) fail_msg("T8 毛刺误触发");
-        else $display("T8 glitch rejected: PASS");
+        if (vk_next_n === 1'b0 || vk_auto_n === 1'b0) fail_msg("T6 毛刺误触发");
+        else $display("T6 glitch rejected: PASS");
+
+        // T7: 真实参数（VK_PULSE_CYC=10M）脉宽——专测计数器位宽截断。
+        // 板上去抖要求连续 5,000,000 个低采样沿（DEBOUNCE_MS=50@100MHz），
+        // 脉冲必须显著长于此。
+        // 注意：dut_full 共享 rx，T1 的 'N' 已触发它拉出 100ms 脉冲且脉冲
+        // 期间新命令被忽略——必须先等残留脉冲结束再发 T7 的命令
+        wait (vk_next_n_full === 1'b1);
+        fork
+            uart_send_pair(8'h4E);
+            begin
+                @(negedge vk_next_n_full);
+                cyc = 0;
+                while (!vk_next_n_full) begin
+                    @(posedge clk);
+                    cyc = cyc + 1;
+                end
+            end
+        join
+        if (cyc < 9_999_000 || cyc > 10_001_000)
+            fail_msg("T7 全参数 vk_next 脉宽异常（疑位宽截断）");
+        else if (cyc <= 5_000_000)
+            fail_msg("T7 脉宽未超过 50ms 去抖窗");
+        else
+            $display("T7 full-param pulse=%0d cyc (>5M debounce): PASS", cyc);
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);
@@ -200,7 +219,7 @@ module tb_uart;
     end
 
     initial begin
-        #300_000_000;                     // 300ms 硬超时
+        #600_000_000;                     // 600ms 硬超时（T7 需 ~100ms）
         $display("==== GLOBAL TIMEOUT ====");
         $finish;
     end

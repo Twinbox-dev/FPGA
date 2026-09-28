@@ -10,7 +10,7 @@ uart_console.py — PC ↔ FPGA 串口交互控制台（配板端 uart_link.v）
 
 交互键（回车不必，单键即发）:
     n  下一张        a  自动轮播开关
-    s  回读一包状态   h  心跳开关（开启后板子每 1s 自动发状态包）
+    s  回读一包状态
     q  退出
 
 状态包 8 字节: A5 | state | fat_state | flagA | flagB | underrun | 00 | 00
@@ -29,9 +29,9 @@ try:
 except ImportError:
     sys.exit("需要 pyserial: pip install pyserial")
 
-# 修复：键改为小写，与 read_key() 返回的小写字符匹配
-CMDS = {b"n": 0x4E, b"a": 0x41, b"s": 0x53, b"h": 0x48}
-HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "h": "心跳开关"}
+# 键为小写，与 read_key() 返回的小写字符匹配
+CMDS = {b"n": 0x4E, b"a": 0x41, b"s": 0x53}
+HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读"}
 
 running = True
 
@@ -112,7 +112,7 @@ def main():
     ser = serial.Serial(args.port, args.baud, timeout=0.2)
     print(f"已连接 {args.port} @ {args.baud}bps（8N1）。"
           f"按键: {'/'.join(HELP)}，q 退出")
-    print("提示: 先按 h 开心跳，或按 s 手动回读状态\n> ", end="", flush=True)
+    print("提示: 按 s 回读状态\n> ", end="", flush=True)
 
     t = threading.Thread(target=reader_loop, args=(ser,), daemon=True)
     t.start()

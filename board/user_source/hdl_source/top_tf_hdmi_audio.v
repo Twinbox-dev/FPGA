@@ -206,8 +206,7 @@ wire vk_next_n, vk_auto_n;
 uart_link #(
     .CLK_FREQ_HZ    (100_000_000),
     .BAUD           (1_000_000),
-    .VK_PULSE_CYC   (10_000_000),      // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
-    .HEARTBEAT_CYC  (100_000_000)
+    .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
 ) uart_link_m0(
     .clk            (sd_card_clk),
     .rst            (rst_all),
