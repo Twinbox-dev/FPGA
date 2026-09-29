@@ -3,6 +3,21 @@
 PC ↔ FPGA 的串口交互通道 v1。板上 Type-C 旁的 CH340G 即 USB-UART 桥，
 PC 端出现为虚拟串口（Windows COMx / Linux ttyUSBx）。
 
+## 分层（2026-09-29 拆分）
+
+```
+UART 前端(uart_link.v) ──cmd/cmd_val──► ctrl_core.v ──vk_*_n──► sd_card_bmp 按键线
+   8N1 + [CMD,~CMD] 成帧             命令语义/音量参数/状态包内容
+                                      └──stat_req/status_pkt(8B)──► 前端组帧发送
+```
+
+命令**语义**在 `ctrl_core.v`，与传输无关——将来加以太网只需再写一个前端，
+把报文翻译成同样的「命令字节 + valid」，`ctrl_core` 与 UART 前端都不用改。
+控制参数（音量 `vol_gain` 0..8、轮播周期 `auto_period_s` 1..10s）也由
+ctrl_core 持有：音量在 top 送 HDMI 核前做 `×gain>>3`（gain=8 恒等，字节级
+音频比对不受影响）；轮播周期接 sd_card_bmp 的 `auto_period_s`（默认 1s，
+与旧行为一致）。**参数命令同表：`+`/`-` 音量、`>`/`<` 周期。**
+
 ## 硬件配置
 
 | 项 | 值 |
@@ -28,6 +43,10 @@ PC 端出现为虚拟串口（Windows COMx / Linux ttyUSBx）。
 | 0x4E | `N` | 下一张 |
 | 0x41 | `A` | 自动轮播开关 |
 | 0x50 | `P` | 上一张 |
+| 0x2B | `+` | 音量 +1 |
+| 0x2D | `-` | 音量 -1 |
+| 0x3E | `>` | 轮播周期 +1s |
+| 0x3C | `<` | 轮播周期 -1s |
 | 0x53 | `S` | 回读一包状态 |
 
 - 未知字节、不成对字节**静默丢弃**。

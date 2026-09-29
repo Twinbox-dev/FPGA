@@ -1,52 +1,38 @@
 `timescale 1ns/1ps
 // ---------------------------------------------------------------------------
-// uart_link.v — PC ↔ FPGA 交互通道 v1（2026-09-27）
+// uart_link.v — UART 传输前端（2026-09-29 拆分后）
 //
-// 8N1 UART，RX 命令 + TX 遥测。整个模块跑在 sd_card_clk（100MHz）域：
-// 命令消费方（sd_card_bmp 的按键去抖）同域，免 CDC。
+// 只做「传输」：8N1 收发 + [CMD,~CMD] 成对校验 → 把已校验的命令字节交给
+// ctrl_core（命令语义在那边，与传输无关）；状态包内容也由 ctrl_core 提供，
+// 本模块只负责按 8 字节流发送。
 //
-// 波特率 = CLK_FREQ_HZ/BAUD（默认 1Mbaud = 整 100 拍/位，无小数分频）。
+//   本模块（帧）─ cmd/cmd_val ─► ctrl_core ─ stat_req/status_pkt ─► 本模块（发）
+//
+// 8N1：波特率 = CLK_FREQ_HZ/BAUD（默认 1Mbaud = 整 100 拍/位，无小数分频）。
 // CH340G 实测支持 2Mbaud，1M 有 2 倍裕量。
 //
 // 协议（v1）：
-//   RX：命令帧 = 2 字节 [CMD, ~CMD]（异或校验，两字节必须相邻接收）。
-//       'N'(4E)=下一张   'A'(41)=自动轮播开关   'P'(50)=上一张
-//       ——以 100ms 低脉冲注入按键线，复用 sd_card_bmp 现有去抖，零侵入
-//       'S'(53)=回读一包状态
-//       未知/不成对字节静默丢弃
-//   TX：状态包 8 字节 = A5 | state_code | fat_state | flagA | flagB | underrun
-//       | img_idx | wav_flag（'S' 请求一包，无心跳）
-//       img_idx = 当前图索引（5bit），wav_flag = 该图是否配同名 WAV
+//   RX：命令帧 = 2 字节 [CMD, ~CMD]（异或校验，两字节必须相邻接收），
+//       成对后把首字节作为命令交给 ctrl_core；未知/不成对字节静默丢弃。
+//   TX：状态包 8 字节（内容见 ctrl_core.status_pkt）——ctrl_core 的
+//       stat_req 脉冲触发一包。无心跳。
 //
-// flagA={video_pll_lock,sys_pll_lock,Sdr_init_done,display_valid}
-// flagB={hdmi_locked,fat_err,disp_buf[1:0]}  underrun={vid_stick,aud_stick,2'b00}
-// （underrun 来自 clk 域粘滞寄存器，模块内 2FF 同步；其余均为准静态电平）
+// 命令表见 ctrl_core.v（N/A/P/S、音量 +/-）。
 // ---------------------------------------------------------------------------
 module uart_link #(
     parameter CLK_FREQ_HZ  = 100_000_000,
-    parameter BAUD         = 1_000_000,
-    parameter VK_PULSE_CYC = 10_000_000      // 虚拟按键低脉冲 100ms @100MHz
-                                             // （实际脉宽 = CYC-1 拍；必须明显大于
-                                             // 消费方 sd_card_bmp 的 50ms 去抖窗，
-                                             // 设成 50ms 时差 1 拍永远不触发）
+    parameter BAUD         = 1_000_000
 )(
-    input               clk,          // sd_card_clk 域
+    input               clk,          // sd_card_clk 域（与 ctrl_core 同域）
     input               rst,
     input               rx,
     output              tx,
-    // 虚拟按键（低有效，与物理按键线相与）
-    output              vk_next_n,
-    output              vk_auto_n,
-    output              vk_prev_n,
-    // 状态回读（与 top 调试面板同源）
-    input  [3:0]        state_code,
-    input  [7:0]        dbg_fat_state,
-    input  [3:0]        flag_a,
-    input  [3:0]        flag_b,
-    input  [3:0]        dbg_underrun,  // clk 域粘滞位，内部 2FF 同步
-    // 遥测：当前图索引 + 该图是否配同名 WAV（状态包 pkt[6]/pkt[7]）
-    input  [4:0]        img_idx,
-    input               img_wav
+    // 命令出口：已校验命令字节（单拍）
+    output reg [7:0]    cmd,
+    output reg          cmd_val,
+    // 状态包入口：stat_req 脉冲触发一次发送，内容取自 status_pkt
+    input               stat_req,
+    input  [63:0]       status_pkt
 );
     localparam BIT_CYC = CLK_FREQ_HZ / BAUD;
 
@@ -115,31 +101,22 @@ module uart_link #(
         end
     end
 
-    // ================= 命令解码：[CMD, ~CMD] 相邻两字节 =================
-    localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_STAT = 8'h53,
-               CMD_PREV = 8'h50;
+    // ============ 成帧：[CMD, ~CMD] 相邻两字节 → 命令出口 ============
     reg [7:0] prev_byte;
     reg       prev_val;                       // 上一字节待配对
 
-    reg cmd_next, cmd_auto, cmd_stat, cmd_prev;
-
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            prev_byte <= 0; prev_val <= 0;
-            cmd_next <= 0; cmd_auto <= 0; cmd_stat <= 0; cmd_prev <= 0;
+            prev_byte <= 8'd0; prev_val <= 1'b0;
+            cmd <= 8'd0; cmd_val <= 1'b0;
         end else begin
-            cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_stat <= 1'b0; cmd_prev <= 1'b0;
+            cmd_val <= 1'b0;
             if (rx_val) begin
                 if (prev_val && (prev_byte == ~rx_byte)) begin
-                    // 成对：执行命令并清配对状态（命令以配对首字节为准）
+                    // 成对：命令以配对首字节为准
                     prev_val <= 1'b0;
-                    case (prev_byte)
-                        CMD_NEXT: cmd_next <= 1'b1;
-                        CMD_AUTO: cmd_auto <= 1'b1;
-                        CMD_STAT: cmd_stat <= 1'b1;
-                        CMD_PREV: cmd_prev <= 1'b1;
-                        default: ;
-                    endcase
+                    cmd      <= prev_byte;
+                    cmd_val  <= 1'b1;
                 end else begin
                     prev_byte <= rx_byte;
                     prev_val  <= 1'b1;
@@ -148,63 +125,25 @@ module uart_link #(
         end
     end
 
-    // ================= 虚拟按键：100ms 低脉冲 =================
-    // vk_cnt 必须 ≥ VK_PULSE_CYC-1 位宽：曾用 23 位（上限 8.38M），VK 改 10M
-    // 后装载值 9,999,999 被截断成 1,609,599（≈16ms），板上永远过不了 50ms 去抖
-    reg [31:0] vk_cnt;
-    reg        vk_next, vk_auto, vk_prev;
-    assign vk_next_n = ~vk_next;
-    assign vk_auto_n = ~vk_auto;
-    assign vk_prev_n = ~vk_prev;
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            vk_cnt <= 0; vk_next <= 0; vk_auto <= 0; vk_prev <= 0;
-        end else begin
-            if (vk_cnt != 0) begin
-                vk_cnt <= vk_cnt - 1'b1;
-                if (vk_cnt == 1) begin
-                    vk_next <= 1'b0;
-                    vk_auto <= 1'b0;
-                    vk_prev <= 1'b0;
-                end
-            end else if (cmd_next || cmd_auto || cmd_prev) begin
-                vk_cnt  <= VK_PULSE_CYC - 1;
-                vk_next <= cmd_next;
-                vk_auto <= cmd_auto;
-                vk_prev <= cmd_prev;
-            end
-        end
-    end
-
-    // ================= TX：状态包 =================
-    // 2FF 同步 clk 域的 underrun 粘滞位（准静态，仅消亚稳）
-    reg [3:0] und_s0, und_s1;
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin und_s0 <= 0; und_s1 <= 0; end
-        else     begin und_s0 <= dbg_underrun; und_s1 <= und_s0; end
-    end
-
-    // 待发队列：状态包 8 字节（发送中新来的请求丢弃——'S' 连打会丢包，可接受）
+    // ================= TX：状态包（8 字节，内容由 ctrl_core 提供）=================
+    // 待发队列：发送中新来的请求丢弃（连按 S 会丢包，可接受）
     reg [7:0] pkt [0:7];
     reg [3:0] pkt_len;                    // 剩余字节数（含第 8 字节需 4 位）
     reg [3:0] pkt_idx;                    // 已发送字节数
 
-    wire pkt_req = cmd_stat;
-
     always @(posedge clk or posedge rst) begin
-        if (rst) pkt_len <= 0;
+        if (rst) pkt_len <= 4'd0;
         else begin
-            if (pkt_req && pkt_len == 0) begin
-                pkt[0] <= 8'hA5;
-                pkt[1] <= {4'b0, state_code};
-                pkt[2] <= dbg_fat_state;
-                pkt[3] <= {4'b0, flag_a};
-                pkt[4] <= {4'b0, flag_b};
-                pkt[5] <= {4'b0, und_s1};
-                pkt[6] <= {3'b0, img_idx};    // 当前图索引（5bit）
-                pkt[7] <= {7'b0, img_wav};    // 该图是否配同名 WAV
-                pkt_len <= 8;
+            if (stat_req && pkt_len == 4'd0) begin
+                pkt[0] <= status_pkt[7:0];
+                pkt[1] <= status_pkt[15:8];
+                pkt[2] <= status_pkt[23:16];
+                pkt[3] <= status_pkt[31:24];
+                pkt[4] <= status_pkt[39:32];
+                pkt[5] <= status_pkt[47:40];
+                pkt[6] <= status_pkt[55:48];
+                pkt[7] <= status_pkt[63:56];
+                pkt_len <= 4'd8;
             end else if (tx_done_byte)
                 pkt_len <= pkt_len - 1'b1;
         end
@@ -215,7 +154,7 @@ module uart_link #(
     // 恒为 8，用 pkt_idx<pkt_len 只能发出前 5 个字节。
     // 还须屏蔽 done 拍：done_r 拉高时 st 已回 IDLE 而 len 的递减要到下一拍
     // 才生效，该拍 len 仍为旧值会多装一个字节并使 len 下溢
-    wire       tx_load = (pkt_len != 0) && tx_idle && !tx_done_byte;
+    wire       tx_load = (pkt_len != 4'd0) && tx_idle && !tx_done_byte;
     wire       tx_idle;
     wire       tx_done_byte;
 
@@ -231,7 +170,7 @@ module uart_link #(
 
     always @(posedge clk or posedge rst) begin
         if (rst)
-            pkt_idx <= 0;
+            pkt_idx <= 4'd0;
         else if (tx_load)
             pkt_idx <= (pkt_idx == 4'd7) ? 4'd0 : pkt_idx + 1'b1;
     end

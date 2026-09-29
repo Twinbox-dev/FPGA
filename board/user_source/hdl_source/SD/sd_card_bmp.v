@@ -57,6 +57,7 @@ module sd_card_bmp #(
     input                       key_next,
     input                       key_auto,
     input                       key_prev,
+    input  [3:0]                auto_period_s,   // 自动轮播周期（秒，1..10；ctrl_core 可调）
     input  [15:0]               bmp_width,     // 保留（bmp_dec 内部硬编码 640x480）
     input  [15:0]               bmp_height,
     output reg                  display_valid,
@@ -377,7 +378,10 @@ module sd_card_bmp #(
     // 720p 帧缓冲 = 1280*720/2 = 460800 字（RGB565，2 像素/字）
     assign write_len      = aud_wr_phase  ? aud_wr_len   : 21'd460800;
     assign write_finish_pulse = wrfin_tgl_sync[2] ^ wrfin_tgl_sync[1];
-    assign auto_tick  = (auto_cnt == (CLK_FREQ_HZ - 1));
+    // 轮播周期 = auto_period_s 秒（1..10），0 视作 1 兜底
+    wire [31:0] auto_thr = ((auto_period_s == 4'd0) ? 32'd1 : {28'd0, auto_period_s})
+                           * CLK_FREQ_HZ;
+    assign auto_tick  = (auto_cnt >= auto_thr - 32'd1);
     assign next_idx   = bmp_nxt_map[6*img_idx[4:0] +: 6];
     assign prev_idx   = bmp_prv_map[6*img_idx[4:0] +: 6];
     assign img_idx_out = img_idx[4:0];     // UART 遥测

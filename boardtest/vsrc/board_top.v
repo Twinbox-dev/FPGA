@@ -56,6 +56,7 @@ module board_top (
         .key_next            (key_next),
         .key_auto            (key_auto),
         .key_prev            (key_prev),
+        .auto_period_s       (4'd1),   // 主仿真固定 1s（S7 用例语义）
         .fast_en             (fast_en),
         .fast_byte           (fast_byte),
         .fast_val            (fast_val),

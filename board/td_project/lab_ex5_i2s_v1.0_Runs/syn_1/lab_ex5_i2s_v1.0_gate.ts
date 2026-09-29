@@ -1,2 +1,2 @@
-SWNS: -5.291ns, STNS: -847.051ns.
+SWNS: -5.291ns, STNS: -401.287ns.
 HWNS: 0.471ns, HTNS: 0.000ns.

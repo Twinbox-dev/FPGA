@@ -211,30 +211,62 @@ always @(posedge clk) begin
 end
 assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
 
-// ===================== UART 交互通道（v1：虚拟按键 + 状态回读） =====================
-// sd_card_clk 域，命令消费方（sd_card_bmp 去抖）同域免 CDC；协议见 uart_link.v 头
+// ===================== 控制通道（分层：传输前端 + 传输无关核心）=====================
+// ctrl_core 持有命令语义与控制参数（虚拟按键/音量），任何传输前端（现在的 UART、
+// 将来的以太网）只要把命令翻译成「字节 + valid」即可复用；详见 ctrl_core.v。
 wire vk_next_n, vk_auto_n, vk_prev_n;
+wire [7:0]  cmd_byte;
+wire        cmd_val_w, stat_req_w;
+wire [63:0] status_pkt_w;
+wire [3:0]  vol_gain;
+wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 
-uart_link #(
-    .CLK_FREQ_HZ    (100_000_000),
-    .BAUD           (1_000_000),
+ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
-) uart_link_m0(
+) ctrl_core_m0(
     .clk            (sd_card_clk),
     .rst            (rst_all),
-    .rx             (uart_rx),
-    .tx             (uart_tx),
+    .cmd            (cmd_byte),
+    .cmd_val        (cmd_val_w),
     .vk_next_n      (vk_next_n),
     .vk_auto_n      (vk_auto_n),
     .vk_prev_n      (vk_prev_n),
+    .stat_req       (stat_req_w),
+    .vol_gain       (vol_gain),
+    .auto_period_s  (auto_period_s),
     .state_code     (state_code),
     .dbg_fat_state  (dbg_fat_state),
     .flag_a         ({video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}),
     .flag_b         ({hdmi_locked, dbg_fat_err, disp_buf_idx[1], disp_buf_idx[0]}),
     .dbg_underrun   (dbg_underrun),
     .img_idx        (img_idx_w),
-    .img_wav        (img_wav_w)
+    .img_wav        (img_wav_w),
+    .status_pkt     (status_pkt_w)
 );
+
+// UART 前端：只管 8N1 收发与 [CMD,~CMD] 成帧（命令表在 ctrl_core.v）
+uart_link #(
+    .CLK_FREQ_HZ    (100_000_000),
+    .BAUD           (1_000_000)
+) uart_link_m0(
+    .clk            (sd_card_clk),
+    .rst            (rst_all),
+    .rx             (uart_rx),
+    .tx             (uart_tx),
+    .cmd            (cmd_byte),
+    .cmd_val        (cmd_val_w),
+    .stat_req       (stat_req_w),
+    .status_pkt     (status_pkt_w)
+);
+
+// 音量增益（ctrl_core 的 vol_gain：0..8，8=原始，0=静音）：24bit 有符号 ×gain>>3。
+// gain=8 时 ≡ 原值（现有字节级音频比对用例不受影响）
+wire signed [23:0] aud_l_s = $signed(aud_l);
+wire signed [23:0] aud_r_s = $signed(aud_r);
+wire signed [27:0] aud_l_g = (aud_l_s * $signed({1'b0, vol_gain})) >>> 3;  // 24×4=28bit
+wire signed [27:0] aud_r_g = (aud_r_s * $signed({1'b0, vol_gain})) >>> 3;
+wire [23:0] aud_l_v = aud_l_g[23:0];
+wire [23:0] aud_r_v = aud_r_g[23:0];
 
 // 保持你原来的 TF / SDRAM / video 时钟
 sys_pll sys_pll_m0(
@@ -274,6 +306,7 @@ sd_card_bmp #(
     .key_next          (key1 & vk_next_n),   // 物理按键与 UART 虚拟键相与（均低有效）
     .key_auto          (key2 & vk_auto_n),
     .key_prev          (key3 & vk_prev_n),
+    .auto_period_s     (auto_period_s),
     .img_idx_out       (img_idx_w),
     .img_wav_out       (img_wav_w),
     .state_code        (state_code),
@@ -498,8 +531,8 @@ hdmi_1_4b_transmitter_core_wrapper #(
     .O_axis_s_ready     (axis_s_ready),
 
     .I_audio_valid      (aud_valid),
-    .I_audio_left_data  (aud_l),
-    .I_audio_right_data (aud_r),
+    .I_audio_left_data  (aud_l_v),     // 经 vol_gain 缩放（8=原始）
+    .I_audio_right_data (aud_r_v),
     .I_acr_valid        (1'b1),
     .I_acr_cts          (20'd75000),   // 实际像素时钟 75MHz（PLL 从 50M 整数分频到不了 74.25），
                                        // CTS = 像素时钟kHz（N=6144、48kHz），保证音频音准

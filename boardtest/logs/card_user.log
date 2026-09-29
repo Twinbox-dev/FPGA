@@ -1,12 +1,13 @@
 ===== board sd_card_bmp 验证 (img/card_user.img, golden: OK, 6 项) =====
   期望顺序: 首图=0 第二=1 第三=2
+  [SIM_FAST] SD 直连扇区档：SPI 协议栈不在本次覆盖内
       [t=31] state=0 disp=0 dv=0 pixbuf=0 wft=0
-      [t=215109] state=2 disp=0 dv=0 pixbuf=0 wft=0
-      [t=268991] state=1 disp=0 dv=0 pixbuf=0 wft=0
-      [t=268992] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=268993] state=3 disp=0 dv=0 pixbuf=0 wft=0
-      [t=268996] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=103324156] state=1 disp=0 dv=1 pixbuf=460800 wft=1
+      [t=33] state=2 disp=0 dv=0 pixbuf=0 wft=0
+      [t=6188] state=1 disp=0 dv=0 pixbuf=0 wft=0
+      [t=6189] state=4 disp=0 dv=0 pixbuf=0 wft=0
+      [t=6190] state=3 disp=0 dv=0 pixbuf=0 wft=0
+      [t=6193] state=4 disp=0 dv=0 pixbuf=0 wft=0
+      [t=11775173] state=1 disp=0 dv=1 pixbuf=460800 wft=1
       [终态] state=1 disp=0 dv=1 pixbuf=460800 wft_set=1
   PASS: S1 首图装载并提交（display_valid 上升）
   PASS: S1b 写口握手发生过（write_req 曾拉高）
@@ -35,4 +36,4 @@
   PASS: S8 上一张提交
   PASS: S8b 上一图像素与 golden 比对
   PASS: S8d 上一张无配对：静音态（pair_on=0、样本全 0x80、无读请求）
-===== 25 passed, 0 failed | 988.2 Mcyc, 294.2s, 3.4 Mcyc/s =====
+===== 25 passed, 0 failed | 345.7 Mcyc, 97.3s, 3.6 Mcyc/s =====

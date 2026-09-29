@@ -1,4 +1,4 @@
-// tb_uart.v — uart_link 独立自检测试台
+// tb_uart.v — UART 前端（uart_link）+ 控制核心（ctrl_core）自检测试台
 //
 // 覆盖：RX 位中心采样、[CMD,~CMD] 成对校验（含不成对/未知命令拒收）、
 // 虚拟按键脉冲宽度（N/A/P 三向）、状态包内容（含 img_idx/wav 遥测）、
@@ -25,46 +25,81 @@ module tb_uart;
     reg  [4:0] img_idx       = 5'd3;
     reg        img_wav       = 1'b1;
 
+    // 前端：UART 成帧 → cmd；核心：ctrl_core（命令语义 + 状态包内容）
+    wire [7:0]  cmd_w;
+    wire        cmd_val_w, stat_req_w;
+    wire [63:0] status_pkt_w;
+    wire [3:0]  vol_gain_w;
+
     uart_link #(
         .CLK_FREQ_HZ    (100_000_000),
-        .BAUD           (1_000_000),
-        .VK_PULSE_CYC   (5000)            // TB: 50us（原 50ms）
+        .BAUD           (1_000_000)
     ) dut (
         .clk           (clk),
         .rst           (rst),
         .rx            (rx),
         .tx            (tx),
+        .cmd           (cmd_w),
+        .cmd_val       (cmd_val_w),
+        .stat_req      (stat_req_w),
+        .status_pkt    (status_pkt_w)
+    );
+
+    ctrl_core #(
+        .VK_PULSE_CYC   (5000)            // TB: 50us（原 100ms）
+    ) core (
+        .clk           (clk),
+        .rst           (rst),
+        .cmd           (cmd_w),
+        .cmd_val       (cmd_val_w),
         .vk_next_n     (vk_next_n),
         .vk_auto_n     (vk_auto_n),
         .vk_prev_n     (vk_prev_n),
+        .stat_req      (stat_req_w),
+        .vol_gain      (vol_gain_w),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
         .flag_b        (flag_b),
         .dbg_underrun  (dbg_underrun),
         .img_idx       (img_idx),
-        .img_wav       (img_wav)
+        .img_wav       (img_wav),
+        .status_pkt    (status_pkt_w)
     );
 
     // 第二实例：全部真实默认参数（VK_PULSE_CYC=10M），专测计数器位宽——
     // 短参数测试测不出 vk_cnt 位宽截断（23 位时 10M 被截成 16ms，板上
     // 永远过不了 50ms 去抖，仿真却全绿）
     wire tx_full, vk_next_n_full, vk_auto_n_full, vk_prev_n_full;
+    wire [7:0]  cmd_f;  wire cmd_val_f, stat_f;  wire [63:0] pkt_f;  wire [3:0] vg_f;
     uart_link dut_full (
         .clk           (clk),
         .rst           (rst),
         .rx            (rx),
         .tx            (tx_full),
+        .cmd           (cmd_f),
+        .cmd_val       (cmd_val_f),
+        .stat_req      (stat_f),
+        .status_pkt    (pkt_f)
+    );
+    ctrl_core core_full (
+        .clk           (clk),
+        .rst           (rst),
+        .cmd           (cmd_f),
+        .cmd_val       (cmd_val_f),
         .vk_next_n     (vk_next_n_full),
         .vk_auto_n     (vk_auto_n_full),
         .vk_prev_n     (vk_prev_n_full),
+        .stat_req      (stat_f),
+        .vol_gain      (vg_f),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
         .flag_b        (flag_b),
         .dbg_underrun  (dbg_underrun),
         .img_idx       (img_idx),
-        .img_wav       (img_wav)
+        .img_wav       (img_wav),
+        .status_pkt    (pkt_f)
     );
 
     integer errors = 0;
@@ -231,6 +266,38 @@ module tb_uart;
         join
         if (cyc < 4998 || cyc > 5000) fail_msg("T8 vk_prev 脉冲宽度异常");
         else $display("T8 vk_prev pulse=%0d cyc: PASS", cyc);
+
+        // T9: 音量命令（'+'/'+'）——8 档、边界钳位
+        if (vol_gain_w !== 4'd8) fail_msg("T9 上电音量不是 8（原始）");
+        uart_send_pair(8'h2D);                     // '-' → 7
+        repeat (100) @(posedge clk);
+        if (vol_gain_w !== 4'd7) fail_msg("T9 音量- 未生效");
+        uart_send_pair(8'h2B);                     // '+' → 8
+        repeat (100) @(posedge clk);
+        if (vol_gain_w !== 4'd8) fail_msg("T9 音量+ 未生效");
+        uart_send_pair(8'h2B);                     // 上界钳位
+        repeat (100) @(posedge clk);
+        if (vol_gain_w !== 4'd8) fail_msg("T9 音量上界未钳位");
+        for (int k = 0; k < 10; k++) uart_send_pair(8'h2D);   // 下界钳位
+        repeat (100) @(posedge clk);
+        if (vol_gain_w !== 4'd0) fail_msg("T9 音量下界未钳位（应到 0 停住）");
+        else $display("T9 volume cmd (8档/钳位): PASS");
+
+        // T10: 轮播周期命令（'>'/'<'）——1..10s、边界钳位、上电=1s
+        if (core.auto_period_s !== 4'd1) fail_msg("T10 上电周期不是 1s");
+        uart_send_pair(8'h3E);                     // '>' → 2s
+        repeat (100) @(posedge clk);
+        if (core.auto_period_s !== 4'd2) fail_msg("T10 周期+ 未生效");
+        uart_send_pair(8'h3C);                     // '<' → 1s
+        repeat (100) @(posedge clk);
+        if (core.auto_period_s !== 4'd1) fail_msg("T10 周期- 未生效");
+        uart_send_pair(8'h3C);                     // 下界钳位
+        repeat (100) @(posedge clk);
+        if (core.auto_period_s !== 4'd1) fail_msg("T10 周期下界未钳位");
+        for (int k = 0; k < 12; k++) uart_send_pair(8'h3E);   // 上界钳位
+        repeat (100) @(posedge clk);
+        if (core.auto_period_s !== 4'd10) fail_msg("T10 周期上界未钳位（应到 10 停住）");
+        else $display("T10 auto-period cmd (1..10s/钳位): PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);

@@ -11,6 +11,8 @@ uart_console.py — PC ↔ FPGA 串口交互控制台（配板端 uart_link.v）
 交互键（回车不必，单键即发）:
     n  下一张        p  上一张
     a  自动轮播开关
+    +  音量+1        -  音量-1（8 档，上电=8 原始，0=静音）
+    >  轮播周期+1s   <  轮播周期-1s（1..10s，上电=1s）
     s  回读一包状态
     q  退出
 
@@ -41,8 +43,10 @@ except ImportError:
     sys.exit("需要 pyserial: pip install pyserial")
 
 # 键为小写，与 read_key() 返回的小写字符匹配
-CMDS = {b"n": 0x4E, b"a": 0x41, b"s": 0x53, b"p": 0x50}
-HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张"}
+CMDS = {b"n": 0x4E, b"a": 0x41, b"s": 0x53, b"p": 0x50,
+        b"+": 0x2B, b"-": 0x2D, b">": 0x3E, b"<": 0x3C}
+HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
+        "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s"}
 
 running = True
 
