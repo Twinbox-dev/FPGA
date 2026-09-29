@@ -8,36 +8,36 @@ IO Statistics
   #inout                    1
 
 Gate Statistics
-#Basic gates             8860
+#Basic gates             8974
   #and                    646
   #nand                     0
-  #or                     425
+  #or                     426
   #nor                      0
-  #xor                    131
+  #xor                    137
   #xnor                     0
   #buf                      0
-  #not                    551
+  #not                    557
   #bufif1                  33
-  #MX21                  1922
+  #MX21                  1974
   #FADD                     0
-  #DFF                   5152
+  #DFF                   5201
   #LATCH                    0
-#MACRO_ADD                269
-#MACRO_EQ                 251
+#MACRO_ADD                279
+#MACRO_EQ                 253
 #MACRO_MULT                 2
-#MACRO_MUX               2450
+#MACRO_MUX               2475
 #MACRO_OTHERS              20
 
 Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |3708   |5152   |542    |
+|top                                       |top                                               |3773   |5201   |554    |
 |  U3                                      |sdram                                             |86     |515    |6      |
 |    u2_ram                                |sdr_as_ram                                        |86     |515    |6      |
 |      u1_init_ref                         |sdr_init_ref                                      |19     |81     |1      |
 |      u2_wrrd                             |sdr_wrrd                                          |67     |434    |5      |
-|  ctrl_core_m0                            |ctrl_core                                         |28     |47     |19     |
+|  ctrl_core_m0                            |ctrl_core                                         |62     |70     |24     |
 |  frame_read_write_m0                     |frame_read_write                                  |270    |589    |47     |
 |    aud_read_buf                          |rfifo_32_32_512                                   |38     |94     |7      |
 |      ram_inst                            |ram_infer_rfifo_32_32_512                         |0      |0      |1      |
@@ -53,9 +53,9 @@ Report Hierarchy Area:
 |      ram_inst                            |ram_infer_wfifo_32_32_512                         |0      |0      |1      |
 |      rd_to_wr_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
 |      wr_to_rd_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
-|  sd_card_bmp_m0                          |sd_card_bmp                                       |2641   |2399   |217    |
-|    sd_card_top_m0                        |sd_card_top                                       |407    |181    |13     |
-|      sd_card_cmd_m0                      |sd_card_cmd                                       |275    |48     |8      |
+|  sd_card_bmp_m0                          |sd_card_bmp                                       |2640   |2399   |217    |
+|    sd_card_top_m0                        |sd_card_top                                       |408    |181    |13     |
+|      sd_card_cmd_m0                      |sd_card_cmd                                       |276    |48     |8      |
 |      sd_card_sec_read_write_m0           |sd_card_sec_read_write                            |120    |89     |0      |
 |      spi_master_m0                       |spi_master                                        |12     |44     |5      |
 |    u_adapter                             |sd_adapter                                        |5      |43     |0      |
@@ -98,9 +98,9 @@ Report Hierarchy Area:
 |        u_w24_d1024_fifo                  |w24_d1024_fifo                                    |0      |0      |1      |
 |  u_seg_ph                                |seg_decoder                                       |2      |0      |0      |
 |  u_startup_pulse                         |startup_pulse                                     |3      |22     |2      |
-|  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |5      |20     |0      |
-|  uart_link_m0                            |uart_link                                         |68     |123    |13     |
-|    u_tx                                  |uart_tx_byte                                      |19     |34     |4      |
+|  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |5      |28     |0      |
+|  uart_link_m0                            |uart_link                                         |64     |133    |13     |
+|    u_tx                                  |uart_tx_byte                                      |20     |34     |4      |
 |  video_delay_m0                          |video_delay                                       |18     |59     |0      |
 |  video_pll_m0                            |video_pll                                         |0      |0      |1      |
 |  video_timing_data_m0                    |video_timing_data                                 |10     |33     |9      |

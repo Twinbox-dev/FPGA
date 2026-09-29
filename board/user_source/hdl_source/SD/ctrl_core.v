@@ -12,10 +12,16 @@
 //
 // 命令表（cmd 字节，前端已完成自己的成帧/校验，如 UART 的 [CMD,~CMD]）：
 //   'N'(4E)=下一张   'A'(41)=自动轮播开关   'P'(50)=上一张
-//   'S'(53)=回读一包状态（stat_req 脉冲）
+//   'S'(53)=回读一包状态（status_pkt）
 //   '+'(2B)=音量+1   '-'(2D)=音量-1（8 档，8=原始，0=静音）
 //   '>'(3E)=轮播周期+1s  '<'(3C)=轮播周期-1s（1..10s，上电=1s）
+//   ']'(5D)=亮度+1     '['(5B)=亮度-1（9 档，4=原始 0 偏移，跨时钟域走格雷码）
 // 未知命令静默忽略。
+//
+// 应答（return）：除 'S'（回 status_pkt）外，每条被接受的命令都在**参数生效
+// 后**（延迟两拍）自动回一包 ACK，由 tx_req/tx_pkt 交给前端组帧发送：
+//   5A | cmd 回显 | vol_gain | auto_period_s | img_idx | img_wav | bri_level | 00
+// 'S' 的应答 = status_pkt（A5 开头）。
 //
 // 时钟：与命令消费方同域（板上为 sd_card_clk）——虚拟按键脉冲直接注入
 // sd_card_bmp 去抖，免 CDC。status 输入里的 clk 域粘滞位在本模块内 2FF 同步。
@@ -34,11 +40,14 @@ module ctrl_core #(
     output              vk_next_n,
     output              vk_auto_n,
     output              vk_prev_n,
-    // 状态回读请求（单拍脉冲，供前端触发一次发包）
-    output              stat_req,
+    // 发包请求（单拍）+ 包内容 8 字节：'S' → status_pkt，其余命令 → ACK
+    //（参数生效后延迟两拍发出，前端组帧发送）
+    output              tx_req,
+    output [63:0]       tx_pkt,
     // 控制参数
     output reg [3:0]    vol_gain,            // 0..8：8=原始音量，0=静音
     output reg [3:0]    auto_period_s,       // 轮播周期（秒，1..10）
+    output [3:0]        bri_gray,            // 亮度档位（格雷码，跨时钟域用）
     // 状态回读源（与 top 遥测同源）
     input  [3:0]        state_code,
     input  [7:0]        dbg_fat_state,
@@ -46,27 +55,28 @@ module ctrl_core #(
     input  [3:0]        flag_b,
     input  [3:0]        dbg_underrun,        // clk 域粘滞位，内部 2FF 同步
     input  [4:0]        img_idx,
-    input               img_wav,
-    // 状态包内容（8 字节，[7:0]=首字节 A5 … [63:56]=末字节）
-    output [63:0]       status_pkt
+    input               img_wav
 );
     // ================= 命令语义 =================
     localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_PREV = 8'h50,
                CMD_STAT = 8'h53, CMD_VOLUP = 8'h2B, CMD_VOLDN = 8'h2D,
-               CMD_PERUP = 8'h3E, CMD_PERDN = 8'h3C;
+               CMD_PERUP = 8'h3E, CMD_PERDN = 8'h3C,
+               CMD_BRIUP = 8'h5D, CMD_BRIDN = 8'h5B;
 
     reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn;
-    reg cmd_pup, cmd_pdn;
+    reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             cmd_next <= 0; cmd_auto <= 0; cmd_prev <= 0;
             cmd_stat <= 0; cmd_vup <= 0; cmd_vdn <= 0;
             cmd_pup  <= 0; cmd_pdn  <= 0;
+            cmd_bup  <= 0; cmd_bdn  <= 0;
         end else begin
             cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_prev <= 1'b0;
             cmd_stat <= 1'b0; cmd_vup <= 1'b0; cmd_vdn <= 1'b0;
             cmd_pup  <= 1'b0; cmd_pdn <= 1'b0;
+            cmd_bup  <= 1'b0; cmd_bdn <= 1'b0;
             if (cmd_val) begin
                 case (cmd)
                     CMD_NEXT: cmd_next <= 1'b1;
@@ -77,19 +87,21 @@ module ctrl_core #(
                     CMD_VOLDN: cmd_vdn <= 1'b1;
                     CMD_PERUP: cmd_pup <= 1'b1;
                     CMD_PERDN: cmd_pdn <= 1'b1;
+                    CMD_BRIUP: cmd_bup <= 1'b1;
+                    CMD_BRIDN: cmd_bdn <= 1'b1;
                     default: ;
                 endcase
             end
         end
     end
 
-    assign stat_req = cmd_stat;
-
     // ================= 控制参数（与命令分离，供各功能模块取用）=================
+    reg [3:0] bri_level;                   // 亮度 9 档：4=原始（0 偏移）
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             vol_gain      <= 4'd8;         // 音量 8 档：8=原始，0=静音
             auto_period_s <= 4'd1;         // 轮播周期 1..10 秒（上电 1s，与旧行为一致）
+            bri_level     <= 4'd4;         // 亮度 9 档：4=原始（0 偏移）
         end else begin
             if (cmd_vup)
                 vol_gain <= (vol_gain == 4'd8) ? 4'd8 : vol_gain + 1'b1;
@@ -99,8 +111,48 @@ module ctrl_core #(
                 auto_period_s <= (auto_period_s >= 4'd10) ? 4'd10 : auto_period_s + 1'b1;
             else if (cmd_pdn)
                 auto_period_s <= (auto_period_s <= 4'd1) ? 4'd1 : auto_period_s - 1'b1;
+            if (cmd_bup)
+                bri_level <= (bri_level >= 4'd8) ? 4'd8 : bri_level + 1'b1;
+            else if (cmd_bdn)
+                bri_level <= (bri_level <= 4'd0) ? 4'd0 : bri_level - 1'b1;
         end
     end
+
+    // 亮度跨时钟域（sd_card_clk → video_clk）：格雷码每次步进只变 1 位，
+    // 多位 2FF 同步后恒为合法旧值或新值（二进制多位直传会出现过渡混合值）
+    assign bri_gray = (bri_level >> 1) ^ bri_level;
+
+    // ============ 应答（return）：参数生效后延迟两拍回包 ============
+    // 命令脉冲在 v1 拍产生、参数在同一沿之后才更新，故延迟到 v2 拍组包——
+    // 此时 vol_gain/auto_period_s/bri_level 均已是**新值**
+    reg        v1, v2, d1_stat;
+    reg [7:0]  echo1, echo2;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            v1 <= 1'b0; v2 <= 1'b0; d1_stat <= 1'b0;
+            echo1 <= 8'd0; echo2 <= 8'd0;
+        end else begin
+            v1      <= cmd_val;
+            echo1   <= cmd_val ? cmd : echo1;
+            d1_stat <= cmd_val && (cmd == CMD_STAT);
+            v2      <= v1;
+            echo2   <= v1 ? echo1 : echo2;
+        end
+    end
+    wire d2_stat = v2 && (echo2 == CMD_STAT);
+
+    // 'S' 的应答内容：A5 | state | fat | flagA | flagB | underrun | img | wav
+    wire [63:0] status_pkt;
+    assign tx_req = v2;
+    assign tx_pkt = d2_stat ? status_pkt :
+                    {8'h00,                       // pkt[7] 保留
+                     {3'b0, bri_level},           // pkt[6] 亮度档位
+                     {7'b0, img_wav},             // pkt[5] 该图配 WAV
+                     {3'b0, img_idx},             // pkt[4] 当前图索引
+                     {4'b0, auto_period_s},       // pkt[3] 轮播周期（秒）
+                     {4'b0, vol_gain},            // pkt[2] 音量档位
+                     echo2,                       // pkt[1] 命令回显
+                     8'h5A};                      // pkt[0] 类型 = ACK（A5 反序）
 
     // ================= 虚拟按键：100ms 低脉冲 =================
     // vk_cnt 必须 ≥ VK_PULSE_CYC-1 位宽：曾用 23 位（上限 8.38M），VK 改 10M

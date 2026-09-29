@@ -13,6 +13,7 @@ uart_console.py — PC ↔ FPGA 串口交互控制台（配板端 uart_link.v）
     a  自动轮播开关
     +  音量+1        -  音量-1（8 档，上电=8 原始，0=静音）
     >  轮播周期+1s   <  轮播周期-1s（1..10s，上电=1s）
+    ]  亮度+1        [  亮度-1（9 档，上电=4 原始 0 偏移）
     s  回读一包状态
     q  退出
 
@@ -44,9 +45,11 @@ except ImportError:
 
 # 键为小写，与 read_key() 返回的小写字符匹配
 CMDS = {b"n": 0x4E, b"a": 0x41, b"s": 0x53, b"p": 0x50,
-        b"+": 0x2B, b"-": 0x2D, b">": 0x3E, b"<": 0x3C}
+        b"+": 0x2B, b"-": 0x2D, b">": 0x3E, b"<": 0x3C,
+        b"]": 0x5D, b"[": 0x5B}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
-        "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s"}
+        "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
+        "]": "亮度+", "[": "亮度-"}
 
 running = True
 
@@ -81,8 +84,18 @@ def decode_pkt(pkt: bytes) -> str:
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
 
 
+def decode_ack(pkt: bytes) -> str:
+    """ACK 应答包（5A 开头）：5A | cmd回显 | vol | period_s | img | wav | bri | 00"""
+    _, cmd, vol, per, img, wav, bri = pkt[:7]
+    c = {0x4E: "下一张", 0x50: "上一张", 0x41: "自动轮播",
+         0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
+         0x5D: "亮度+", 0x5B: "亮度-"}.get(cmd, f"0x{cmd:02X}")
+    return (f"ACK {c} | 音量={vol}/8 周期={per}s 亮度={bri}/8 "
+            f"img={img & 0x1F}{'+wav' if wav & 1 else ''}")
+
+
 def reader_loop(ser):
-    """后台线程：持续收状态包（A5 开头 8 字节）并解码打印。"""
+    """后台线程：持续收包（A5 状态包 / 5A ACK 应答包，各 8 字节）并解码打印。"""
     buf = bytearray()
     while running:
         try:
@@ -93,16 +106,24 @@ def reader_loop(ser):
             continue
         buf.extend(chunk)
         while True:
-            i = buf.find(b"\xA5")
-            if i < 0:
+            ia = buf.find(b"\xA5")
+            ib = buf.find(b"\x5A")
+            if ia < 0 and ib < 0:
                 buf.clear()
                 break
+            if ia < 0:
+                i = ib
+            elif ib < 0:
+                i = ia
+            else:
+                i = min(ia, ib)
             del buf[:i]
             if len(buf) < 8:
                 break
             pkt = bytes(buf[:8])
             del buf[:8]
-            print(f"\r[{time.strftime('%H:%M:%S')}] {decode_pkt(pkt)}\n> ", end="", flush=True)
+            msg = decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt)
+            print(f"\r[{time.strftime('%H:%M:%S')}] {msg}\n> ", end="", flush=True)
 
 
 def read_key() -> str:

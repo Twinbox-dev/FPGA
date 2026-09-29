@@ -25,11 +25,11 @@ module tb_uart;
     reg  [4:0] img_idx       = 5'd3;
     reg        img_wav       = 1'b1;
 
-    // 前端：UART 成帧 → cmd；核心：ctrl_core（命令语义 + 状态包内容）
+    // 前端：UART 成帧 → cmd；核心：ctrl_core（命令语义 + 应答/状态包内容）
     wire [7:0]  cmd_w;
-    wire        cmd_val_w, stat_req_w;
-    wire [63:0] status_pkt_w;
-    wire [3:0]  vol_gain_w;
+    wire        cmd_val_w, tx_req_w;
+    wire [63:0] tx_pkt_w;
+    wire [3:0]  vol_gain_w, ap_s_w, bri_gray_w;
 
     uart_link #(
         .CLK_FREQ_HZ    (100_000_000),
@@ -41,8 +41,8 @@ module tb_uart;
         .tx            (tx),
         .cmd           (cmd_w),
         .cmd_val       (cmd_val_w),
-        .stat_req      (stat_req_w),
-        .status_pkt    (status_pkt_w)
+        .tx_req        (tx_req_w),
+        .tx_pkt        (tx_pkt_w)
     );
 
     ctrl_core #(
@@ -55,23 +55,25 @@ module tb_uart;
         .vk_next_n     (vk_next_n),
         .vk_auto_n     (vk_auto_n),
         .vk_prev_n     (vk_prev_n),
-        .stat_req      (stat_req_w),
+        .tx_req        (tx_req_w),
+        .tx_pkt        (tx_pkt_w),
         .vol_gain      (vol_gain_w),
+        .auto_period_s (ap_s_w),
+        .bri_gray      (bri_gray_w),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
         .flag_b        (flag_b),
         .dbg_underrun  (dbg_underrun),
         .img_idx       (img_idx),
-        .img_wav       (img_wav),
-        .status_pkt    (status_pkt_w)
+        .img_wav       (img_wav)
     );
 
     // 第二实例：全部真实默认参数（VK_PULSE_CYC=10M），专测计数器位宽——
     // 短参数测试测不出 vk_cnt 位宽截断（23 位时 10M 被截成 16ms，板上
     // 永远过不了 50ms 去抖，仿真却全绿）
     wire tx_full, vk_next_n_full, vk_auto_n_full, vk_prev_n_full;
-    wire [7:0]  cmd_f;  wire cmd_val_f, stat_f;  wire [63:0] pkt_f;  wire [3:0] vg_f;
+    wire [7:0]  cmd_f;  wire cmd_val_f, txr_f;  wire [63:0] pkt_f;  wire [3:0] vg_f, ap_f, bg_f;
     uart_link dut_full (
         .clk           (clk),
         .rst           (rst),
@@ -79,8 +81,8 @@ module tb_uart;
         .tx            (tx_full),
         .cmd           (cmd_f),
         .cmd_val       (cmd_val_f),
-        .stat_req      (stat_f),
-        .status_pkt    (pkt_f)
+        .tx_req        (txr_f),
+        .tx_pkt        (pkt_f)
     );
     ctrl_core core_full (
         .clk           (clk),
@@ -90,16 +92,18 @@ module tb_uart;
         .vk_next_n     (vk_next_n_full),
         .vk_auto_n     (vk_auto_n_full),
         .vk_prev_n     (vk_prev_n_full),
-        .stat_req      (stat_f),
+        .tx_req        (txr_f),
+        .tx_pkt        (pkt_f),
         .vol_gain      (vg_f),
+        .auto_period_s (ap_f),
+        .bri_gray      (bg_f),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
         .flag_b        (flag_b),
         .dbg_underrun  (dbg_underrun),
         .img_idx       (img_idx),
-        .img_wav       (img_wav),
-        .status_pkt    (pkt_f)
+        .img_wav       (img_wav)
     );
 
     integer errors = 0;
@@ -173,6 +177,15 @@ module tb_uart;
         end
     endtask
 
+    // ---- 排空在途应答包：每条命令现在都会回一包（ACK/状态，解码最早发生在
+    // pair 结束前 ~10us，一包 8B×10us=80us），后续 recv 类用例前必须等它发完，
+    // 否则会错收上一包。固定等 140us 兜底（解码延迟 + 一整包 + 余量）----
+    task drain_tx;
+        begin
+            #140_000;
+        end
+    endtask
+
     initial begin
         repeat (10) @(posedge clk);
         rst = 0;
@@ -209,6 +222,8 @@ module tb_uart;
         join
         if (cyc < 4998 || cyc > 5000) fail_msg("T4 vk_auto 脉冲宽度异常");
         else $display("T4 vk_auto pulse=%0d cyc: PASS", cyc);
+
+        drain_tx;   // 排空 T4 'A' 的 ACK 应答包，否则 T5 的 recv 会错收它
 
         // T5: 'S' 对 → 8 字节状态包（recv 与 send 并发：命令在第二字节停止位
         // 中心即解码发包，若等 send 返回再收会错过首字节起始位）
@@ -298,6 +313,42 @@ module tb_uart;
         repeat (100) @(posedge clk);
         if (core.auto_period_s !== 4'd10) fail_msg("T10 周期上界未钳位（应到 10 停住）");
         else $display("T10 auto-period cmd (1..10s/钳位): PASS");
+
+        // T11: 亮度命令（']'/'['）——9 档、上电=4（原始 0 偏移）、边界钳位；
+        // 且每条命令现在都会回 ACK 包（5A | 回显 | vol | period | img | wav | bri | 00），
+        // 端到端校验一包 ACK 的内容
+        drain_tx;
+        if (core.bri_level !== 4'd4) fail_msg("T11 上电亮度不是 4（原始）");
+        // 注意：ACK 在 pair 结束前（解码拍）就开始发送，recv 必须与 send 并发
+        // 才能从首字节起始位收起——与 T5 同款竞态
+        fork
+            uart_send_pair(8'h5D);                 // ']' → 5
+            uart_recv(8);
+            begin
+                repeat (3000) @(posedge clk);   // 命令在 pair 末尾（~22us）才解码
+                if (core.bri_level !== 4'd5) fail_msg("T11 亮度+ 未生效");
+            end
+        join
+        if (rxq[rxq_n-8] !== 8'h5A || rxq[rxq_n-7] !== 8'h5D
+            || rxq[rxq_n-2] !== 8'd5) begin
+            fail_msg("T11 ACK 包内容不对（应为 5A|5D|vol|per|img|wav|05|00）");
+            for (int k = 8; k > 0; k--)
+                $display("      pkt[-%0d]=%02x", k, rxq[rxq_n-k]);
+        end
+        else
+            $display("T11a 亮度+ 生效 + ACK 包正确: PASS");
+
+        uart_send_pair(8'h5B);                     // '[' → 4
+        repeat (100) @(posedge clk);
+        if (core.bri_level !== 4'd4) fail_msg("T11 亮度- 未生效");
+        for (int k = 0; k < 10; k++) uart_send_pair(8'h5B);   // 下界钳位 → 0
+        repeat (100) @(posedge clk);
+        if (core.bri_level !== 4'd0) fail_msg("T11 亮度下界未钳位（应到 0 停住）");
+        for (int k = 0; k < 12; k++) uart_send_pair(8'h5D);   // 上界钳位 → 8
+        repeat (100) @(posedge clk);
+        if (core.bri_level !== 4'd8) fail_msg("T11 亮度上界未钳位（应到 8 停住）");
+        else $display("T11b brightness cmd (9档/钳位): PASS");
+        drain_tx;
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);

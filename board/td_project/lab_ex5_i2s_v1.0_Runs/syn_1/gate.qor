@@ -3,24 +3,24 @@
 -----------------------------------------------------------
 | Timing                    |                             |
 |     Setup WNS             |        -5291                |
-|     Setup TNS             |      -404225                |
-|     Num of violated S-EP  |          317                |
+|     Setup TNS             |      -364960                |
+|     Num of violated S-EP  |          252                |
 |     Hold WNS              |          471                |
 |     Hold TNS              |            0                |
 |     Num of violated H-EP  |            0                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #registers            |         5243                |
-|     #luts                 |         5271                |
-|     #lut1                 |           49                |
-|     #lut1(~A)             |           49                |
-|     #slices               |         1267                |
-|     slices percentage     |       12.93%                |
+|     #registers            |         5299                |
+|     #luts                 |         5445                |
+|     #lut1                 |           51                |
+|     #lut1(~A)             |           51                |
+|     #slices               |         1291                |
+|     slices percentage     |       13.17%                |
 |     #RAMs                 |           23                |
 |     #DSPs                 |            3                |
 |     #f7mux                |        0.00%                |
-|     #MACROs               |          253                |
-|     #insts in MACRO       |         1267                |
+|     #MACROs               |          259                |
+|     #insts in MACRO       |         1291                |
 -----------------------------------------------------------
 | kept_net                  |                             |
 |     #syn_keep             |          207                |
@@ -30,13 +30,12 @@
 |     #max_fanout_keep      |            0                |
 |     #async_reg            |            0                |
 -----------------------------------------------------------
-| Top 10% datanet fanout#   |        50.26                |
-| dff(single fanout)->dff   |          865                |
+| Top 10% datanet fanout#   |        51.17                |
+| dff(single fanout)->dff   |          875                |
 | dff(single fanout)->dram  |            0                |
 -----------------------------------------------------------
 | Over-quota path num*      |                             |
-|     sd_card_clk           |            1                |
-|     Total                 |            1                |
+|     Total                 |            0                |
 -----------------------------------------------------------
 | Rent**                    |                             |
 -----------------------------------------------------------
@@ -46,34 +45,26 @@ Note*: Over-quota path shows the over-path-level-threshold path number of each c
 Note**: Rent shows the rent exponent value of the modules whose rent value exceeds the threshold.
         Only modules under top are reported, and the threshold is defined as 0.7.
 
-Over-quota Path Details
--------------------------------------------------------------------------------------------------------------------------
-     Clock     |  Index  |  Budget(Period)  |  Level(Quota)  |      Cell Type List      |        Reason        |  Slack  
--------------------------------------------------------------------------------------------------------------------------
-  sd_card_clk  |    1    |   1854(10000)    |      3(3)      |  SEQ,LUT2,LUT3,LUT5,SEQ  |  large launch delay  |  -2144  
--------------------------------------------------------------------------------------------------------------------------
-Note: Table only show top 5 paths for each clock group in default
-
 Logic Level Distribution
 ---------------------------------------------------------------------------------------------------------------------------------------------
-  Clock                        |  Period             |  0     |  1     |  2    |  3    |  4    |  5    |  6    |  7    |  8    |  9   |  11
+  Clock                        |  Period             |  0     |  1     |  2    |  3    |  4    |  5    |  6    |  7    |  8    |  9   |  10
 ---------------------------------------------------------------------------------------------------------------------------------------------
   clk                          |  20.000ns (50MHz)   |  0     |  40    |  17   |  40   |  1    |  0    |  0    |  0    |  0    |  0   |  0
-  ext_mem_clk                  |  8.000ns (125MHz)   |  1105  |  201   |  234  |  132  |  23   |  27   |  5    |  0    |  6    |  0   |  0
+  ext_mem_clk                  |  8.000ns (125MHz)   |  1108  |  202   |  237  |  128  |  23   |  30   |  5    |  0    |  6    |  0   |  0
   hdmi_5x_clk                  |  2.666ns (375MHz)   |  53    |  33    |  0    |  0    |  0    |  0    |  0    |  0    |  0    |  0   |  0
-  sd_card_clk                  |  10.000ns (100MHz)  |  3368  |  802   |  462  |  582  |  529  |  605  |  623  |  388  |  161  |  38  |  8
+  sd_card_clk                  |  10.000ns (100MHz)  |  3412  |  801   |  449  |  628  |  697  |  699  |  687  |  104  |  131  |  34  |  8
   sys_pll_m0/pll_inst.clkc[2]  |  8.000ns (125MHz)   |  16    |  32    |  0    |  0    |  0    |  0    |  0    |  0    |  0    |  0   |  0
-  video_clk                    |  13.333ns (75MHz)   |  1923  |  542   |  176  |  110  |  229  |  149  |  10   |  5    |  19   |  26  |  0
-  Total                        |  NA                 |  6465  |  1650  |  889  |  864  |  782  |  781  |  638  |  393  |  186  |  64  |  8
+  video_clk                    |  13.333ns (75MHz)   |  1936  |  553   |  178  |  122  |  250  |  115  |  9    |  5    |  19   |  26  |  0
+  Total                        |  NA                 |  6525  |  1661  |  881  |  918  |  971  |  844  |  701  |  109  |  156  |  60  |  8
 ---------------------------------------------------------------------------------------------------------------------------------------------
 Hierarchical Rent Exponent Report
 +--------------------------------------------------------------------------------------------------------------------+
 |Inst                                   |Model                                |Rent     |Cell     |Pin     |Term     |
 +--------------------------------------------------------------------------------------------------------------------+
-|top                                    |top                                  |0.16     |12539    |54350   |19       |
-|  frame_read_write_m0                  |frame_read_write_3                   |0.60     |1630     |5948    |314      |
-|  u_hdmi_1_4b_transmitter_core_wrapper |hdmi_1_4b_transmitter_core_wrapper_8 |0.56     |2675     |9786    |295      |
-|  sd_card_bmp_m0                       |sd_card_bmp_4                        |0.42     |6342     |32248   |205      |
+|top                                    |top                                  |0.16     |12793    |55686   |19       |
+|  frame_read_write_m0                  |frame_read_write_3                   |0.60     |1631     |5957    |314      |
+|  u_hdmi_1_4b_transmitter_core_wrapper |hdmi_1_4b_transmitter_core_wrapper_8 |0.56     |2676     |9788    |303      |
+|  sd_card_bmp_m0                       |sd_card_bmp_4                        |0.42     |6452     |33007   |205      |
 +--------------------------------------------------------------------------------------------------------------------+
 Note: Cell represents total number of cells inside module; Pin represents total number of pins
       which have net connection inside module; Term represents total number of PIs and POs of module.

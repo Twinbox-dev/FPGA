@@ -216,10 +216,11 @@ assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
 // 将来的以太网）只要把命令翻译成「字节 + valid」即可复用；详见 ctrl_core.v。
 wire vk_next_n, vk_auto_n, vk_prev_n;
 wire [7:0]  cmd_byte;
-wire        cmd_val_w, stat_req_w;
-wire [63:0] status_pkt_w;
+wire        cmd_val_w, tx_req_w;
+wire [63:0] tx_pkt_w;
 wire [3:0]  vol_gain;
 wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
+wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -231,17 +232,18 @@ ctrl_core #(
     .vk_next_n      (vk_next_n),
     .vk_auto_n      (vk_auto_n),
     .vk_prev_n      (vk_prev_n),
-    .stat_req       (stat_req_w),
+    .tx_req         (tx_req_w),
+    .tx_pkt         (tx_pkt_w),
     .vol_gain       (vol_gain),
     .auto_period_s  (auto_period_s),
+    .bri_gray       (bri_gray),
     .state_code     (state_code),
     .dbg_fat_state  (dbg_fat_state),
     .flag_a         ({video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}),
     .flag_b         ({hdmi_locked, dbg_fat_err, disp_buf_idx[1], disp_buf_idx[0]}),
     .dbg_underrun   (dbg_underrun),
     .img_idx        (img_idx_w),
-    .img_wav        (img_wav_w),
-    .status_pkt     (status_pkt_w)
+    .img_wav        (img_wav_w)
 );
 
 // UART 前端：只管 8N1 收发与 [CMD,~CMD] 成帧（命令表在 ctrl_core.v）
@@ -255,8 +257,8 @@ uart_link #(
     .tx             (uart_tx),
     .cmd            (cmd_byte),
     .cmd_val        (cmd_val_w),
-    .stat_req       (stat_req_w),
-    .status_pkt     (status_pkt_w)
+    .tx_req         (tx_req_w),
+    .tx_pkt         (tx_pkt_w)
 );
 
 // 音量增益（ctrl_core 的 vol_gain：0..8，8=原始，0=静音）：24bit 有符号 ×gain>>3。
@@ -400,7 +402,33 @@ video_delay video_delay_m0(
 );
 
 // 首图提交前黑屏；提交后一直显示当前显示缓冲区内容
-assign vout_data = display_valid ? vout_data_raw : 24'd0;
+// 亮度调节：ctrl_core 的档位（格雷码）跨时钟域 2FF 同步到 video_clk
+// （格雷码每次步进只变 1 位，同步后恒为合法旧值/新值），解码后每通道加
+// 偏移 (level-4)×16 并钳位 [0,255]——档位 4 为原始（0 偏移）
+reg  [3:0] bri_gray_s0, bri_gray_s1;
+always @(posedge video_clk) begin
+    bri_gray_s0 <= bri_gray;
+    bri_gray_s1 <= bri_gray_s0;
+end
+wire [3:0] bri_bin_v = {bri_gray_s1[3],
+                        bri_gray_s1[3] ^ bri_gray_s1[2],
+                        bri_gray_s1[3] ^ bri_gray_s1[2] ^ bri_gray_s1[1],
+                        bri_gray_s1[3] ^ bri_gray_s1[2] ^ bri_gray_s1[1] ^ bri_gray_s1[0]};
+wire signed [8:0] bri_off = $signed({1'b0, bri_bin_v, 4'b0}) - $signed(9'd64);  // (level-4)×16
+
+function [7:0] bri_clamp;
+    input [7:0] c;
+    reg signed [9:0] t;
+    begin
+        t = $signed({1'b0, c}) + $signed(bri_off);
+        bri_clamp = (t < 0) ? 8'd0 : (t > 10'sd255) ? 8'd255 : t[7:0];
+    end
+endfunction
+
+wire [23:0] vout_bri = {bri_clamp(vout_data_raw[23:16]),
+                        bri_clamp(vout_data_raw[15:8]),
+                        bri_clamp(vout_data_raw[7:0])};
+assign vout_data = display_valid ? vout_bri : 24'd0;
 
 frame_read_write #(
     .WRITE_V_FLIP     (1),

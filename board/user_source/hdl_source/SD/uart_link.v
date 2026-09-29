@@ -6,7 +6,7 @@
 // ctrl_core（命令语义在那边，与传输无关）；状态包内容也由 ctrl_core 提供，
 // 本模块只负责按 8 字节流发送。
 //
-//   本模块（帧）─ cmd/cmd_val ─► ctrl_core ─ stat_req/status_pkt ─► 本模块（发）
+//   本模块（帧）─ cmd/cmd_val ─► ctrl_core ─ tx_req/tx_pkt ─► 本模块（发）
 //
 // 8N1：波特率 = CLK_FREQ_HZ/BAUD（默认 1Mbaud = 整 100 拍/位，无小数分频）。
 // CH340G 实测支持 2Mbaud，1M 有 2 倍裕量。
@@ -14,10 +14,10 @@
 // 协议（v1）：
 //   RX：命令帧 = 2 字节 [CMD, ~CMD]（异或校验，两字节必须相邻接收），
 //       成对后把首字节作为命令交给 ctrl_core；未知/不成对字节静默丢弃。
-//   TX：状态包 8 字节（内容见 ctrl_core.status_pkt）——ctrl_core 的
-//       stat_req 脉冲触发一包。无心跳。
+//   TX：8 字节包（内容与类型见 ctrl_core 的 tx_pkt：'S'→状态包 A5，其余命令→
+//       ACK 应答包 5A）——ctrl_core 的 tx_req 脉冲触发一包。无心跳。
 //
-// 命令表见 ctrl_core.v（N/A/P/S、音量 +/-）。
+// 命令表见 ctrl_core.v。
 // ---------------------------------------------------------------------------
 module uart_link #(
     parameter CLK_FREQ_HZ  = 100_000_000,
@@ -30,9 +30,9 @@ module uart_link #(
     // 命令出口：已校验命令字节（单拍）
     output reg [7:0]    cmd,
     output reg          cmd_val,
-    // 状态包入口：stat_req 脉冲触发一次发送，内容取自 status_pkt
-    input               stat_req,
-    input  [63:0]       status_pkt
+    // 发包入口：tx_req 脉冲触发一次发送，内容取自 tx_pkt（'S' 状态包 / ACK 应答）
+    input               tx_req,
+    input  [63:0]       tx_pkt
 );
     localparam BIT_CYC = CLK_FREQ_HZ / BAUD;
 
@@ -134,15 +134,15 @@ module uart_link #(
     always @(posedge clk or posedge rst) begin
         if (rst) pkt_len <= 4'd0;
         else begin
-            if (stat_req && pkt_len == 4'd0) begin
-                pkt[0] <= status_pkt[7:0];
-                pkt[1] <= status_pkt[15:8];
-                pkt[2] <= status_pkt[23:16];
-                pkt[3] <= status_pkt[31:24];
-                pkt[4] <= status_pkt[39:32];
-                pkt[5] <= status_pkt[47:40];
-                pkt[6] <= status_pkt[55:48];
-                pkt[7] <= status_pkt[63:56];
+            if (tx_req && pkt_len == 4'd0) begin
+                pkt[0] <= tx_pkt[7:0];
+                pkt[1] <= tx_pkt[15:8];
+                pkt[2] <= tx_pkt[23:16];
+                pkt[3] <= tx_pkt[31:24];
+                pkt[4] <= tx_pkt[39:32];
+                pkt[5] <= tx_pkt[47:40];
+                pkt[6] <= tx_pkt[55:48];
+                pkt[7] <= tx_pkt[63:56];
                 pkt_len <= 4'd8;
             end else if (tx_done_byte)
                 pkt_len <= pkt_len - 1'b1;

@@ -47,13 +47,17 @@ ctrl_core 持有：音量在 top 送 HDMI 核前做 `×gain>>3`（gain=8 恒等�
 | 0x2D | `-` | 音量 -1 |
 | 0x3E | `>` | 轮播周期 +1s |
 | 0x3C | `<` | 轮播周期 -1s |
+| 0x5D | `]` | 亮度 +1 |
+| 0x5B | `[` | 亮度 -1 |
 | 0x53 | `S` | 回读一包状态 |
 
 - 未知字节、不成对字节**静默丢弃**。
 - `N`/`A`/`P` 以 **100 ms 低脉冲**注入按键线，与物理按键线相与后走
   sd_card_bmp 现有去抖——零侵入复用，脉冲期间新命令被忽略。
 
-### FPGA → PC（状态包，8 字节）
+### FPGA → PC（两类包，各 8 字节）
+
+**状态包（A5 开头）**——按 `S` 回一包，系统全景：
 
 ```
 A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
@@ -69,9 +73,28 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 | img_idx | 当前图索引（5bit，最近尝试项：提交/失败都更新） |
 | wav_flag | 该图是否配同名 WAV |
 
-与原七段调试面板**同源**（面板已退休，UART 是该组遥测的唯一出口）。
-flagA/flagB 为准静态电平直取；underrun 来自 74.25M 域的粘滞寄存器，
-模块内 2FF 同步。发送中的新请求丢弃（连按 S 会丢包，可接受）。
+**ACK 应答包（5A 开头）**——**每条被接受的命令**（除 `S`）在参数生效后自动回一包，
+即"命令回执"：
+
+```
+5A | cmd回显 | vol_gain | period_s | img_idx | wav_flag | bri_level | 00
+```
+
+| 字节 | 含义 |
+|------|------|
+| cmd回显 | 本次命令字节（如按 `-` 回 0x2D） |
+| vol_gain | 当前音量档（0..8，8=原始） |
+| period_s | 当前轮播周期（1..10 秒） |
+| bri_level | 当前亮度档（0..8，4=原始 0 偏移） |
+
+控制参数的实时值看 ACK 包；系统全景看状态包。与原七段调试面板**同源**
+（面板已退休，UART 是该组遥测的唯一出口）。flagA/flagB 为准静态电平直取；
+underrun 来自 74.25M 域的粘滞寄存器，模块内 2FF 同步。发送中的新请求丢弃
+（快速连键时部分 ACK 会丢，人手速度不会）。
+
+**亮度实现**：档位经**格雷码**跨时钟域（sd_card_clk → video_clk，每次步进
+只变 1 位，同步后恒为合法旧值/新值），video 域每通道加偏移 `(档-4)×16` 并
+钳位 [0,255]，档 4 = 原始画面。
 
 ## PC 端使用
 
@@ -80,21 +103,26 @@ pip install pyserial
 python scripts/uart_console.py COM5        # 波特率默认 1M
 ```
 
-单键即发：`n` 下一张 / `p` 上一张 / `a` 自动轮播 / `s` 状态回读 / `q` 退出。
-收到的状态包自动解码打印，例：
+单键即发：`n` 下一张 / `p` 上一张 / `a` 自动轮播 / `+`/`-` 音量 /
+`>`/`<` 周期 / `]`/`[` 亮度 / `s` 状态回读 / `q` 退出。
+两类包自动解码打印，例：
 
 ```
-[12:01:02] state=0x1 fat=0x08 buf=1 img=2+wav | OK: vidPLL sysPLL SDR disp hdmi | 异常: 无
+[12:01:02] ACK 音量- | 音量=3/8 周期=1s 亮度=4/8 img=2+wav
+[12:01:05] state=0x1 fat=0x08 buf=1 img=2+wav | OK: vidPLL sysPLL SDR disp hdmi | 异常: 无
 ```
 
 ## 验证
 
-`make -C boardtest uart`（Verilator，tb_uart.v）覆盖 8 项：
+`make -C boardtest uart`（Verilator，tb_uart.v：uart_link 前端 + ctrl_core
+双模块）覆盖 12 项：
 
 1. N 对→虚拟按键脉冲宽度；2. 不成对拒收；3. 未知命令拒收；4. A 对→脉冲；
-5. S 对→8 字节状态包内容（含 img_idx/wav）；6. 1/4 位毛刺拒收；
-7. 全真实参数（VK_PULSE_CYC=10M）脉宽 >5M 去抖窗（专测计数器位宽截断，
-dut_full 第二实例）；8. P 对→脉冲。
+5. S 对→状态包内容；6. 1/4 位毛刺拒收；7. 全真实参数（VK_PULSE_CYC=10M）
+脉宽 >5M 去抖窗（专测计数器位宽截断，第二实例）；8. P 对→脉冲；
+9. 音量档位/上下界钳位；10. 周期档位/钳位；11. 亮度档位/钳位 + ACK 包
+端到端内容（5A|回显|vol|per|img|wav|bri|00）。
+（TB 用缩短参数 VK_PULSE_CYC=5000 拍加速，波特率与协议语义不变。）
 TB 用缩短参数（VK_PULSE_CYC=5000 拍）加速，波特率与协议语义不变；
 宽度类问题由 T7 的真实参数实例覆盖。
 
