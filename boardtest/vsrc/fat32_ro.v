@@ -50,6 +50,8 @@ module fat32_ro (
     output reg  [5:0]  o_first_bmp,  // 首个 BMP 的播放列表索引（轮播起点）
     output reg  [191:0] o_bmp_nxt,   // BMP 轮播下一跳表：项 i（6bit × 32，i=file_idx）→ 循环序下一个 BMP 索引
                                      // 挂载扫目录时逐拍建立，替代 sd_card_bmp 里 33 级组合链的 next_bmp_idx
+    output reg  [191:0] o_bmp_prv,   // BMP 循环上一跳表：项 i → 循环序上一个 BMP 索引（“上一张”）
+                                     // 与 o_bmp_nxt 同拍建立；首项在扫描收口时回填为末项
     output reg         o_err,        // 挂载失败 / 索引越界，一拍
     output reg         o_cur_is_wav, // 当前/最近请求的文件是否为 WAV
     output wire        o_file_idle,  // 空闲（在 MOUNTED 态，可接受 file_req）
@@ -192,6 +194,7 @@ module fat32_ro (
             o_type_map <= 6'd0;
             o_first_bmp <= 6'd0;
             o_bmp_nxt <= 192'd0;
+            o_bmp_prv <= 192'd0;
             o_cur_is_wav <= 1'b0;
             o_err <= 1'b0;
             rd_kind <= K_LBA0;
@@ -372,7 +375,9 @@ module fat32_ro (
                                             end
                                             else begin
                                                 o_bmp_cnt <= o_bmp_cnt + 6'd1;
-                                                // 建轮播下一跳表：前一 BMP → 本 BMP（每拍一项，无组合链）
+                                                // 建轮播跳表：本 BMP → 循环序上一跳（prv）与下一跳（nxt）
+                                                // nxt：前一 BMP → 本 BMP；prv：本 BMP → 前一 BMP（首项扫描收口时回填末项）
+                                                o_bmp_prv[6*pl_cnt[4:0] +: 6] <= last_bmp;
                                                 if (bmp_seen)
                                                     o_bmp_nxt[6*last_bmp[4:0] +: 6] <= pl_cnt;
                                                 else
@@ -492,8 +497,11 @@ module fat32_ro (
                         if (fat_val >= 32'h0FFFFFF8) begin
                             o_mounted  <= 1'b1;
                             o_file_cnt <= pl_cnt;
-                            if (bmp_seen)
+                            if (bmp_seen) begin
                                 o_bmp_nxt[6*last_bmp[4:0] +: 6] <= o_first_bmp;
+                                // 收口：首项上一跳 = 末项（与 nxt 成环对称）
+                                o_bmp_prv[6*o_first_bmp[4:0] +: 6] <= last_bmp;
+                            end
                             state      <= S_MOUNTED;
                         end
                         else begin
@@ -526,8 +534,10 @@ module fat32_ro (
                         // 提前收工（见到 0x00 项）
                         o_mounted  <= 1'b1;
                         o_file_cnt <= pl_cnt;
-                        if (bmp_seen)
+                        if (bmp_seen) begin
                             o_bmp_nxt[6*last_bmp[4:0] +: 6] <= o_first_bmp;
+                            o_bmp_prv[6*o_first_bmp[4:0] +: 6] <= last_bmp;
+                        end
                         state      <= S_MOUNTED;
                     end
                     else begin

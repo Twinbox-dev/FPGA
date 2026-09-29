@@ -35,6 +35,11 @@ static const std::chrono::steady_clock::time_point g_t0 = std::chrono::steady_cl
 static Vboard_top *dut = new Vboard_top;
 static SdCardModel card;
 
+// SIM_FAST=1：SD 直连扇区档（fast_sd_stub），SPI 协议栈退出仿真覆盖。
+// 日常迭代用；定位可疑 bug 时先用默认档（引脚级）排除 SPI 因素。
+static const bool g_fast_sd = getenv("SIM_FAST") != nullptr;
+static const std::vector<uint8_t> *g_img = nullptr;   // 快速档按 LBA 直取扇区字节
+
 static int pass = 0, fail = 0;
 static void check(bool ok, const char *what) {
     std::printf("%s: %s\n", ok ? "  PASS" : ">>FAIL", what);
@@ -42,17 +47,30 @@ static void check(bool ok, const char *what) {
 }
 
 // ---- 与 RTL 一致的图片选择逻辑 ----
-// tmap 只覆盖播放列表前 6 项（RTL o_type_map 语义）
+// tmap 覆盖全部播放列表项（RTL 跳表按全范围 ext_is_wav 建链）
 static int first_bmp_idx(int cnt, uint32_t tmap) {
-    for (int k = 0; k < 6 && k < cnt; k++)
+    for (int k = 0; k < cnt; k++)
         if (!((tmap >> k) & 1u)) return k;
     return 0;
 }
 static int next_bmp_idx(int cur, int cnt, uint32_t tmap) {
     int cand = cur;
-    for (int k = 0; k < 6; k++) {
+    for (int k = 0; k < cnt; k++) {
         cand = (cand + 1 >= cnt) ? 0 : cand + 1;
-        bool is_wav = (cand < 6) && ((tmap >> cand) & 1u);
+        // RTL bmp_nxt/bmp_prv 跳表全范围只链 BMP（ext_is_wav 全 32 项判定），
+        // 不受遗留 o_type_map 6 项限制——这里必须用完整 tmap
+        bool is_wav = (tmap >> cand) & 1u;
+        if (!is_wav) return cand;
+    }
+    return cur;
+}
+
+// 循环序上一张（与 bmp_prv_map / prv 方向一致；WAV 项不算图）
+static int prv_bmp_idx(int cur, int cnt, uint32_t tmap) {
+    int cand = cur;
+    for (int k = 0; k < cnt; k++) {
+        cand = (cand == 0) ? cnt - 1 : cand - 1;
+        bool is_wav = (tmap >> cand) & 1u;
         if (!is_wav) return cand;
     }
     return cur;
@@ -121,6 +139,22 @@ static void sample_write() {
     dut->write_finish_toggle = wft;
 }
 
+// SIM_FAST：给 fast_sd_stub 投喂扇区字节（本拍寄存器值在下一 posedge 被采样；
+// 块寻址：扇区协议层的地址单元就是扇区号，快速档无 SPI 初始化/HCS 协商）
+// SIM_FAST：给 fast_sd_stub 投喂扇区字节（本拍寄存器值在下一 posedge 被采样；
+// 块寻址：扇区协议层的地址单元就是扇区号，快速档无 SPI 初始化/HCS 协商）
+static void feed_fast_sd() {
+    if (g_fast_sd && dut->fast_serving && g_img) {
+        // 扇区协议层的地址单元就是扇区号（fat32_ro 只发 LBA）——固定块寻址，
+        // 与引脚级卡的 HCS 协商无关（快速档没有 SPI 初始化流程）
+        uint64_t off = (uint64_t)dut->fast_lba * 512 + dut->fast_idx;
+        dut->fast_val  = 1;
+        dut->fast_byte = (off < g_img->size()) ? (*g_img)[off] : 0xFF;
+    } else {
+        dut->fast_val = 0;
+    }
+}
+
 // ---- 时钟 / 卡模型接线（同 csrc/main.cpp 模式）----
 static void watch_audio();
 static void sample_read();
@@ -175,6 +209,7 @@ static void half_cycle() {
         sample_read();
         watch_audio();
     }
+    feed_fast_sd();   // 投喂值在下一 posedge 被采样
 }
 static void cycle() { half_cycle(); half_cycle(); cycles++; }
 static void reset(int n) {
@@ -200,6 +235,13 @@ static void press_auto() {                   // 自动轮播开关（同去抖�
     dut->key_auto = 0;
     for (int i = 0; i < 200000; i++) cycle();
     dut->key_auto = 1;
+    for (int i = 0; i < 200000; i++) cycle();
+}
+
+static void press_prev() {                   // 上一张（key3，同去抖参数）
+    dut->key_prev = 0;
+    for (int i = 0; i < 200000; i++) cycle();
+    dut->key_prev = 1;
     for (int i = 0; i < 200000; i++) cycle();
 }
 
@@ -439,13 +481,16 @@ int main(int argc, char **argv) {
         fclose(f);
         if (rd != (size_t)sz) return 1;
     }
+    g_img = &img;
     GoldenFs g = fat32_parse_golden(img);
     std::printf("===== board sd_card_bmp 验证 (%s, golden: %s, %zu 项) =====\n",
                 img_path, g.ok ? "OK" : "FAIL", g.bmps.size());
 
     // 期望播放顺序：首图 + 两次按键
+    // tmap 覆盖全部播放列表项——RTL bmp_nxt/prv 跳表按全范围 ext_is_wav 建链，
+    // 金模型必须一致（曾只建前 6 项，第 6 项后的 WAV 被当 BMP，期望链错位）
     uint32_t tmap = 0;
-    for (int i = 0; i < 6 && i < (int)g.bmps.size(); i++)
+    for (int i = 0; i < (int)g.bmps.size(); i++)
         if (g.bmps[i].is_wav) tmap |= (1u << i);
     std::vector<int> order;
     int cur = first_bmp_idx((int)g.bmps.size(), tmap);
@@ -457,8 +502,12 @@ int main(int argc, char **argv) {
     std::printf("  期望顺序: 首图=%d 第二=%d 第三=%d\n", order[0], order[1], order[2]);
 
     dut->SD_MISO = 1;
+    dut->fast_en = g_fast_sd ? 1 : 0;
+    if (g_fast_sd)
+        std::printf("  [SIM_FAST] SD 直连扇区档：SPI 协议栈不在本次覆盖内\n");
     dut->key_next = 1;    // 释放（低有效按键）
     dut->key_auto = 1;    // 释放
+    dut->key_prev = 1;    // 释放
     dut->write_req_ack = 0;
     dut->write_finish_toggle = 0;
     dut->rd_req_ack = 0;
@@ -602,12 +651,15 @@ int main(int argc, char **argv) {
         size_t   exp_n   = (size_t)exp_len * 4 * 2;
         size_t base = (base_in != SIZE_MAX) ? base_in : play_bytes.size();
         size_t idx = SIZE_MAX, mark = SIZE_MAX;
+        size_t scan = base;   // 增量游标：idx 未命中时每拍全量重扫是 O(n)×窗口 的性能悬崖
         uint64_t g8 = 50000000ull + (uint64_t)exp_n * 2600;   // ≥1.25× 实时（2083 clk/样本）
         while (g8-- && mark == SIZE_MAX) {
             cycle();
             if (idx == SIZE_MAX) {
-                for (size_t i = base; i < play_bytes.size(); i++)
-                    if (play_buf_at[i] == (uint8_t)exp_buf) { idx = i; break; }
+                while (scan < play_bytes.size()) {
+                    if (play_buf_at[scan] == (uint8_t)exp_buf) { idx = scan; break; }
+                    scan++;
+                }
             } else {
                 for (size_t m = 0; m < play_marks.size(); m++)
                     if (play_marks[m] >= idx) { mark = play_marks[m]; break; }
@@ -751,7 +803,7 @@ int main(int argc, char **argv) {
             std::printf("      卡自检：索引 %d 非合法图，验证跳过路径\n", exp);
         int c_before = commits;
         press_next();
-        uint64_t g2 = bad ? 3000000u : 120000000u;   // 坏图头校验快；合法图整帧慢
+        uint64_t g2 = bad ? 3000000u : 220000000u;   // 坏图头校验快；合法图整帧+配对音频两段装载（S2 同 200M+裕量）
         while (g2-- && commits == c_before) { cycle(); watch_commit(); }
         if (bad) {
             check(commits == c_before, tag);          // 跳过：不应提交
@@ -759,34 +811,42 @@ int main(int argc, char **argv) {
             return false;
         } else {
             check(commits == c_before + 1, tag);      // 合法图：应提交
-            if (commits == c_before + 1)
+            if (commits == c_before + 1) {
                 check(compare_pixbuf(g.bmps[exp].data), "      像素与 golden 比对");
+                // 配对图的 ald 音频占用对侧缓冲并切换播放——与显式 verify_loop
+                // 的调用方一样翻转 exp_aud_buf，否则后续 S7c/S8c 期望 buffer 错位
+                if (pair_of[exp] >= 0)
+                    exp_aud_buf = (exp_aud_buf == 3) ? 2 : 3;
+            }
             c_after = commits;
             return true;
         }
     };
 
+    // 光标语义（RTL）：img_idx = 最近一次尝试的项（提交与失败都写 img_idx<=load_idx），
+    // S5/S6 跳过坏图后光标停在坏图上——S7/S8 的期望链必须基于光标而非最后提交的图。
+    int cursor = exp4;                     // S4 已提交
     int exp5 = next_bmp_idx(exp4, (int)g.bmps.size(), tmap);
     int c_after5;
     bool committed5 = press_adaptive("S5 下一项处理正确（合法图提交 / 坏图跳过）",
                                      exp5, c_after5);
     (void)committed5;
+    cursor = exp5;
 
     int exp6 = next_bmp_idx(exp5, (int)g.bmps.size(), tmap);
     int c_after6;
     bool committed6 = press_adaptive("S6 下一项处理正确（合法图提交 / 坏图/WAV 跳过）",
                                      exp6, c_after6);
     (void)committed6;
+    cursor = exp6;
 
     // ---- S7 自动轮播（仅 SIM_AUTO=1 的卡，即 card.img）：开 → 1s 自动切一张 → 关 ----
     // 演示要用 key_auto，RTL 里这是唯一没被常规用例走到 path。
     if (getenv("SIM_AUTO")) {
-        // S5/S6 可能跳过坏图不提交：自动轮播从"实际在显示的那张"往后走。
         // 期望链要复刻 RTL 行为：坏图（bmp_dec 拒）不提交且自动下一拍重试，
         // 跨多个 1s 周期推进到下一个合法图（本卡 ZBADSIZE 即此例）。
-        int disp_after6 = committed6 ? exp6 : (committed5 ? exp5 : exp4);
-        int exp7 = next_bmp_idx(disp_after6, (int)g.bmps.size(), tmap);
-        while (exp7 != disp_after6 && !loadable_bmp(g.bmps[exp7].data))
+        int exp7 = next_bmp_idx(cursor, (int)g.bmps.size(), tmap);
+        while (exp7 != cursor && !loadable_bmp(g.bmps[exp7].data))
             exp7 = next_bmp_idx(exp7, (int)g.bmps.size(), tmap);
         press_auto();                      // 开
         int c_base = commits;
@@ -806,10 +866,45 @@ int main(int argc, char **argv) {
                             s7_base);
                 exp_aud_buf = (exp_aud_buf == 3) ? 2 : 3;
             }
+            cursor = exp7;
             c_base = commits;
             uint64_t g4 = 130000000u;      // >1s 自动周期：不应再有新提交
             while (g4--) { cycle(); watch_commit(); }
             check(commits == c_base, "S7d 自动轮播关闭后停止切换");
+        }
+    }
+
+    // ---- S8 上一张（key3）：从光标回退，坏图继续回退直到提交（≤8 步防兜圈）----
+    // 光标语义：失败也写 img_idx，故从 cursor 回退（非最后提交的图）。
+    // 坏图不提交且光标停在坏图上，下一次 prev 继续回退——与 next 镜像。
+    {
+        int exp8 = prv_bmp_idx(cursor, (int)g.bmps.size(), tmap);
+        for (int step = 0; step < 8; step++) {
+            bool bad8 = !loadable_bmp(g.bmps[exp8].data);
+            if (bad8)
+                std::printf("      卡自检：索引 %d 非合法图，上一张继续回退\n", exp8);
+            int c_before = commits;
+            press_prev();
+            uint64_t g8 = bad8 ? 3000000u : 220000000u;
+            while (g8-- && commits == c_before) { cycle(); watch_commit(); }
+            if (bad8) {
+                check(commits == c_before, "S8 上一张：坏图跳过不提交");
+                if (commits != c_before) break;
+                exp8 = prv_bmp_idx(exp8, (int)g.bmps.size(), tmap);
+            } else {
+                check(commits == c_before + 1, "S8 上一张提交");
+                if (commits == c_before + 1) {
+                    check(compare_pixbuf(g.bmps[exp8].data),
+                          "S8b 上一图像素与 golden 比对");
+                    if (pair_of[exp8] >= 0) {
+                        verify_loop(pair_of[exp8], exp_aud_buf, "S8c 上一张音频（原子提交）");
+                        exp_aud_buf = (exp_aud_buf == 3) ? 2 : 3;
+                    } else {
+                        verify_silence("S8d 上一张无配对");
+                    }
+                }
+                break;
+            }
         }
     }
 

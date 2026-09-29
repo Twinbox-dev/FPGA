@@ -56,10 +56,14 @@ module sd_card_bmp #(
     input                       rst,
     input                       key_next,
     input                       key_auto,
+    input                       key_prev,
     input  [15:0]               bmp_width,     // 保留（bmp_dec 内部硬编码 640x480）
     input  [15:0]               bmp_height,
     output reg                  display_valid,
     output      [3:0]           state_code,
+    // ---- UART 遥测：当前图索引 / 该图是否配同名 WAV（状态包保留字节）----
+    output      [4:0]           img_idx_out,   // 当前/最近尝试的图索引（5bit，≤31）
+    output                      img_wav_out,   // 该图有合法同名 WAV
     // ---- 板级调试面板（仅板上接线；仿真空置）----
     output      [7:0]           dbg_fat_state,
     output                      dbg_fat_err,
@@ -96,6 +100,13 @@ module sd_card_bmp #(
     input                       rd_req_ack,
     input                       rd_finish,
     input       [31:0]          rd_data,
+    // ---- SIM_FAST 直连扇区服务器（fast_en=1 选中，见 stub_sd_card_top.v）----
+    input                       fast_en,
+    input                [7:0]  fast_byte,
+    input                       fast_val,
+    output               [31:0] fast_lba,
+    output                [9:0] fast_idx,
+    output                      fast_serving,
     output                      SD_nCS,
     output                      SD_DCLK,
     output                      SD_MOSI,
@@ -107,6 +118,7 @@ module sd_card_bmp #(
     // ---- 键去抖 ----
     wire key_next_press;
     wire key_auto_press;
+    wire key_prev_press;
 
     // ---- 扇区读通道（fat32_ro 主机 / sd_card_top 从机，经适配器） ----
     wire        sd_init_done;
@@ -121,6 +133,7 @@ module sd_card_bmp #(
     wire [5:0]  file_cnt, bmp_cnt, wav_cnt, type_map;
     wire [5:0]  first_bmp_w;          // fat32_ro 建：首个 BMP 索引（轮播起点）
     wire [191:0] bmp_nxt_map;         // fat32_ro 建：BMP 循环下一跳表（6bit × 32）
+    wire [191:0] bmp_prv_map;         // fat32_ro 建：BMP 循环上一跳表（6bit × 32）
     wire [7:0]  fat_dbg, bmp_dbg;
     wire        img_ok, img_err;
     wire        pix_val;
@@ -172,6 +185,7 @@ module sd_card_bmp #(
     reg [31:0] auto_cnt;
     reg [31:0] load_timeout_cnt;
     reg        next_req_pending;
+    reg        prev_req_pending;
 
     // ---- 音频扫描相位（S1）----
     reg        aud_scan_active;
@@ -302,6 +316,7 @@ module sd_card_bmp #(
 
     // ---- 组合 ----
     wire [5:0] next_idx;
+    wire [5:0] prev_idx;
 
     // ==================== 函数 ====================
     // 轮播下一跳由 fat32_ro 在挂载扫目录时逐拍建表（o_bmp_nxt / o_first_bmp），
@@ -371,6 +386,9 @@ module sd_card_bmp #(
     assign write_finish_pulse = wrfin_tgl_sync[2] ^ wrfin_tgl_sync[1];
     assign auto_tick  = (auto_cnt == (CLK_FREQ_HZ - 1));
     assign next_idx   = bmp_nxt_map[6*img_idx[4:0] +: 6];
+    assign prev_idx   = bmp_prv_map[6*img_idx[4:0] +: 6];
+    assign img_idx_out = img_idx[4:0];     // UART 遥测
+    assign img_wav_out = pair_valid[img_idx[4:0]];
 
     assign dbg_fat_state = fat_dbg;
     assign dbg_fat_err   = fat_err;
@@ -412,6 +430,17 @@ module sd_card_bmp #(
         .rst        (rst),
         .button_in  (key_auto),
         .press_pulse(key_auto_press)
+    );
+
+`ifdef VERILATOR
+    key_press_debounce #(.CLK_FREQ_HZ(CLK_FREQ_HZ), .DEBOUNCE_MS(1)) u_key_prev (
+`else
+    key_press_debounce #(.CLK_FREQ_HZ(CLK_FREQ_HZ), .DEBOUNCE_MS(50)) u_key_prev (
+`endif
+        .clk        (clk),
+        .rst        (rst),
+        .button_in  (key_prev),
+        .press_pulse(key_prev_press)
     );
 
     // 适配器：fat32_ro 请求 → sd_card_top sd_sec_read
@@ -458,6 +487,7 @@ module sd_card_bmp #(
         .o_type_map  (type_map),
         .o_first_bmp (first_bmp_w),
         .o_bmp_nxt   (bmp_nxt_map),
+        .o_bmp_prv   (bmp_prv_map),
         .o_cur_is_wav(cur_is_wav),
         .o_err       (fat_err),
         .o_file_idle (fat_idle),
@@ -504,7 +534,15 @@ module sd_card_bmp #(
         .o_dbg_state(bmp_dbg)
     );
 
-    // SD SPI 层（板上已验证，原样保留）
+    // SD 层二选一：默认引脚级（stub_sd_card_top：协议翻译 + sd_spi + 卡模型，
+    // 板上已验证原样保留）；fast_en=1（SIM_FAST）走直连扇区服务器，
+    // SPI 栈退出仿真覆盖（排查可疑 bug 时先用默认档排除 SPI 因素）
+    wire        sd_init_slow, sec_dval_slow, sec_end_slow, sd_init_fast;
+    wire        sec_dval_fast, sec_end_fast;
+    wire [7:0]  sec_data_slow, sec_data_fast;
+    wire        sec_read_slow = sd_sec_read & ~fast_en;
+    wire        sec_read_fast = sd_sec_read &  fast_en;
+
     sd_card_top sd_card_top_m0 (
         .clk                    (clk),
         .rst                    (rst),
@@ -512,18 +550,39 @@ module sd_card_bmp #(
         .SD_DCLK                (SD_DCLK),
         .SD_MOSI                (SD_MOSI),
         .SD_MISO                (SD_MISO),
-        .sd_init_done           (sd_init_done),
-        .sd_sec_read            (sd_sec_read),
+        .sd_init_done           (sd_init_slow),
+        .sd_sec_read            (sec_read_slow),
         .sd_sec_read_addr       (sd_sec_read_addr),
-        .sd_sec_read_data       (sd_sec_read_data),
-        .sd_sec_read_data_valid (sd_sec_read_data_valid),
-        .sd_sec_read_end        (sd_sec_read_end),
+        .sd_sec_read_data       (sec_data_slow),
+        .sd_sec_read_data_valid (sec_dval_slow),
+        .sd_sec_read_end        (sec_end_slow),
         .sd_sec_write           (1'b0),
         .sd_sec_write_addr      (32'd0),
         .sd_sec_write_data      (8'd0),
         .sd_sec_write_data_req  (),
         .sd_sec_write_end       ()
     );
+
+    fast_sd_stub u_fast_sd (
+        .clk                    (clk),
+        .rst                    (rst),
+        .sd_init_done           (sd_init_fast),
+        .fast_byte              (fast_byte),
+        .fast_val               (fast_val),
+        .fast_lba               (fast_lba),
+        .fast_idx               (fast_idx),
+        .fast_serving           (fast_serving),
+        .sd_sec_read            (sec_read_fast),
+        .sd_sec_read_addr       (sd_sec_read_addr),
+        .sd_sec_read_data       (sec_data_fast),
+        .sd_sec_read_data_valid (sec_dval_fast),
+        .sd_sec_read_end        (sec_end_fast)
+    );
+
+    assign sd_init_done           = fast_en ? sd_init_fast  : sd_init_slow;
+    assign sd_sec_read_data       = fast_en ? sec_data_fast : sec_data_slow;
+    assign sd_sec_read_data_valid = fast_en ? sec_dval_fast : sec_dval_slow;
+    assign sd_sec_read_end        = fast_en ? sec_end_fast  : sec_end_slow;
 
     // ==================== 装载序列 ====================
     // 图像：空闲 → 先开写通道（等 ack，存储侧借此清写 FIFO 并锁存长度）
@@ -587,6 +646,7 @@ module sd_card_bmp #(
             write_buf_idx_r <= 2'd0;
             disp_buf_idx          <= 2'd0;
             next_req_pending      <= 1'b0;
+            prev_req_pending      <= 1'b0;
             display_valid         <= 1'b0;
             ld_kick               <= 1'b0;
             ald_start_pulse       <= 1'b0;
@@ -630,6 +690,7 @@ module sd_card_bmp #(
                 write_buf_idx_r <= 2'd0;
                 disp_buf_idx          <= 2'd0;
                 next_req_pending      <= 1'b0;
+                prev_req_pending      <= 1'b0;
                 display_valid         <= 1'b0;
                 ald_active            <= 1'b0;
                 boot_ald              <= 1'b0;
@@ -774,6 +835,8 @@ module sd_card_bmp #(
                 // ---- 按键请求（装载中只记一次，连按不累积）----
                 if (key_next_press && fat_mounted && (bmp_cnt != 6'd0))
                     next_req_pending <= 1'b1;
+                if (key_prev_press && fat_mounted && (bmp_cnt != 6'd0))
+                    prev_req_pending <= 1'b1;
 
                 // ---- 自动轮播开/关 ----
                 if (key_auto_press && fat_mounted && (bmp_cnt > 6'd1)) begin
@@ -803,6 +866,7 @@ module sd_card_bmp #(
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
+                        prev_req_pending <= 1'b0;
                         auto_cnt         <= 32'd0;
                     end
                     else if (next_req_pending) begin
@@ -814,6 +878,19 @@ module sd_card_bmp #(
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
+                        prev_req_pending <= 1'b0;
+                        auto_cnt         <= 32'd0;
+                    end
+                    else if (prev_req_pending) begin
+                        // 手动上一张：写非当前显示缓冲
+                        load_idx         <= prev_idx;
+                        pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
+                        write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
+                        load_busy        <= 1'b1;
+                        load_start_pulse <= 1'b1;
+                        write_done_seen  <= 1'b0;
+                        next_req_pending <= 1'b0;
+                        prev_req_pending <= 1'b0;
                         auto_cnt         <= 32'd0;
                     end
                     else if (auto_play_en && auto_tick && (bmp_cnt > 6'd1)) begin
@@ -824,6 +901,7 @@ module sd_card_bmp #(
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
+                        prev_req_pending <= 1'b0;
                         auto_cnt         <= 32'd0;
                     end
                 end

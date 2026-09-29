@@ -32,6 +32,9 @@
   PASS: SCb 播放零欠采样（underrun 应恒 0）
   PASS: S5 下一项处理正确（合法图提交 / 坏图跳过）
   PASS:       像素与 golden 比对
-      卡自检：索引 6 非合法图，验证跳过路径
   PASS: S6 下一项处理正确（合法图提交 / 坏图/WAV 跳过）
-===== 23 passed, 0 failed | 744.5 Mcyc, 310.1s, 2.4 Mcyc/s =====
+  PASS:       像素与 golden 比对
+  PASS: S8 上一张提交
+  PASS: S8b 上一图像素与 golden 比对
+  PASS: S8d 上一张无配对：静音态（pair_on=0、样本全 0x80、无读请求）
+===== 27 passed, 0 failed | 990.0 Mcyc, 296.5s, 3.3 Mcyc/s =====

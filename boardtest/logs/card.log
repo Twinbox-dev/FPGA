@@ -35,10 +35,13 @@
   PASS: SCb 播放零欠采样（underrun 应恒 0）
       卡自检：索引 4 非合法图，验证跳过路径
   PASS: S5 下一项处理正确（合法图提交 / 坏图跳过）
-      卡自检：索引 6 非合法图，验证跳过路径
   PASS: S6 下一项处理正确（合法图提交 / 坏图/WAV 跳过）
+  PASS:       像素与 golden 比对
   PASS: S7 自动轮播：开启后自动提交下一张
   PASS: S7b 自动轮播图像素与 golden 比对
-  PASS: S7c 自动轮播音频（原子提交）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
+  PASS: S7c 自动轮播音频（原子提交）：BUF2 24576 样本逐字节比对（×2 上采样, len=3072）
   PASS: S7d 自动轮播关闭后停止切换
-===== 29 passed, 0 failed | 1089.8 Mcyc, 385.9s, 2.8 Mcyc/s =====
+  PASS: S8 上一张提交
+  PASS: S8b 上一图像素与 golden 比对
+  PASS: S8c 上一张音频（原子提交）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
+===== 33 passed, 0 failed | 1448.7 Mcyc, 367.7s, 3.9 Mcyc/s =====

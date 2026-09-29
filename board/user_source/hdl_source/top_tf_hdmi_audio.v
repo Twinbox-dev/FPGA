@@ -4,6 +4,7 @@ module top(
     input                       rst_n,
     input                       key1,           // 手动下一张
     input                       key2,           // 自动播放 开/关
+    input                       key3,           // 手动上一张
     input                       uart_rx,        // CH340G USB-UART（1Mbaud 8N1）
     output                      uart_tx,
 
@@ -58,7 +59,8 @@ wire [23:0] vout_data;
 wire        display_valid;
 
 wire [3:0]  state_code;
-wire [6:0]  seg_data_0;
+wire [4:0]  img_idx_w;        // UART 遥测：当前图索引
+wire        img_wav_w;        // UART 遥测：该图是否配同名 WAV
 // ---- 板级调试面板（数码管 6 位，只读，不影响功能）----
 wire [7:0]  dbg_fat_state;   // fat32_ro FSM 状态（0=RST 1=ISSUE 2=STREAM 3=MOUNT
                              //  4=BPBDEC 5=FATDEC 6=DIRDONE 7=DATADONE 8=MOUNTED
@@ -167,19 +169,29 @@ assign rst_all = rst_all_reg;
 
 // 视频读 FIFO 下溢粘滞：显示活动期（de 高）而 FIFO 空 = 带宽不够。
 // 跳过每帧第一条活动行：帧首 SDRAM 突发尚未填满 FIFO 属正常竞态，不算下溢。
+// 另加开机稳态窗口：前 4 帧不检测——display_valid 拉高时读 FIFO 可能整帧
+// 未填起（读引擎第一笔 SDRAM 突发未落地），第 2 行起短暂空一次即永久钉住
+// 粘滞位，属开机正常过渡而非欠载。窗口过后真欠载照常置位。
 reg de_0_d, line_seen;
+reg vs_0_d;
+reg [2:0] vf_cnt;              // 帧计数（vs 上升沿）
 always @(posedge video_clk or posedge rst_all) begin
     if (rst_all) begin
         vid_und_stick_v <= 1'b0;
         de_0_d   <= 1'b0;
         line_seen <= 1'b0;
+        vs_0_d   <= 1'b0;
+        vf_cnt   <= 3'd0;
     end else begin
         de_0_d <= de_0;
+        vs_0_d <= vs_0;
+        if (vs_0 && !vs_0_d)
+            vf_cnt <= (vf_cnt == 3'd7) ? 3'd7 : vf_cnt + 1'b1;
         if (vs_0)
             line_seen <= 1'b0;
         else if (de_0_d && !de_0)
             line_seen <= 1'b1;
-        if (de_0 && vid_rd_empty && line_seen)
+        if (de_0 && vid_rd_empty && line_seen && (vf_cnt >= 3'd4))
             vid_und_stick_v <= 1'b1;
     end
 end
@@ -201,7 +213,7 @@ assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
 
 // ===================== UART 交互通道（v1：虚拟按键 + 状态回读） =====================
 // sd_card_clk 域，命令消费方（sd_card_bmp 去抖）同域免 CDC；协议见 uart_link.v 头
-wire vk_next_n, vk_auto_n;
+wire vk_next_n, vk_auto_n, vk_prev_n;
 
 uart_link #(
     .CLK_FREQ_HZ    (100_000_000),
@@ -214,11 +226,14 @@ uart_link #(
     .tx             (uart_tx),
     .vk_next_n      (vk_next_n),
     .vk_auto_n      (vk_auto_n),
+    .vk_prev_n      (vk_prev_n),
     .state_code     (state_code),
     .dbg_fat_state  (dbg_fat_state),
     .flag_a         ({video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}),
     .flag_b         ({hdmi_locked, dbg_fat_err, disp_buf_idx[1], disp_buf_idx[0]}),
-    .dbg_underrun   (dbg_underrun)
+    .dbg_underrun   (dbg_underrun),
+    .img_idx        (img_idx_w),
+    .img_wav        (img_wav_w)
 );
 
 // 保持你原来的 TF / SDRAM / video 时钟
@@ -258,6 +273,9 @@ sd_card_bmp #(
     .rst               (rst_all),
     .key_next          (key1 & vk_next_n),   // 物理按键与 UART 虚拟键相与（均低有效）
     .key_auto          (key2 & vk_auto_n),
+    .key_prev          (key3 & vk_prev_n),
+    .img_idx_out       (img_idx_w),
+    .img_wav_out       (img_wav_w),
     .state_code        (state_code),
     .bmp_width         (16'd1280),
     .bmp_height        (16'd720),
@@ -303,37 +321,24 @@ sd_card_bmp #(
     .dbg_fat_err       (dbg_fat_err)
 );
 
-seg_decoder seg_decoder_m0(
-    .bin_data          (state_code),
-    .seg_data          (seg_data_0)
-);
-
-// 调试面板：digit4=fat状态高4位 digit3=fat状态低4位
-// digit2={video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}
-// digit1={hdmi_locked, dbg_fat_err, disp_buf_idx[1:0]}（bit3..0）
-wire [6:0] seg_fat_hi, seg_fat_lo, seg_flag_a, seg_flag_b, seg_und;
-seg_decoder u_seg_fat_hi (.bin_data(dbg_fat_state[7:4]), .seg_data(seg_fat_hi));
-seg_decoder u_seg_fat_lo (.bin_data(dbg_fat_state[3:0]), .seg_data(seg_fat_lo));
-seg_decoder u_seg_flag_a (.bin_data({video_pll_lock, sys_pll_lock,
-                                     Sdr_init_done, display_valid}),
-                          .seg_data(seg_flag_a));
-seg_decoder u_seg_flag_b (.bin_data({hdmi_locked, dbg_fat_err,
-                                     disp_buf_idx[1], disp_buf_idx[0]}),
-                          .seg_data(seg_flag_b));
-// d0 = {vid_und_stick, aud_und_stick, 2'b00}：视频 FIFO 下溢 / 音频欠载粘滞
-seg_decoder u_seg_underrun (.bin_data(dbg_underrun), .seg_data(seg_und));
-
+// ===================== 七段数码管（预留）=====================
+// 原调试面板（state/fat/flags/underrun 六位）已由 UART 状态包取代而退休：
+// 遥测同源（state_code/dbg_fat_state/flag_a/flag_b/dbg_underrun 仍喂
+// uart_link 状态包）。保留 seg_scan/seg_decoder 与引脚约束供后续模块
+// 复用（通用扫描/译码器，与调试语义无关），现显示固定占位 '8'。
+wire [6:0] seg_ph;
+seg_decoder u_seg_ph (.bin_data(4'h8), .seg_data(seg_ph));
 seg_scan seg_scan_m0(
     .clk               (clk),
     .rst_n             (rst_n),
     .seg_sel           (seg_sel),
     .seg_data          (seg_data),
-    .seg_data_0        ({1'b1,seg_und}),
-    .seg_data_4        ({1'b1,seg_fat_hi}),
-    .seg_data_3        ({1'b1,seg_fat_lo}),
-    .seg_data_2        ({1'b1,seg_flag_a}),
-    .seg_data_1        ({1'b1,seg_flag_b}),
-    .seg_data_5        ({1'b1,seg_data_0})
+    .seg_data_0        ({1'b1,seg_ph}),
+    .seg_data_1        ({1'b1,seg_ph}),
+    .seg_data_2        ({1'b1,seg_ph}),
+    .seg_data_3        ({1'b1,seg_ph}),
+    .seg_data_4        ({1'b1,seg_ph}),
+    .seg_data_5        ({1'b1,seg_ph})
 );
 
 // ===================== 原图像时序与帧缓存 =====================

@@ -243,3 +243,62 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
 - [x] 按用户要求删除心跳功能（uart_link 去掉 CMD_HB/hb_en/hb_cnt/hb_tick、
       HEARTBEAT_CYC 参数、pkt_req 只剩 cmd_stat；tb_uart 去 T6/T7 心跳用例
       重编号为 7 项；脚本去 h 键；文档同步）。仿真 7 项全绿后提交。
+
+## 2026-09-28 第九轮：vidUND 恒 1 = 开机首帧读 FIFO 未稳态（已修，待重综合）
+
+- [x] 现象：UART 状态包 vidUND 恒为 1（粘滞位），开机烧录后首次 s 即为 1、
+      切图后仍 1；audUND 干净、画面正常 → 非真实持续欠载。
+- [x] 根因：display_valid 拉高时读引擎第一笔 SDRAM 突发未落地，首帧第 2 行起
+      FIFO 短暂空一次即永久钉住粘滞位（line_seen 只跳过首行，不覆盖开机
+      整帧过渡）。时序报告佐证：uart 路径正 slack、20 违例全在装载链。
+- [x] 修复（top_tf_hdmi_audio.v，改动小）：开机稳态窗口——帧计数 vs 上升沿，
+      前 4 帧不检测（vf_cnt<4），窗口后真欠载照常置位；面板 d0 同步恢复干净。
+- [ ] 待用户重综合上板：开机首包 vidUND=0、切图后再查是否仍 0；确认后提交。
+
+## 2026-09-28 第十轮：key3 上一张 + UART 'P' + 状态包增强 + 七段码退休（方案已定，实施完待回归确认）
+
+- [x] 方案（用户拍板）：只加 P 命令；状态包保留字节放 img_idx+wav 标志；七段码退休保留硬件。
+- [x] key3 上一张：pin.adc key3=B1（PULLUP）；fat32_ro 新增 o_bmp_prv 跳表
+      （与 o_bmp_nxt 同拍建链、首项收口回填末项，成环对称）；sd_card_bmp
+      key_prev 输入+第三去抖器+prev_req_pending（与 next 同规则：装载中记一次、
+      坏图光标停在坏图上、下一拍 prv 继续回退、本轮装载只认一个方向）；
+      top 接 key3 & vk_prev_n；uart_link CMD_PREV='P'(50)+vk_prev_n（100ms 脉冲）。
+- [x] 状态包增强：pkt[6]={3'b0,img_idx}、pkt[7]={7'b0,img_wav}
+      （sd_card_bmp 新增 img_idx_out/img_wav_out 输出）；uart_console.py 加 p 键
+      + img/wav 解码。
+- [x] 七段码退休：top 移除 6 位调试面板 mux（state/fat/flagA/flagB/underrun
+      译码链），保留 seg_scan/seg_decoder 与引脚约束，显示固定占位 '8'；
+      遥测源信号仍喂 uart_link（同一组状态两种出口的"出口"少了面板出口）。
+- [x] tb_uart 8 项全绿（新增 T8 'P' 脉冲；T5 状态包校验更新）。
+- [x] **主仿真暴露两个金模型潜伏 bug（都被 S8 揪出）**：①next/prv_bmp_idx 的
+      `cand<6` 限制（o_type_map 遗留语义）——RTL 跳表全范围建链，第 6 项后的
+      WAV 被金模型当 BMP，期望链错位+在途装载污染后续用例；②tmap 构建循环
+      只建前 6 项。修：全范围 tmap/判 WAV；press_adaptive/S8 好图窗口 120M→220M
+      （配对图=图+音频两段装载，S2 同量级）。新增 S8：从光标连续 prev 回退
+      （坏图跳过→提交→像素 golden 比对→音频/静音切换），prv 表 dump 验证
+      [0]=4 [1]=0 [2]=1 [3]=2 [4]=3 与设计一致。光标语义教训：img_idx=最近
+      尝试项（提交/失败都写），期望链必须基于光标而非最后提交的图。
+- [ ] 全 7 卡回归确认 → 用户重综合上板（key3 上一张、UART p、状态包 img/wav、
+      面板占位）→ 通过后提交（Boxchan 无尾注）。
+
+## 2026-09-29 第十一轮：boardtest 提速（SIM_FAST 直连扇区档）
+
+- [x] 起因：修 S8 后单卡 382M→1104M 周期（S6 从假跳过变真实配对装载 + S8 新增），
+      且主卡 SIM_AUTO 曾卡 20 分钟——根因是 verify_loop 找音频圈起点 idx 未命中时
+      **每拍 O(n) 全量重扫 play_bytes**（旧代码潜伏，被修正后的模型首次踩中）。
+- [x] verify_loop 改增量游标（MISS 也能在窗口内跑完并给诊断）；press_adaptive/
+      S8 好图窗口 120M→220M（配对图=图+音频两段装载）。
+- [x] **SIM_FAST=1 直连扇区档**：fast_sd_stub（stub_sd_card_top.v）+ C++ 按 LBA
+      投喂（feed_fast_sd）+ boardtest 顶层 fast_en 二选一；默认档引脚级不变。
+      实测 card.img 1104M/135s → 369M/50s（2.7×），7 卡并行 ~6min → ~2.5min。
+      踩坑记录：①电平触发请求导致 end 后立即重锁存重出数（改边沿触发，同
+      stub_sd_card_top 规则）；②扇区协议层固定块寻址（快速档无 HCS 协商）；
+      ③**1 拍/字节超出下游节拍假设**（音频打包器按 ack 取字节→扫描项永不关闭，
+      挂载后空转），加 PACE_DIV=4（2 拍实测仍崩，4 为边界内侧）。
+- [x] 另一种踩坑：把 adapter 的 i_dval 输出改接到探针线导致 fat32_ro 的 i_dval
+      悬空（挂载失败）——加探针时勿断原连接。
+- [x] 双档全回归：快速档 7 卡 FAIL=0（主卡 33 项含 S7/S8）；默认档 7 卡 FAIL=0。
+- [ ] 用户上板测试：key3 上一张 / UART p / 状态包 img+wav / 面板占位 + vidUND
+      干净；全部正常后提交（Boxchan 无尾注）。
+- [x] **上板验证通过（2026-09-29）**：七段码全 8 占位 ✓、上一张/下一张逻辑正确 ✓、
+      串口通信正常（n/p/a/s）✓、轮播正常 ✓。提交。

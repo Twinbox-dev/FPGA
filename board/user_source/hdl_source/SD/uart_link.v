@@ -10,12 +10,13 @@
 //
 // 协议（v1）：
 //   RX：命令帧 = 2 字节 [CMD, ~CMD]（异或校验，两字节必须相邻接收）。
-//       'N'(4E)=下一张   'A'(41)=自动轮播开关   ——以 100ms 低脉冲注入按键线，
-//       复用 sd_card_bmp 现有去抖，零侵入
+//       'N'(4E)=下一张   'A'(41)=自动轮播开关   'P'(50)=上一张
+//       ——以 100ms 低脉冲注入按键线，复用 sd_card_bmp 现有去抖，零侵入
 //       'S'(53)=回读一包状态
 //       未知/不成对字节静默丢弃
 //   TX：状态包 8 字节 = A5 | state_code | fat_state | flagA | flagB | underrun
-//       （与调试面板 d5..d0 同源；'S' 请求一包，无心跳）
+//       | img_idx | wav_flag（'S' 请求一包，无心跳）
+//       img_idx = 当前图索引（5bit），wav_flag = 该图是否配同名 WAV
 //
 // flagA={video_pll_lock,sys_pll_lock,Sdr_init_done,display_valid}
 // flagB={hdmi_locked,fat_err,disp_buf[1:0]}  underrun={vid_stick,aud_stick,2'b00}
@@ -36,12 +37,16 @@ module uart_link #(
     // 虚拟按键（低有效，与物理按键线相与）
     output              vk_next_n,
     output              vk_auto_n,
+    output              vk_prev_n,
     // 状态回读（与 top 调试面板同源）
     input  [3:0]        state_code,
     input  [7:0]        dbg_fat_state,
     input  [3:0]        flag_a,
     input  [3:0]        flag_b,
-    input  [3:0]        dbg_underrun  // clk 域粘滞位，内部 2FF 同步
+    input  [3:0]        dbg_underrun,  // clk 域粘滞位，内部 2FF 同步
+    // 遥测：当前图索引 + 该图是否配同名 WAV（状态包 pkt[6]/pkt[7]）
+    input  [4:0]        img_idx,
+    input               img_wav
 );
     localparam BIT_CYC = CLK_FREQ_HZ / BAUD;
 
@@ -111,18 +116,19 @@ module uart_link #(
     end
 
     // ================= 命令解码：[CMD, ~CMD] 相邻两字节 =================
-    localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_STAT = 8'h53;
+    localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_STAT = 8'h53,
+               CMD_PREV = 8'h50;
     reg [7:0] prev_byte;
     reg       prev_val;                       // 上一字节待配对
 
-    reg cmd_next, cmd_auto, cmd_stat;
+    reg cmd_next, cmd_auto, cmd_stat, cmd_prev;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             prev_byte <= 0; prev_val <= 0;
-            cmd_next <= 0; cmd_auto <= 0; cmd_stat <= 0;
+            cmd_next <= 0; cmd_auto <= 0; cmd_stat <= 0; cmd_prev <= 0;
         end else begin
-            cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_stat <= 1'b0;
+            cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_stat <= 1'b0; cmd_prev <= 1'b0;
             if (rx_val) begin
                 if (prev_val && (prev_byte == ~rx_byte)) begin
                     // 成对：执行命令并清配对状态（命令以配对首字节为准）
@@ -131,6 +137,7 @@ module uart_link #(
                         CMD_NEXT: cmd_next <= 1'b1;
                         CMD_AUTO: cmd_auto <= 1'b1;
                         CMD_STAT: cmd_stat <= 1'b1;
+                        CMD_PREV: cmd_prev <= 1'b1;
                         default: ;
                     endcase
                 end else begin
@@ -145,24 +152,27 @@ module uart_link #(
     // vk_cnt 必须 ≥ VK_PULSE_CYC-1 位宽：曾用 23 位（上限 8.38M），VK 改 10M
     // 后装载值 9,999,999 被截断成 1,609,599（≈16ms），板上永远过不了 50ms 去抖
     reg [31:0] vk_cnt;
-    reg        vk_next, vk_auto;
+    reg        vk_next, vk_auto, vk_prev;
     assign vk_next_n = ~vk_next;
     assign vk_auto_n = ~vk_auto;
+    assign vk_prev_n = ~vk_prev;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            vk_cnt <= 0; vk_next <= 0; vk_auto <= 0;
+            vk_cnt <= 0; vk_next <= 0; vk_auto <= 0; vk_prev <= 0;
         end else begin
             if (vk_cnt != 0) begin
                 vk_cnt <= vk_cnt - 1'b1;
                 if (vk_cnt == 1) begin
                     vk_next <= 1'b0;
                     vk_auto <= 1'b0;
+                    vk_prev <= 1'b0;
                 end
-            end else if (cmd_next || cmd_auto) begin
+            end else if (cmd_next || cmd_auto || cmd_prev) begin
                 vk_cnt  <= VK_PULSE_CYC - 1;
                 vk_next <= cmd_next;
                 vk_auto <= cmd_auto;
+                vk_prev <= cmd_prev;
             end
         end
     end
@@ -192,8 +202,8 @@ module uart_link #(
                 pkt[3] <= {4'b0, flag_a};
                 pkt[4] <= {4'b0, flag_b};
                 pkt[5] <= {4'b0, und_s1};
-                pkt[6] <= 8'h00;              // 保留
-                pkt[7] <= 8'h00;              // 保留
+                pkt[6] <= {3'b0, img_idx};    // 当前图索引（5bit）
+                pkt[7] <= {7'b0, img_wav};    // 该图是否配同名 WAV
                 pkt_len <= 8;
             end else if (tx_done_byte)
                 pkt_len <= pkt_len - 1'b1;

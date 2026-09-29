@@ -1,8 +1,8 @@
 // tb_uart.v — uart_link 独立自检测试台
 //
 // 覆盖：RX 位中心采样、[CMD,~CMD] 成对校验（含不成对/未知命令拒收）、
-// 虚拟按键脉冲宽度、状态包内容、毛刺拒收，以及全真实参数（10M）脉宽
-// 位宽截断回归。
+// 虚拟按键脉冲宽度（N/A/P 三向）、状态包内容（含 img_idx/wav 遥测）、
+// 毛刺拒收，以及全真实参数（10M）脉宽位宽截断回归。
 // TB 用缩短参数（VK_PULSE_CYC=5000 拍）加速，波特率与协议语义不变；
 // 宽度类问题由第二实例 dut_full（全部真实默认参数）的 T7 覆盖。
 `timescale 1ns/1ps
@@ -15,13 +15,15 @@ module tb_uart;
 
     reg  rx = 1;
     wire tx;
-    wire vk_next_n, vk_auto_n;
+    wire vk_next_n, vk_auto_n, vk_prev_n;
 
     reg  [3:0] state_code    = 4'h2;
     reg  [7:0] dbg_fat_state = 8'h08;
     reg  [3:0] flag_a        = 4'hF;
     reg  [3:0] flag_b        = 4'h9;
     reg  [3:0] dbg_underrun  = 4'h0;
+    reg  [4:0] img_idx       = 5'd3;
+    reg        img_wav       = 1'b1;
 
     uart_link #(
         .CLK_FREQ_HZ    (100_000_000),
@@ -34,17 +36,20 @@ module tb_uart;
         .tx            (tx),
         .vk_next_n     (vk_next_n),
         .vk_auto_n     (vk_auto_n),
+        .vk_prev_n     (vk_prev_n),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
         .flag_b        (flag_b),
-        .dbg_underrun  (dbg_underrun)
+        .dbg_underrun  (dbg_underrun),
+        .img_idx       (img_idx),
+        .img_wav       (img_wav)
     );
 
     // 第二实例：全部真实默认参数（VK_PULSE_CYC=10M），专测计数器位宽——
     // 短参数测试测不出 vk_cnt 位宽截断（23 位时 10M 被截成 16ms，板上
     // 永远过不了 50ms 去抖，仿真却全绿）
-    wire tx_full, vk_next_n_full, vk_auto_n_full;
+    wire tx_full, vk_next_n_full, vk_auto_n_full, vk_prev_n_full;
     uart_link dut_full (
         .clk           (clk),
         .rst           (rst),
@@ -52,11 +57,14 @@ module tb_uart;
         .tx            (tx_full),
         .vk_next_n     (vk_next_n_full),
         .vk_auto_n     (vk_auto_n_full),
+        .vk_prev_n     (vk_prev_n_full),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
         .flag_b        (flag_b),
-        .dbg_underrun  (dbg_underrun)
+        .dbg_underrun  (dbg_underrun),
+        .img_idx       (img_idx),
+        .img_wav       (img_wav)
     );
 
     integer errors = 0;
@@ -114,14 +122,16 @@ module tb_uart;
         end
     endtask
 
-    // ---- 虚拟按键脉冲宽度测量（which: 0=next 1=auto）----
+    // ---- 虚拟按键脉冲宽度测量（which: 0=next 1=auto 2=prev）----
     integer cyc;
     task wait_pulse_low(input integer which);
         begin
-            if (which == 0) @(negedge vk_next_n);
-            else            @(negedge vk_auto_n);
+            if      (which == 0) @(negedge vk_next_n);
+            else if (which == 1) @(negedge vk_auto_n);
+            else                 @(negedge vk_prev_n);
             cyc = 0;
-            while (which == 0 ? !vk_next_n : !vk_auto_n) begin
+            while (which == 0 ? !vk_next_n :
+                   which == 1 ? !vk_auto_n : !vk_prev_n) begin
                 @(posedge clk);
                 cyc = cyc + 1;
             end
@@ -176,7 +186,7 @@ module tb_uart;
         end else if (rxq[0] !== 8'hA5 || rxq[1] !== {4'b0, state_code}
                   || rxq[2] !== dbg_fat_state || rxq[3] !== {4'b0, flag_a}
                   || rxq[4] !== {4'b0, flag_b} || rxq[5] !== {4'b0, dbg_underrun}
-                  || rxq[6] !== 8'h00     || rxq[7] !== 8'h00) begin
+                  || rxq[6] !== {3'b0, img_idx} || rxq[7] !== {7'b0, img_wav}) begin
             fail_msg("T5 状态包内容不对");
             for (integer i = 0; i < 8; i = i + 1)
                 $display("      pkt[%0d]=%02x", i, rxq[i]);
@@ -186,7 +196,8 @@ module tb_uart;
         // T6: RX 毛刺（1/4 位低脉冲）不触发任何动作
         rx = 0; #(BIT_NS/4); rx = 1;
         repeat (50000) @(posedge clk);
-        if (vk_next_n === 1'b0 || vk_auto_n === 1'b0) fail_msg("T6 毛刺误触发");
+        if (vk_next_n === 1'b0 || vk_auto_n === 1'b0 || vk_prev_n === 1'b0)
+            fail_msg("T6 毛刺误触发");
         else $display("T6 glitch rejected: PASS");
 
         // T7: 真实参数（VK_PULSE_CYC=10M）脉宽——专测计数器位宽截断。
@@ -212,6 +223,14 @@ module tb_uart;
             fail_msg("T7 脉宽未超过 50ms 去抖窗");
         else
             $display("T7 full-param pulse=%0d cyc (>5M debounce): PASS", cyc);
+
+        // T8: 'P' 对 → vk_prev_n 脉冲（宽度同 N/A）
+        fork
+            uart_send_pair(8'h50);
+            wait_pulse_low(2);
+        join
+        if (cyc < 4998 || cyc > 5000) fail_msg("T8 vk_prev 脉冲宽度异常");
+        else $display("T8 vk_prev pulse=%0d cyc: PASS", cyc);
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);

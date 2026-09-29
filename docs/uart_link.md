@@ -27,16 +27,17 @@ PC 端出现为虚拟串口（Windows COMx / Linux ttyUSBx）。
 |-----|----|------|
 | 0x4E | `N` | 下一张 |
 | 0x41 | `A` | 自动轮播开关 |
+| 0x50 | `P` | 上一张 |
 | 0x53 | `S` | 回读一包状态 |
 
 - 未知字节、不成对字节**静默丢弃**。
-- `N`/`A` 以 **100 ms 低脉冲**注入按键线，与物理按键线相与后走
+- `N`/`A`/`P` 以 **100 ms 低脉冲**注入按键线，与物理按键线相与后走
   sd_card_bmp 现有去抖——零侵入复用，脉冲期间新命令被忽略。
 
 ### FPGA → PC（状态包，8 字节）
 
 ```
-A5 | state | fat_state | flagA | flagB | underrun | 00 | 00
+A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 ```
 
 | 字节 | 含义 |
@@ -46,8 +47,10 @@ A5 | state | fat_state | flagA | flagB | underrun | 00 | 00
 | flagA | {video_pll_lock, sys_pll_lock, sdr_init_done, display_valid} |
 | flagB | {hdmi_locked, fat_err, disp_buf[1:0]} |
 | underrun | {vid_stick, aud_stick, 2'b00}，1=曾发生欠载（粘滞，复位清） |
+| img_idx | 当前图索引（5bit，最近尝试项：提交/失败都更新） |
+| wav_flag | 该图是否配同名 WAV |
 
-与七段调试面板 d5..d0 **同源**，UART 包只是同一组状态的机器可读形式。
+与原七段调试面板**同源**（面板已退休，UART 是该组遥测的唯一出口）。
 flagA/flagB 为准静态电平直取；underrun 来自 74.25M 域的粘滞寄存器，
 模块内 2FF 同步。发送中的新请求丢弃（连按 S 会丢包，可接受）。
 
@@ -58,20 +61,21 @@ pip install pyserial
 python scripts/uart_console.py COM5        # 波特率默认 1M
 ```
 
-单键即发：`n` 下一张 / `a` 自动轮播 / `s` 状态回读 / `q` 退出。
+单键即发：`n` 下一张 / `p` 上一张 / `a` 自动轮播 / `s` 状态回读 / `q` 退出。
 收到的状态包自动解码打印，例：
 
 ```
-[12:01:02] state=0x2 fat=0x08 buf=1 | OK: vidPLL sysPLL SDR disp hdmi | 异常: 无
+[12:01:02] state=0x1 fat=0x08 buf=1 img=2+wav | OK: vidPLL sysPLL SDR disp hdmi | 异常: 无
 ```
 
 ## 验证
 
-`make -C boardtest uart`（Verilator，tb_uart.v）覆盖 7 项：
+`make -C boardtest uart`（Verilator，tb_uart.v）覆盖 8 项：
 
 1. N 对→虚拟按键脉冲宽度；2. 不成对拒收；3. 未知命令拒收；4. A 对→脉冲；
-5. S 对→8 字节状态包内容；6. 1/4 位毛刺拒收；7. 全真实参数（VK_PULSE_CYC=10M）
-脉宽 >5M 去抖窗（专测计数器位宽截断，dut_full 第二实例）。
+5. S 对→8 字节状态包内容（含 img_idx/wav）；6. 1/4 位毛刺拒收；
+7. 全真实参数（VK_PULSE_CYC=10M）脉宽 >5M 去抖窗（专测计数器位宽截断，
+dut_full 第二实例）；8. P 对→脉冲。
 TB 用缩短参数（VK_PULSE_CYC=5000 拍）加速，波特率与协议语义不变；
 宽度类问题由 T7 的真实参数实例覆盖。
 
