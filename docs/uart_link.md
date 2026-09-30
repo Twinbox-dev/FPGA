@@ -99,18 +99,20 @@ underrun 来自 74.25M 域的粘滞寄存器，模块内 2FF 同步。发送中�
 ## PC 端使用
 
 ```bash
-pip install pyserial
-python scripts/uart_console.py COM5        # 波特率默认 1M
+pip install flask pyserial
+python scripts/web_console/app.py          # 浏览器打开 http://127.0.0.1:5000
 ```
 
-单键即发：`n` 下一张 / `p` 上一张 / `a` 自动轮播 / `+`/`-` 音量 /
-`>`/`<` 周期 / `]`/`[` 亮度 / `s` 状态回读 / `q` 退出。
-两类包自动解码打印，例：
+Web 控制台（原 `uart_console.py` 命令行已并入并删除）：页面上选串口/波特率
+连接，按键面板单键即发（`n` 下一张 / `p` 上一张 / `a` 自动轮播 / `+`/`-` 音量 /
+`>`/`<` 周期 / `]`/`[` 亮度 / `s` 状态回读），两类包实时滚动解码，例：
 
 ```
 [12:01:02] ACK 音量- | 音量=3/8 周期=1s 亮度=4/8 img=2+wav
 [12:01:05] state=0x1 fat=0x08 buf=1 img=2+wav | OK: vidPLL sysPLL SDR disp hdmi | 异常: 无
 ```
+
+详见 `docs/web_console.md`（双控开关、以太网占位与落地顺序）。
 
 ## 验证
 
@@ -122,9 +124,8 @@ python scripts/uart_console.py COM5        # 波特率默认 1M
 脉宽 >5M 去抖窗（专测计数器位宽截断，第二实例）；8. P 对→脉冲；
 9. 音量档位/上下界钳位；10. 周期档位/钳位；11. 亮度档位/钳位 + ACK 包
 端到端内容（5A|回显|vol|per|img|wav|bri|00）。
-（TB 用缩短参数 VK_PULSE_CYC=5000 拍加速，波特率与协议语义不变。）
-TB 用缩短参数（VK_PULSE_CYC=5000 拍）加速，波特率与协议语义不变；
-宽度类问题由 T7 的真实参数实例覆盖。
+（TB 用缩短参数 VK_PULSE_CYC=5000 拍加速，波特率与协议语义不变；
+宽度类问题由 T7 的真实参数实例覆盖。）
 
 ## 调试记录（防复发）
 

@@ -15,3 +15,5 @@ img/golden/
 # 波形
 *.vcd
 *.fst
+__pycache__/
+*.pyc

@@ -354,3 +354,31 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
       aud_l/aud_r → HDMI 音频乘法器，第五轮就有的电平跨越架构，靠 aud_valid
       保持 2084 拍保证采样，非本轮引入，上板稳定佐证良性）；bri_gray 2FF 同步
       未出现在违例中。clk0 -0.627 仍为 fat32 装载链临界（历史，上板无碍）。
+
+## 2026-09-29 第十四轮：Web 控制台第一步（串口双控，以太网占位）
+
+- [x] `scripts/web_console/`（app.py + templates/index.html）：Flask + pyserial
+      + SSE 推流。双控开关（串口现 / 以太网 501 占位）；按键面板与
+      uart_console 同键；板卡回包（ACK/状态）实时滚动；键盘快捷键。
+- [x] 传输抽象：SerialLink（现）/ LoopbackLink（--loopback 开发档：命令回环
+      假 ACK，无板卡验 UI 全链路）/ EthTransport 占位——与 FPGA 侧 ctrl_core
+      分层呼应，以太网落地=后端加一个 Transport，前端/ctrl_core 不动。
+- [x] 解码复用 uart_console.py（decode_pkt/decode_ack，单一事实来源）。
+- [x] 文档 docs/web_console.md（用法/架构/接口约定/以太网落地顺序）。
+- [ ] **依赖自装**：`pip install flask pyserial`（用户环境未装，本次未代装）。
+- [ ] 待实测：真板连接（COM26）跑通页面控制 + ACK 滚动；通过后提交。
+- [x] 按用户要求收敛 PC 端工具：**`uart_console.py` 并入 `web_console/app.py`
+      并删除**（解码函数/CMDS 内置，Web 控制台成为唯一 PC 端工具）；串口号/
+      波特率改为**页面选择连接**（去掉 argparse）；命令说明与 underrun 解读
+      内嵌页面（可折叠块）；开发档改 WEB_LOOPBACK=1 环境变量。
+- [ ] 待用户实测 Web 控制台（真板 COM26 跑通页面控制 + ACK 滚动）后提交。
+      注意 flask/pyserial 需自装。
+- [x] 前端 UI 重做（仪器面板风）：玻璃拟态顶栏+分段式双控滑块、渐变按钮+
+      键位角标、终端式回包区（标签着色+clear）、underrun 命令说明内嵌可折叠块；
+      loopback 判断挪到模块级（test_client 可测），SSE 全链路冒烟通过
+      （link + ACK 推流）。
+- [x] 用户重写 UI/后端并实测通过：串口枚举下拉（USB 优先+自动选中，唯一自动连，
+      WEB_NOAUTO/WEB_BAUD）；按键按语义分组由 /api/keys 下发渲染（单一事实来源）；
+      实时指标瓦片（音量/周期/亮度/img 从 ACK/状态包文本解析+闪烁）；自动轮询
+      状态开关（1s）；hit 动画/终端式回包区等。粗查无问题（RANGE/元素 id/
+      connected 门控齐全）。docs/web_console.md 已同步。

@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>板卡控制台</title>
+<style>
+  :root {
+    --bg0:#070b12; --bg1:#0b111c;
+    --panel:rgba(18,26,40,.72); --panel-line:rgba(94,148,255,.14);
+    --fg:#e6edf6; --dim:#7d8aa0; --faint:#55617a;
+    --acc:#39d2ff; --acc2:#7c9cff; --acc-dim:rgba(57,210,255,.12);
+    --ok:#5ad19c; --err:#ff7a7a; --warn:#f2c879;
+    --mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
+    --mw:1500px;       /* 版面总宽：想更宽/更窄只改这一行 */
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; color:var(--fg);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:
+      radial-gradient(1000px 500px at 85% -10%, rgba(57,210,255,.10), transparent 60%),
+      radial-gradient(800px 500px at -10% 110%, rgba(124,156,255,.08), transparent 60%),
+      linear-gradient(180deg, var(--bg0), var(--bg1));
+    background-attachment:fixed;
+    min-height:100%;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    position:sticky; top:0; z-index:10;
+    background:rgba(11,17,28,.75); backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--panel-line);
+  }
+  .hwrap {
+    max-width:var(--mw); margin:0 auto; padding:14px 28px;
+    display:flex; align-items:center; gap:18px;
+  }
+  .logo { display:flex; align-items:center; gap:10px; }
+  .logo .dot {
+    width:10px; height:10px; border-radius:50%; background:var(--acc);
+    box-shadow:0 0 12px var(--acc); animation:pulse 2.4s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+  .logo h1 {
+    margin:0; font-size:17px; font-weight:650; letter-spacing:.5px;
+    background:linear-gradient(90deg,#e6edf6,var(--acc));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .spacer { flex:1; }
+
+  /* 分段式双控开关 */
+  .toggle {
+    position:relative; display:flex; padding:3px; border-radius:10px;
+    background:rgba(255,255,255,.05); border:1px solid var(--panel-line);
+  }
+  .toggle button {
+    position:relative; z-index:1; padding:7px 20px; border:0; border-radius:8px;
+    background:transparent; color:var(--dim); cursor:pointer; font-size:13.5px;
+    transition:color .2s;
+  }
+  .toggle button.on { color:#04121c; font-weight:700; }
+  .toggle .slide {
+    position:absolute; top:3px; bottom:3px; border-radius:8px;
+    background:linear-gradient(135deg,var(--acc),var(--acc2));
+    transition:left .22s cubic-bezier(.4,0,.2,1), width .22s cubic-bezier(.4,0,.2,1);
+  }
+  .badge {
+    display:inline-flex; align-items:center; gap:7px; padding:5px 12px;
+    border-radius:999px; font-size:12px; font-family:var(--mono);
+    border:1px solid transparent;
+  }
+  .badge .d { width:7px; height:7px; border-radius:50%; }
+  .ok   { background:rgba(90,209,156,.1);  border-color:rgba(90,209,156,.35);  color:var(--ok); }
+  .ok .d   { background:var(--ok);   box-shadow:0 0 8px var(--ok); }
+  .err  { background:rgba(255,122,122,.1); border-color:rgba(255,122,122,.35); color:var(--err); }
+  .err .d  { background:var(--err); }
+  .sub { font-size:12px; color:var(--faint); font-family:var(--mono); }
+
+  /* ---------- 布局 ---------- */
+  main {
+    max-width:var(--mw); margin:24px auto 40px; padding:0 28px;
+    display:grid; grid-template-columns:1.06fr 1fr; gap:20px;
+  }
+  .card {
+    background:var(--panel); backdrop-filter:blur(10px);
+    border:1px solid var(--panel-line); border-radius:14px; padding:18px;
+    box-shadow:0 8px 28px rgba(0,0,0,.25);
+    margin-bottom:18px;
+  }
+  .card:last-child { margin-bottom:0; }
+  .card h2 {
+    margin:0 0 14px; font-size:11.5px; letter-spacing:1.5px;
+    color:var(--faint); font-weight:700; text-transform:uppercase;
+    display:flex; align-items:center; gap:10px;
+  }
+  .card h2::after { content:""; flex:1; height:1px;
+    background:linear-gradient(90deg,var(--panel-line),transparent); }
+
+  /* ---------- 按键面板：按语义分组 ---------- */
+  .grp { margin-bottom:14px; }
+  .grp:last-child { margin-bottom:0; }
+  .grp-t {
+    display:flex; align-items:center; gap:8px; margin-bottom:8px;
+    font-size:11.5px; color:var(--faint); letter-spacing:.6px;
+  }
+  .grp-t .bar { width:3px; height:11px; border-radius:2px;
+    background:linear-gradient(180deg,var(--acc),var(--acc2)); opacity:.8; }
+  .grp-t .rg { margin-left:auto; font-family:var(--mono); font-size:10.5px; opacity:.75; }
+
+  .btns { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
+  .btns.q4 { grid-template-columns:repeat(4,1fr); }
+  .btns button {
+    position:relative; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:12px 10px; border-radius:10px; cursor:pointer;
+    background:rgba(255,255,255,.035); border:1px solid var(--panel-line);
+    color:var(--fg); font-size:13.5px; text-align:center;
+    transition:border-color .15s, background .15s, transform .08s, box-shadow .15s;
+  }
+  .btns button:hover:not(:disabled) {
+    border-color:rgba(57,210,255,.55); background:var(--acc-dim);
+    transform:translateY(-1px); box-shadow:0 8px 18px -12px var(--acc);
+  }
+  .btns button:active:not(:disabled) { transform:scale(.97); }
+  .btns button:disabled { opacity:.38; cursor:not-allowed; }
+  .btns button.hit { border-color:var(--ok); box-shadow:0 0 0 3px rgba(90,209,156,.18); }
+  .btns .ico { font-size:15px; line-height:1; opacity:.9; }
+  .btns .key {
+    display:inline-flex; justify-content:center; align-items:center;
+    min-width:26px; height:24px; padding:0 6px; border-radius:6px;
+    background:rgba(57,210,255,.13); color:var(--acc);
+    font-family:var(--mono); font-weight:700; font-size:12px;
+  }
+  /* 四宫格：图标在上、文字在下，避免挤 */
+  .btns.q4 button { flex-direction:column; gap:5px; padding:13px 6px 10px; font-size:12.5px; }
+  .btns.q4 .ico { font-size:18px; }
+
+  /* ---------- 实时指标 ---------- */
+  .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .m {
+    text-align:center; padding:11px 6px; border-radius:10px;
+    background:rgba(0,0,0,.28); border:1px solid var(--panel-line);
+  }
+  .m .v { font-family:var(--mono); font-size:24px; font-weight:700;
+    color:var(--acc); line-height:1.25; transition:color .2s; }
+  .m .v.flash { color:var(--ok); }
+  .m .k { font-size:10.5px; color:var(--faint); margin-top:2px; }
+  .m .k .u { color:var(--dim); }
+
+  /* ---------- 串口连接 ---------- */
+  .conn { display:flex; gap:8px; }
+  .conn select, .conn input {
+    flex:1; min-width:0; background:rgba(0,0,0,.35); color:var(--fg);
+    border:1px solid var(--panel-line); border-radius:8px;
+    padding:9px 12px; font-size:13px; font-family:var(--mono);
+    transition:border-color .15s;
+  }
+  .conn input { flex:0 0 118px; }
+  .conn select:focus, .conn input:focus { outline:none; border-color:var(--acc); }
+  .conn select option { background:#0b111c; }
+  .conn button {
+    padding:9px 16px; border:0; border-radius:8px; cursor:pointer;
+    font-weight:650; font-size:13px; transition:filter .15s; white-space:nowrap;
+  }
+  .conn .primary { background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#04121c; }
+  .conn .ghost   { background:transparent; color:var(--dim); border:1px solid var(--panel-line); }
+  .conn button:hover:not(:disabled) { filter:brightness(1.15); }
+  .conn button:disabled { opacity:.4; cursor:not-allowed; }
+
+  .opts { display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    margin-top:12px; padding-top:12px; border-top:1px solid var(--panel-line);
+    font-size:12px; color:var(--dim); }
+  .sw { display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none; }
+  .sw input { accent-color:var(--acc); width:14px; height:14px; }
+
+  /* ---------- 终端 ---------- */
+  .term { border:1px solid var(--panel-line); border-radius:10px; overflow:hidden;
+          background:#05080e; }
+  .termbar {
+    display:flex; align-items:center; gap:6px; padding:8px 12px;
+    background:rgba(255,255,255,.03); border-bottom:1px solid var(--panel-line);
+  }
+  .termbar .d { width:9px; height:9px; border-radius:50%; background:#2c3648; }
+  .termbar .t { margin-left:8px; font-size:11px; color:var(--faint);
+                letter-spacing:1.2px; font-family:var(--mono); }
+  .termbar .spacer { flex:1; }
+  .termbar button {
+    border:1px solid rgba(57,210,255,.55);
+    background:rgba(57,210,255,.20);
+    color:#d6f2ff; cursor:pointer; font-weight:700;
+    font-size:11px; font-family:var(--mono); padding:4px 12px; border-radius:7px;
+    letter-spacing:.4px; transition:all .15s;
+    box-shadow:0 2px 8px -4px rgba(57,210,255,.7), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .termbar button:hover:not(:disabled) {
+    color:#04121b; background:linear-gradient(135deg,var(--acc),var(--acc2));
+    border-color:var(--acc); box-shadow:0 4px 14px -6px var(--acc);
+  }
+  .termbar button:active:not(:disabled) { transform:translateY(1px); }
+  .termbar button:disabled {
+    opacity:1; cursor:default; color:var(--dim);
+    background:rgba(255,255,255,.06); border-color:var(--panel-line);
+    box-shadow:none;
+  }
+  .log {
+    height:min(46vh, 420px); overflow-y:auto; padding:10px 12px;
+    font-family:var(--mono); font-size:12.3px; line-height:1.85;
+  }
+  .log::-webkit-scrollbar { width:8px; }
+  .log::-webkit-scrollbar-thumb { background:#223047; border-radius:4px; }
+  .log .ts { color:var(--faint); }
+  .log .tag { display:inline-block; min-width:44px; text-align:center;
+              border-radius:4px; margin:0 6px; padding:0 4px; font-size:10.5px; }
+  .log .tag.ack { background:rgba(90,209,156,.14); color:var(--ok); }
+  .log .tag.st  { background:rgba(57,210,255,.14); color:var(--acc); }
+  .log .tag.err { background:rgba(255,122,122,.14); color:var(--err); }
+  .log .tag.sys { background:rgba(124,156,255,.14); color:var(--acc2); }
+  .log .row { animation:slidein .22s ease; }
+  @keyframes slidein { from{opacity:0; transform:translateY(-3px)} to{opacity:1} }
+
+  /* ---------- 提示/说明 ---------- */
+  .hint { font-size:12px; color:var(--dim); line-height:1.7; }
+  .hint b { color:var(--fg); }
+  details { margin-top:12px; }
+  summary {
+    cursor:pointer; font-size:12px; color:var(--faint);
+    display:flex; align-items:center; gap:6px; list-style:none;
+  }
+  summary::-webkit-details-marker { display:none; }
+  summary::before {
+    content:"▸"; display:inline-block; font-size:11px;
+    transition:transform .2s, color .2s;
+  }
+  details[open] summary::before { transform:rotate(90deg); color:var(--acc); }
+  summary:hover { color:var(--acc); }
+  .note { font-size:12px; color:var(--warn); margin-top:10px; }
+
+  /* ---------- 命令表 ---------- */
+  .tbl {
+    margin:10px 0 12px; border:1px solid var(--panel-line); border-radius:10px;
+    overflow:hidden; background:rgba(0,0,0,.24);
+  }
+  table.cmd { width:100%; border-collapse:collapse; }
+  table.cmd th, table.cmd td { padding:7px 12px; text-align:left; font-size:12px; }
+  table.cmd thead th {
+    font-size:10.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    color:var(--faint); background:rgba(255,255,255,.035);
+    border-bottom:1px solid var(--panel-line); white-space:nowrap;
+  }
+  table.cmd td {
+    color:var(--dim); border-bottom:1px solid rgba(94,148,255,.07); vertical-align:middle;
+  }
+  table.cmd tbody tr:last-child td { border-bottom:0; }
+  table.cmd tbody tr:hover td { background:rgba(57,210,255,.055); color:var(--fg); }
+  table.cmd td.k   { white-space:nowrap; }
+  table.cmd td.nm  { color:var(--fg); font-weight:600; white-space:nowrap; }
+  table.cmd td.rg  { font-family:var(--mono); font-size:11.5px; color:var(--acc); white-space:nowrap; }
+  table.cmd td.df  { font-family:var(--mono); font-size:11.5px; white-space:nowrap; }
+  table.cmd td.zz  { color:var(--faint); }
+  .tbl .key {
+    display:inline-flex; justify-content:center; align-items:center;
+    min-width:24px; height:23px; padding:0 6px; margin-right:3px; border-radius:6px;
+    background:rgba(57,210,255,.13); color:var(--acc);
+    font-family:var(--mono); font-weight:700; font-size:11.5px;
+  }
+  table.cmd tr.sep td {
+    padding:6px 12px; font-size:10.5px; font-weight:700; letter-spacing:1px;
+    text-transform:uppercase; color:var(--faint);
+    background:rgba(255,255,255,.02); border-bottom:1px solid var(--panel-line);
+  }
+  table.cmd tr.sep:hover td { background:rgba(255,255,255,.02); color:var(--faint); }
+  .ethcard { border-style:dashed; opacity:.8; }
+  code { font-family:var(--mono); background:rgba(255,255,255,.05);
+         padding:1px 5px; border-radius:4px; font-size:11.5px; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(16px);
+    background:rgba(18,26,40,.96); backdrop-filter:blur(10px);
+    border:1px solid var(--panel-line); color:var(--fg);
+    padding:10px 18px; border-radius:10px; font-size:13px;
+    opacity:0; pointer-events:none; transition:.25s; z-index:50;
+    box-shadow:0 18px 40px -20px #000;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.bad { border-color:rgba(255,122,122,.5); color:var(--err); }
+
+  /* 超宽屏：再放开一档，避免在 4K 上缩成一条 */
+  @media (min-width: 1800px) { :root { --mw:1700px; } }
+  @media (min-width: 2200px) { :root { --mw:1900px; } }
+
+  @media (max-width: 1240px) {
+    main { grid-template-columns:1fr 1fr; gap:16px; }
+    .m .v { font-size:21px; }
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns:1fr; padding:0 18px; }
+    .hwrap { flex-wrap:wrap; gap:10px; padding:12px 18px; }
+    .metrics { grid-template-columns:1fr 1fr; }
+    table.cmd th, table.cmd td { padding:6px 9px; font-size:11.5px; }
+    .log { height:38vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+ <div class="hwrap">
+  <div class="logo"><span class="dot"></span><h1>板卡控制台</h1></div>
+  <div class="toggle" id="toggle">
+    <div class="slide"></div>
+    <button id="mSerial" class="on">串口控制</button>
+    <button id="mEth">以太网控制</button>
+  </div>
+  <span class="spacer"></span>
+  <span id="linkBadge" class="badge err"><span class="d"></span>串口未连接</span>
+  <span class="sub">1M-8N1 · [CMD,~CMD]</span>
+ </div>
+</header>
+
+<main>
+  <!-- 左列 -->
+  <div>
+    <div class="card">
+      <h2>控制</h2>
+      <div id="pad"></div>
+      <div class="hint" id="ctlHint" style="margin-top:14px">
+        按键即发；板卡每条命令都会回 <b>ACK</b>（音量/周期/亮度当前值），
+        <b>S</b> 回系统全景状态包。
+      </div>
+    </div>
+
+    <div class="card" id="serialCard">
+      <h2>串口连接</h2>
+      <div class="conn">
+        <select id="port"><option value="">扫描中…</option></select>
+        <input id="baud" value="1000000" title="波特率">
+        <button class="primary" id="btnConn">连接</button>
+        <button class="ghost" id="btnDisc" disabled>断开</button>
+      </div>
+      <div class="opts">
+        <label class="sw"><input type="checkbox" id="autoConn" checked> 唯一串口自动连接</label>
+        <label class="sw"><input type="checkbox" id="poll"> 自动轮询状态 (1s)</label>
+        <button class="ghost" id="btnRefresh" style="padding:4px 10px;font-size:11.5px">刷新串口</button>
+      </div>
+      <div class="hint" style="margin-top:12px">
+        串口独占：使用本页前请关掉其他占用串口的程序。<br>
+        页面聚焦时可直接敲键盘发送（同面板按键）。
+      </div>
+      <details>
+        <summary>命令说明 / underrun 位解读</summary>
+        <div class="tbl">
+          <table class="cmd">
+            <thead>
+              <tr><th>键位</th><th>功能</th><th>取值范围</th><th>上电默认</th></tr>
+            </thead>
+            <tbody>
+              <tr class="sep"><td colspan="4">播放控制</td></tr>
+              <tr><td class="k"><span class="key">N</span></td><td class="nm">下一张</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
+              <tr><td class="k"><span class="key">P</span></td><td class="nm">上一张</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
+              <tr><td class="k"><span class="key">A</span></td><td class="nm">自动轮播</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
+              <tr><td class="k"><span class="key">S</span></td><td class="nm">状态回读</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
+              <tr class="sep"><td colspan="4">参数调节</td></tr>
+              <tr>
+                <td class="k"><span class="key">+</span><span class="key">-</span></td>
+                <td class="nm">音量 +/-</td><td class="rg">0–8</td><td class="df">8（原始）</td>
+              </tr>
+              <tr>
+                <td class="k"><span class="key">&gt;</span><span class="key">&lt;</span></td>
+                <td class="nm">轮播周期 +/-1s</td><td class="rg">1–10 s</td><td class="df">1 s</td>
+              </tr>
+              <tr>
+                <td class="k"><span class="key">]</span><span class="key">[</span></td>
+                <td class="nm">亮度 +/-</td><td class="rg">0–8</td><td class="df">4（原始 0 偏移）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="hint">
+          音量 <b>0</b> = 静音，<b>8</b> = 原始音量；亮度 <b>0–8</b> 共 9 档，
+          <b>4</b> 为原始亮度 0 偏移。键盘上 <code>&lt;</code> <code>&gt;</code>
+          需配合 Shift（即 Shift+, / Shift+.）。<br>
+          <b>underrun 粘滞位</b>：1 = 自复位以来显示期间读 FIFO 曾被读空过一拍，
+          保持到复位、不反映当前状态。开机首帧/切图瞬间的短暂空拍也会钉住
+          （已有稳态窗口缓解）；画面正常时亮起属历史误报，与画面异常同现才是带宽问题。
+        </div>
+      </details>
+    </div>
+
+    <div class="card ethcard" id="ethCard" style="display:none">
+      <h2>以太网控制（占位）</h2>
+      <div class="hint">
+        FPGA 侧 eth 前端尚未实现——本页已按「传输无关」预留：
+        后端 <code>/api/cmd</code> 的 eth 路由返回 501，
+        落地时只需在 <code>web_console/app.py</code> 加一个 EthTransport，
+        前端与本页结构不变。
+      </div>
+      <div class="note">数据面（图/音上传）规划走 frame_fifo_write 写口，与本控制面互不影响。</div>
+    </div>
+  </div>
+
+  <!-- 右列 -->
+  <div>
+    <div class="card">
+      <h2>实时状态</h2>
+      <div class="metrics">
+        <div class="m"><div class="v" id="mVol">–</div><div class="k">音量 <span class="u">/8</span></div></div>
+        <div class="m"><div class="v" id="mPer">–</div><div class="k">周期 <span class="u">s</span></div></div>
+        <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度 <span class="u">/8</span></div></div>
+        <div class="m"><div class="v" id="mImg">–</div><div class="k">图片 <span class="u">idx</span></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>板卡回包</h2>
+      <div class="term">
+        <div class="termbar">
+          <span class="d"></span><span class="d"></span><span class="d"></span>
+          <span class="t">SERIAL MONITOR</span>
+          <span class="spacer"></span>
+          <span class="t" id="cnt">0 条</span>
+          <button id="btnClear" disabled>✕ 清空</button>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let mode = "serial";            // serial | eth
+let connected = false, count = 0, pollTimer = null;
+const log = document.getElementById("log");
+const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
+              ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅"};
+const RANGE = {"播放":"", "音量":"0–8", "轮播周期":"1–10s", "亮度":"0–8"};
+
+/* ---------- toast ---------- */
+let toastT = null;
+function toast(msg, bad){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toastT);
+  toastT = setTimeout(()=> t.className = "toast", 2200);
+}
+
+/* ---------- 日志 ---------- */
+const btnClear = document.getElementById("btnClear");
+function addLog(cls, tag, text) {
+  const ts = new Date().toTimeString().slice(0, 8);
+  const d = document.createElement("div");
+  d.className = "row";
+  d.innerHTML = `<span class="ts">[${ts}]</span><span class="tag ${cls}">${tag}</span>`;
+  const s = document.createElement("span");
+  s.textContent = text;
+  d.appendChild(s);
+  const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  log.appendChild(d);
+  count++; document.getElementById("cnt").textContent = count + " 条";
+  btnClear.disabled = false;
+  while (log.children.length > 300) log.removeChild(log.firstChild);
+  if (nearBottom) log.scrollTop = log.scrollHeight;
+}
+btnClear.onclick = () => {
+  log.innerHTML = ""; count = 0; document.getElementById("cnt").textContent = "0 条";
+  btnClear.disabled = true;
+};
+
+function setBadge(on, port) {
+  const b = document.getElementById("linkBadge");
+  if (on) { b.className = "badge ok";  b.innerHTML = `<span class="d"></span>串口已连接 ${port || ""}`; }
+  else    { b.className = "badge err"; b.innerHTML = `<span class="d"></span>串口未连接`; }
+}
+
+/* ---------- 双控切换：serial / eth（滑块动画）---- */
+function slide() {
+  const on = document.getElementById("mSerial");
+  const off = document.getElementById("mEth");
+  const t = document.getElementById("toggle").querySelector(".slide");
+  const btn = (mode === "serial") ? on : off;
+  t.style.left = (btn.offsetLeft) + "px";
+  t.style.width = (btn.offsetWidth) + "px";
+}
+function setMode(m) {
+  mode = m;
+  document.getElementById("mSerial").className = (m === "serial") ? "on" : "";
+  document.getElementById("mEth").className = (m === "eth") ? "on" : "";
+  slide();
+  document.getElementById("ethCard").style.display = (m === "eth") ? "" : "none";
+  document.getElementById("serialCard").style.display = (m === "eth") ? "none" : "";
+  document.getElementById("ctlHint").innerHTML = (m === "eth")
+    ? "以太网控制尚未实现：FPGA 侧 eth 前端落地后本面板直接可用。"
+    : "按键即发；板卡每条命令都会回 <b>ACK</b>（音量/周期/亮度当前值），<b>S</b> 回系统全景状态包。";
+  addLog("sys", "SYS", m === "eth" ? "已切换到以太网模式（占位）" : "已切换到串口模式");
+}
+document.getElementById("mSerial").onclick = () => setMode("serial");
+document.getElementById("mEth").onclick = () => setMode("eth");
+window.addEventListener("resize", slide);
+
+/* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
+async function buildPad(){
+  let d;
+  try { d = await (await fetch("/api/keys")).json(); }
+  catch(e){ return fallbackPad(); }
+  const host = document.getElementById("pad");
+  host.innerHTML = "";
+  d.groups.forEach(g => {
+    const wrap = document.createElement("div");
+    wrap.className = "grp";
+    const q4 = g.keys.length >= 4;
+    wrap.innerHTML = `<div class="grp-t"><span class="bar"></span>${g.name}`
+      + `<span class="rg">${RANGE[g.name] || ""}</span></div>`;
+    const box = document.createElement("div");
+    box.className = "btns" + (q4 ? " q4" : "");
+    g.keys.forEach(k => {
+      const label = (d.keys.find(x => x.key === k) || {}).label || k;
+      const b = document.createElement("button");
+      b.dataset.k = k; b.disabled = !connected;
+      b.title = label;
+      b.innerHTML = q4
+        ? `<span class="ico">${ICON[k] || "●"}</span><span>${label}</span><span class="key">${k.toUpperCase()}</span>`
+        : `<span class="ico">${ICON[k] || "●"}</span><span>${label}</span><span class="key">${k.toUpperCase()}</span>`;
+      b.onclick = () => sendKey(k);
+      box.appendChild(b);
+    });
+    wrap.appendChild(box);
+    host.appendChild(wrap);
+  });
+}
+function fallbackPad(){   // /api/keys 不可用时退化为静态面板
+  const host = document.getElementById("pad");
+  host.innerHTML = `
+    <div class="grp"><div class="grp-t"><span class="bar"></span>播放</div>
+      <div class="btns q4">
+        <button data-k="p"><span class="ico">⏮</span><span>上一张</span><span class="key">P</span></button>
+        <button data-k="n"><span class="ico">⏭</span><span>下一张</span><span class="key">N</span></button>
+        <button data-k="a"><span class="ico">🔁</span><span>自动轮播</span><span class="key">A</span></button>
+        <button data-k="s"><span class="ico">📊</span><span>状态回读</span><span class="key">S</span></button>
+      </div></div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>音量<span class="rg">0–8</span></div>
+      <div class="btns">
+        <button data-k="-"><span class="ico">🔉</span><span>音量 -</span><span class="key">-</span></button>
+        <button data-k="+"><span class="ico">🔊</span><span>音量 +</span><span class="key">+</span></button>
+      </div></div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>轮播周期<span class="rg">1–10s</span></div>
+      <div class="btns">
+        <button data-k="&lt;"><span class="ico">⏩</span><span>周期 -1s</span><span class="key">&lt;</span></button>
+        <button data-k=">"><span class="ico">⏱</span><span>周期 +1s</span><span class="key">&gt;</span></button>
+      </div></div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>亮度<span class="rg">0–8</span></div>
+      <div class="btns">
+        <button data-k="["><span class="ico">🔅</span><span>亮度 -</span><span class="key">[</span></button>
+        <button data-k="]"><span class="ico">🔆</span><span>亮度 +</span><span class="key">]</span></button>
+      </div></div>`;
+  host.querySelectorAll("button").forEach(b => {
+    b.disabled = !connected;
+    b.onclick = () => sendKey(b.dataset.k);
+  });
+}
+
+/* ---------- 串口列表（自动选中 / 唯一自动连）---------- */
+async function loadPorts(autoConnect){
+  let d = {};
+  try { d = await (await fetch("/api/ports")).json(); }
+  catch(e){ toast("无法获取串口列表", true); return; }
+  const sel = document.getElementById("port"), prev = sel.value;
+  sel.innerHTML = "";
+  if (!d.count) {
+    sel.innerHTML = '<option value="">未检测到串口</option>';
+  } else {
+    d.ports.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p.device;
+      o.textContent = p.desc ? `${p.device} — ${p.desc}` : p.device;
+      o.title = p.hwid || "";
+      sel.appendChild(o);
+    });
+    sel.value = (prev && d.ports.some(p => p.device === prev))
+      ? prev : (d.suggested || d.ports[0].device);
+  }
+  if (d.baud && document.getElementById("baud").value === "1000000")
+    document.getElementById("baud").value = d.baud;
+
+  if (autoConnect && document.getElementById("autoConn").checked
+      && d.count === 1 && !connected) {
+    addLog("sys", "SYS", `检测到唯一串口 ${d.ports[0].device}，自动连接`);
+    conn();
+  }
+}
+
+/* ---------- 连接管理 ---------- */
+async function conn() {
+  const port = document.getElementById("port").value.trim();
+  const baud = parseInt(document.getElementById("baud").value) || 1000000;
+  if (!port) { toast("没有可用串口", true); return; }
+  try {
+    const r = await fetch("/api/serial/connect", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({port, baud})
+    });
+    const j = await r.json();
+    if (j.ok) toast(`串口 ${port}@${baud} 已连接`);
+    else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
+  } catch (e) {
+    addLog("err", "ERR", "请求异常: " + e); toast("请求异常", true);
+  }
+}
+document.getElementById("btnConn").onclick = conn;
+document.getElementById("btnDisc").onclick = async () => {
+  await fetch("/api/serial/disconnect", {method:"POST"}).catch(()=>{});
+  toast("已断开");
+};
+document.getElementById("btnRefresh").onclick = () => loadPorts(false);
+
+/* ---------- 命令发送 ---------- */
+async function sendKey(k) {
+  if (mode === "eth") {
+    addLog("err", "ERR", "以太网通道尚未实现（FPGA 侧待开发）");
+    return;
+  }
+  try {
+    const r = await fetch("/api/cmd", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({mode, key: k})
+    });
+    const j = await r.json();
+    if (!j.ok) addLog("err", "ERR", "发送失败: " + (j.error || r.status));
+  } catch (e) {
+    addLog("err", "ERR", "请求异常: " + e);
+  }
+  const el = document.querySelector(`#pad button[data-k="${CSS.escape(k)}"]`);
+  if (el) { el.classList.add("hit"); setTimeout(()=> el.classList.remove("hit"), 180); }
+}
+document.addEventListener("keydown", e => {
+  if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if ("npa+-<>[]s".includes(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接串口", true); }
+});
+
+/* ---------- 指标：从 ACK 文本里提取 ---------- */
+function flash(id){
+  const el = document.getElementById(id);
+  el.classList.add("flash");
+  setTimeout(()=> el.classList.remove("flash"), 400);
+}
+function parseMetrics(text){
+  const g = re => { const m = text.match(re); return m ? m[1] : null; };
+  const v = g(/音量=(\d+)/), p = g(/周期=(\d+)/), b = g(/亮度=(\d+)/), i = g(/img=(\d+)/);
+  if (v !== null){ document.getElementById("mVol").textContent = v; flash("mVol"); }
+  if (p !== null){ document.getElementById("mPer").textContent = p; flash("mPer"); }
+  if (b !== null){ document.getElementById("mBri").textContent = b; flash("mBri"); }
+  if (i !== null){ document.getElementById("mImg").textContent = i; flash("mImg"); }
+}
+
+/* ---------- 连接态同步 ---------- */
+function setLink(on, port){
+  connected = on;
+  document.getElementById("btnConn").disabled = on;
+  document.getElementById("btnDisc").disabled = !on;
+  document.getElementById("port").disabled = on;
+  document.getElementById("baud").disabled = on;
+  document.getElementById("btnRefresh").disabled = on;
+  document.querySelectorAll("#pad button").forEach(b => b.disabled = !on);
+  if (!on && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+  if (on && document.getElementById("poll").checked && !pollTimer)
+    pollTimer = setInterval(()=> sendKey("s"), 1000);
+}
+document.getElementById("poll").onchange = e => {
+  if (e.target.checked && connected){ if (!pollTimer) pollTimer = setInterval(()=> sendKey("s"), 1000); }
+  else { clearInterval(pollTimer); pollTimer = null; }
+};
+
+/* ---------- SSE：板卡回包推流 ---------- */
+function listen() {
+  const evsrc = new EventSource("/api/stream");
+  evsrc.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "link") {
+      setBadge(m.serial, m.port);
+      setLink(!!m.serial, m.port);
+      addLog(m.serial ? "sys" : "err", "SYS",
+             m.serial ? `串口已连接 ${m.port || ""}` : "串口已断开");
+    } else if (m.type === "pkt") {
+      addLog(m.kind === "ack" ? "ack" : "st",
+             m.kind === "ack" ? "ACK" : "STA", m.text);
+      parseMetrics(m.text);
+    }
+  };
+}
+
+/* ---------- 启动 ---------- */
+(async function init(){
+  await buildPad();
+  const st = await (await fetch("/api/status")).json().catch(()=>({}));
+  if (st.baud) document.getElementById("baud").value = st.baud;
+  document.getElementById("autoConn").checked = st.auto_connect !== false;
+  setBadge(!!st.serial_open, st.serial_port);
+  setLink(!!st.serial_open, st.serial_port);
+  listen();
+  slide();
+  await loadPorts(!st.serial_open);
+})();
+</script>
+</body>
+</html>
