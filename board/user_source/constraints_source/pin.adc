@@ -41,6 +41,24 @@ set_pin_assignment	{ seg_sel[3] }	{ LOCATION = F10; IOSTANDARD = LVCMOS33; DRIVE
 set_pin_assignment	{ seg_sel[4] }	{ LOCATION = E11; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }
 set_pin_assignment	{ seg_sel[5] }	{ LOCATION = D11; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }
 set_pin_assignment	{ uart_rx }	{ LOCATION = F12; IOSTANDARD = LVCMOS33; PULLTYPE = PULLUP; }
+set_pin_assignment	{ eth_rgmii_rxc }	{ LOCATION = T14; IOSTANDARD = LVCMOS33; PULLTYPE = NONE; }
+set_pin_assignment	{ eth_rgmii_rx_ctl }	{ LOCATION = T13; IOSTANDARD = LVCMOS33; PULLTYPE = NONE; }
+set_pin_assignment	{ eth_rgmii_rxd[0] }	{ LOCATION = P6; IOSTANDARD = LVCMOS33; PULLTYPE = NONE; }
+set_pin_assignment	{ eth_rgmii_rxd[1] }	{ LOCATION = M6; IOSTANDARD = LVCMOS33; PULLTYPE = NONE; }
+set_pin_assignment	{ eth_rgmii_rxd[2] }	{ LOCATION = T9; IOSTANDARD = LVCMOS33; PULLTYPE = NONE; }
+set_pin_assignment	{ eth_rgmii_rxd[3] }	{ LOCATION = N9; IOSTANDARD = LVCMOS33; PULLTYPE = NONE; }
+# RGMII 发送组：**当前=千兆**（照抄厂商 HX4S20 千兆例程 33 号）。千兆 TXC=125MHz，
+# FPGA 送出的时钟必须比数据晚约 2ns（OUTDEL=3）PHY 才采得准，否则"发得出去、
+# PC 全收不到"（2026-10-02 实测踩坑）。
+# 若要换百兆（厂商 32 号百兆例程，时序宽松不需要延迟）：
+#   eth_rgmii_txc/tx_ctl/txd[0..3] : 去掉 SLEWRATE 与 OUTDEL，DRIVESTRENGTH 改 8
+set_pin_assignment	{ eth_rgmii_txc }	{ LOCATION = T12; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 16; PULLTYPE = NONE; SLEWRATE = FAST; OUTDEL = 3; }
+set_pin_assignment	{ eth_rgmii_tx_ctl }	{ LOCATION = T7; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 16; PULLTYPE = NONE; SLEWRATE = FAST; }
+set_pin_assignment	{ eth_rgmii_txd[0] }	{ LOCATION = T4; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 16; PULLTYPE = NONE; SLEWRATE = FAST; }
+set_pin_assignment	{ eth_rgmii_txd[1] }	{ LOCATION = T6; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 16; PULLTYPE = NONE; SLEWRATE = FAST; }
+set_pin_assignment	{ eth_rgmii_txd[2] }	{ LOCATION = M7; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 16; PULLTYPE = NONE; SLEWRATE = FAST; }
+set_pin_assignment	{ eth_rgmii_txd[3] }	{ LOCATION = T8; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 16; PULLTYPE = NONE; SLEWRATE = FAST; }
+set_pin_assignment	{ eth_phy_reset }	{ LOCATION = virtualIO; }
 set_pin_assignment	{ uart_tx }	{ LOCATION = D12; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }
 #set_pin_assignment	{ vga_data[0] }	{ LOCATION = F6; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }
 #set_pin_assignment	{ vga_data[10] }	{ LOCATION = L8; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }

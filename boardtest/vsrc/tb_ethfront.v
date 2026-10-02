@@ -1,0 +1,264 @@
+// tb_ethfront.v — 以太网应用层（eth_front）自检测试台
+//
+// 为什么只测 eth_front：以太网子系统下面三层（加密 UDP 栈、TEMAC 门级网表、
+// PLL/ODDR 等厂商原语）Verilator 编不了，但**我们写的层**可以——把不可仿真的
+// 边界（UDP 栈的"应用侧接口"）用本 TB 直接扮演，就能把整条应用层链路测起来。
+// 方法对照：SD 卡的 stub_sd_card_top.v、串口的 tb_uart.v（对端由 TB 扮演）。
+//
+// 覆盖（每条都对应一个上板踩过的坑或协议不变量）：
+//   T1 RX 解命令：8 字节应用头 + [CMD,~CMD] → cmd/cmd_pending
+//   T2 握手：cmd_ack_t 翻转 → pending 清除
+//   T3 不成对帧（[C,C]）→ 不产生命令
+//   T4 pending 未清期间新命令被丢弃（防阻塞）
+//   T5 命令字节当拍正确、连续两条不串（"晚一拍"回归）
+//   T6 TX 整帧 16 字节 = AA BB CC DD 00 02 00 08 + pkt（pkt[0] 先发）
+//   T7 TX 帧长 udp_data_length == 16、valid 拍数 == 16
+//   T8 连续两帧：内容随 tx_pkt 变、字节序 LSB 先发
+//   T9 应用头里的"伪装命令对"不得被解出（头 8 字节不参与解析）
+//   T10 跨包拆分的命令对不得误配（包尾必须清配对状态）
+//   T11 栈未就绪（udp_tx_ready=0）时等住、就绪后原样发出（不丢帧）
+`timescale 1ns/1ps
+module tb_ethfront;
+
+    reg clk = 0;
+    always #5 clk = ~clk;              // 100MHz（eth 域真实是 125M，测试无关）
+    reg rst = 1;
+
+    // ---- UDP 栈应用侧接口（由本 TB 扮演）----
+    reg  [7:0]  rx_data  = 8'd0;
+    reg         rx_valid = 1'b0;
+    reg  [15:0] rx_len   = 16'd0;
+    reg         tx_ready = 1'b1;       // 栈"随时可发"
+    reg         tx_ack   = 1'b0;
+    wire [7:0]  tx_data;
+    wire        tx_request, tx_valid;
+    wire [15:0] tx_len;
+
+    // ---- 应用侧：命令握手 / 应答包 ----
+    wire [7:0]  cmd;
+    wire        cmd_pending;
+    reg         cmd_ack_t = 1'b0;
+    reg         tx_tog    = 1'b0;
+    reg  [63:0] tx_pkt    = 64'd0;
+
+    eth_front dut (
+        .app_rx_clk        (clk),
+        .app_tx_clk        (clk),
+        .reset             (rst),
+        .app_rx_data       (rx_data),
+        .app_rx_data_valid (rx_valid),
+        .app_rx_data_length(rx_len),
+        .udp_tx_ready      (tx_ready),
+        .app_tx_ack        (tx_ack),
+        .app_tx_data       (tx_data),
+        .app_tx_data_request(tx_request),
+        .app_tx_data_valid (tx_valid),
+        .udp_data_length   (tx_len),
+        .cmd               (cmd),
+        .cmd_pending       (cmd_pending),
+        .cmd_ack_t         (cmd_ack_t),
+        .tx_tog            (tx_tog),
+        .tx_pkt            (tx_pkt)
+    );
+
+    integer errors = 0;
+    task fail_msg(input [255:0] m);
+        begin
+            errors = errors + 1;
+            $display("FAIL t=%0t: %0s", $time, m);
+        end
+    endtask
+
+    // ---- 发一包 UDP 载荷：8 字节应用头 + 后续字节（payload[0] 紧跟头之后）----
+    // 头与 PC 侧 EthTransport 发的完全一致：AA BB CC DD 00 01 00 <len>
+    task send_payload(input [7:0] b0, input [7:0] b1, input integer n);   // n = 载荷字节数
+        integer i;
+        begin
+            rx_len = n[15:0];
+            @(posedge clk);
+            for (i = 0; i < 8; i = i + 1) begin
+                rx_data  = {8'hAA, 8'hBB, 8'hCC, 8'hDD, 8'h00, 8'h01, 8'h00, n[7:0]} >> (8*(7-i));
+                rx_valid = 1'b1;
+                @(posedge clk);
+            end
+            rx_data  = b0; rx_valid = 1'b1; @(posedge clk);
+            rx_data  = b1; rx_valid = 1'b1; @(posedge clk);
+            rx_valid = 1'b0; rx_data = 8'd0;   // 包尾：清配对状态
+            @(posedge clk);
+        end
+    endtask
+
+    task send_cmd(input [7:0] c);
+        begin
+            send_payload(c, ~c, 2);
+        end
+    endtask
+
+    // ---- 模拟顶层"取走命令"：翻转 cmd_ack_t，等同步链走完 ----
+    task take_cmd;
+        begin
+            @(posedge clk);
+            cmd_ack_t = ~cmd_ack_t;      // 顶层在 eth_take 拍翻转
+            repeat (6) @(posedge clk);   // 2FF 同步 + 清除
+        end
+    endtask
+
+    // ---- TX 采集：valid 期间逐拍收字节 ----
+    reg [7:0] cap [0:31];
+    integer   cap_n = 0;
+    reg       cap_en = 0;
+    always @(posedge clk) begin
+        if (cap_en && tx_valid) begin
+            cap[cap_n] = tx_data;
+            cap_n      = cap_n + 1;
+        end
+    end
+
+    // ---- 模拟栈：接受一次发送（request → ack → 收 16 字节）----
+    task tx_round(input [63:0] pkt);
+        integer guard;
+        begin
+            tx_pkt = pkt;
+            @(posedge clk);
+            tx_tog = ~tx_tog;            // 顶层每应答一次翻转一次
+            cap_n = 0; cap_en = 1;
+            // 等 request 拉高
+            guard = 0;
+            while (!tx_request && guard < 200) begin @(posedge clk); guard = guard + 1; end
+            if (!tx_request) fail_msg("TX: request 未拉高");
+            tx_ack = 1'b1;               // 栈应答
+            @(posedge clk);
+            tx_ack = 1'b0;
+            // 等 16 字节收完
+            guard = 0;
+            while (cap_n < 16 && guard < 400) begin @(posedge clk); guard = guard + 1; end
+            repeat (4) @(posedge clk);
+            cap_en = 0;
+        end
+    endtask
+
+    integer i, g;
+    reg [7:0] exp_hdr [0:7];
+    initial begin
+        exp_hdr[0]=8'hAA; exp_hdr[1]=8'hBB; exp_hdr[2]=8'hCC; exp_hdr[3]=8'hDD;
+        exp_hdr[4]=8'h00; exp_hdr[5]=8'h02; exp_hdr[6]=8'h00; exp_hdr[7]=8'h08;
+
+        repeat (10) @(posedge clk);
+        rst = 0;
+        repeat (10) @(posedge clk);
+
+        // ---- T1/T2：解命令 + 握手清除 ----
+        send_cmd(8'h4E);                          // 'N'
+        if (cmd !== 8'h4E)      fail_msg("T1 cmd 应为 0x4E");
+        if (cmd_pending !== 1'b1) fail_msg("T1 cmd_pending 未置位");
+        if (errors == 0) $display("T1 RX 解命令 [CMD,~CMD]: PASS");
+        take_cmd();
+        if (cmd_pending !== 1'b0) fail_msg("T2 ack 后 pending 未清除");
+        if (errors == 0) $display("T2 握手（ack 翻转清 pending）: PASS");
+
+        // ---- T3：不成对帧不产生命令 ----
+        send_payload(8'h4E, 8'h4E, 2);            // [C,C]：不是 ~C
+        if (cmd_pending !== 1'b0) fail_msg("T3 不成对帧产生了命令");
+        if (errors == 0) $display("T3 不成对帧拒收: PASS");
+
+        // ---- T4：pending 未清期间的命令被丢弃 ----
+        send_cmd(8'h50);                          // 'P' → pending 置位、cmd=0x50
+        if (cmd_pending !== 1'b1 || cmd !== 8'h50) fail_msg("T4 前置命令未生效");
+        send_cmd(8'h41);                          // 'A'：pending 未清，应被丢弃
+        if (cmd !== 8'h50) fail_msg("T4 pending 期间新命令竟改写了 cmd");
+        take_cmd();
+        if (cmd_pending !== 1'b0) fail_msg("T4 pending 未清除");
+        if (errors == 0) $display("T4 pending 未清时新命令丢弃: PASS");
+
+        // ---- T5：连续两条命令不串（"晚一拍"回归）----
+        send_cmd(8'h41);                          // 'A'
+        if (cmd !== 8'h41) fail_msg("T5 第一条应为 0x41");
+        take_cmd();
+        send_cmd(8'h4E);                          // 'N'
+        if (cmd !== 8'h4E) fail_msg("T5 第二条应为 0x4E（不可是上一条）");
+        if (errors == 0) $display("T5 连续命令不串（晚一拍回归）: PASS");
+        take_cmd();
+
+        // ---- T6/T7：TX 整帧 ----
+        tx_round(64'h0000_0000_0000_005A);        // pkt = 只有 pkt[0]=0x5A
+        if (cap_n !== 16) fail_msg("T6 帧长应为 16 字节");
+        for (i = 0; i < 8; i = i + 1)
+            if (cap[i] !== exp_hdr[i])
+                fail_msg("T6 应用头字节错（见下）");
+        if (cap[8] !== 8'h5A) fail_msg("T6 载荷首字节应为 tx_pkt[7:0]");
+        if (errors == 0)
+            $display("T6 TX 整帧（AA BB CC DD 00 02 00 08 + 载荷）: PASS");
+        if (tx_len !== 16'd16) fail_msg("T7 udp_data_length 应为 16");
+        if (errors == 0) $display("T7 udp_data_length = 16: PASS");
+
+        // ---- T8：再发一帧，内容随 tx_pkt 变化（连续两帧）----
+        tx_round(64'h8877_6655_4433_2211);
+        if (cap_n !== 16) fail_msg("T8 第二帧长度错");
+        if (cap[8] !== 8'h11 || cap[15] !== 8'h88)
+            fail_msg("T8 第二帧载荷字节序错（应 LSB 先发）");
+        if (errors == 0) $display("T8 连续两帧载荷字节序: PASS");
+
+        // ---- T9：应用头里伪装成命令对的字节不得被解出 ----
+        // 头 8 字节刻意放 [0x4E,0xB1]（= 'N' 的合法对），数据段放 'A' 对：
+        // 只允许解出 0x41，绝不允许解出 0x4E（否则头会被当成命令）
+        rx_len = 16'd2;
+        @(posedge clk);
+        begin : t9
+            integer k;
+            for (k = 0; k < 8; k = k + 1) begin
+                rx_data = (k == 4) ? 8'h4E : (k == 5) ? 8'hB1 : 8'h00;
+                rx_valid = 1'b1;
+                @(posedge clk);
+            end
+            rx_data = 8'h41; rx_valid = 1'b1; @(posedge clk);
+            rx_data = 8'hBE; rx_valid = 1'b1; @(posedge clk);
+            rx_valid = 1'b0;
+            @(posedge clk);
+        end
+        if (cmd !== 8'h41) fail_msg("T9 应用头伪装字节被解成了命令");
+        else $display("T9 应用头不参与命令解析: PASS");
+        take_cmd();
+
+        // ---- T10：跨包拆分的命令对不得误配 ----
+        // 包 1 尾字节放 0x4E、包 2 首字节放 0xB1：中间有包尾（valid 拉低），
+        // 配对状态必须被清掉，不能拼成一条命令
+        send_payload(8'h13, 8'h4E, 2);           // 末字节 = 0x4E
+        send_payload(8'hB1, 8'h20, 2);           // 首字节 = 0xB1（= ~0x4E）
+        if (cmd_pending !== 1'b0) fail_msg("T10 跨包拆分的命令对被误配");
+        else $display("T10 跨包不误配命令对: PASS");
+
+        // ---- T11：栈未就绪（udp_tx_ready=0）时必须等住，就绪后原样发出 ----
+        tx_ready = 1'b0;
+        tx_pkt   = 64'hDEAD_BEEF_0000_00C3;
+        @(posedge clk);
+        tx_tog = ~tx_tog;
+        cap_n = 0; cap_en = 1;
+        repeat (30) @(posedge clk);
+        if (tx_request !== 1'b0) fail_msg("T11 栈未就绪却已拉 request");
+        tx_ready = 1'b1;
+        g = 0;
+        while (!tx_request && g < 200) begin @(posedge clk); g = g + 1; end
+        if (!tx_request) fail_msg("T11 就绪后 request 未拉高");
+        tx_ack = 1'b1; @(posedge clk); tx_ack = 1'b0;
+        g = 0;
+        while (cap_n < 16 && g < 400) begin @(posedge clk); g = g + 1; end
+        repeat (4) @(posedge clk);
+        cap_en = 0;
+        if (cap_n !== 16)                       fail_msg("T11 就绪恢复后帧长错");
+        else if (cap[8] !== 8'hC3 || cap[15] !== 8'hDE)
+                                                fail_msg("T11 就绪恢复后帧内容错");
+        else $display("T11 栈未就绪时等待、就绪后原样发出: PASS");
+
+        if (errors == 0) $display("==== ALL PASS ====");
+        else             $display("==== %0d FAILED ====", errors);
+        $finish;
+    end
+
+    // 超时兜底
+    initial begin
+        #2_000_000;
+        $display("FAIL: 仿真超时");
+        $finish;
+    end
+
+endmodule

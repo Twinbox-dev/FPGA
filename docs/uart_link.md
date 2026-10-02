@@ -112,7 +112,7 @@ Web 控制台（原 `uart_console.py` 命令行已并入并删除）：页面上
 [12:01:05] state=0x1 fat=0x08 buf=1 img=2+wav | OK: vidPLL sysPLL SDR disp hdmi | 异常: 无
 ```
 
-详见 `docs/web_console.md`（双控开关、以太网占位与落地顺序）。
+详见 `docs/web_console.md`（串口/以太网双控开关，两者均已落地）。
 
 ## 验证
 

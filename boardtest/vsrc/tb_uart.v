@@ -24,6 +24,7 @@ module tb_uart;
     reg  [3:0] dbg_underrun  = 4'h0;
     reg  [4:0] img_idx       = 5'd3;
     reg        img_wav       = 1'b1;
+    reg  auto_on_r = 1'b0;                 // 自动轮播状态遥测（T12 驱动，两实例共用）
 
     // 前端：UART 成帧 → cmd；核心：ctrl_core（命令语义 + 应答/状态包内容）
     wire [7:0]  cmd_w;
@@ -66,7 +67,8 @@ module tb_uart;
         .flag_b        (flag_b),
         .dbg_underrun  (dbg_underrun),
         .img_idx       (img_idx),
-        .img_wav       (img_wav)
+        .img_wav       (img_wav),
+        .auto_on       (auto_on_r)
     );
 
     // 第二实例：全部真实默认参数（VK_PULSE_CYC=10M），专测计数器位宽——
@@ -103,7 +105,8 @@ module tb_uart;
         .flag_b        (flag_b),
         .dbg_underrun  (dbg_underrun),
         .img_idx       (img_idx),
-        .img_wav       (img_wav)
+        .img_wav       (img_wav),
+        .auto_on       (auto_on_r)
     );
 
     integer errors = 0;
@@ -186,6 +189,20 @@ module tb_uart;
         end
     endtask
 
+    // 强版排空：等到 TX 线连续空闲 200us（> 任何字节间隔），确保所有在途包发完。
+    // 固定 140us 只够 ~1.7 个包；像 T11b 那样连发 12 条命令会留下多个在途 ACK，
+    // 后续 recv 就会错收旧包（T12b 曾因此误判）。
+    integer idle_cyc;
+    task drain_tx_idle;
+        begin
+            idle_cyc = 0;
+            while (idle_cyc < 20_000) begin
+                @(posedge clk);
+                idle_cyc = tx ? idle_cyc + 1 : 0;
+            end
+        end
+    endtask
+
     initial begin
         repeat (10) @(posedge clk);
         rst = 0;
@@ -235,7 +252,7 @@ module tb_uart;
             fail_msg("T5 状态包字节数不对");
         end else if (rxq[0] !== 8'hA5 || rxq[1] !== {4'b0, state_code}
                   || rxq[2] !== dbg_fat_state || rxq[3] !== {4'b0, flag_a}
-                  || rxq[4] !== {4'b0, flag_b} || rxq[5] !== {4'b0, dbg_underrun}
+                  || rxq[4] !== {3'b0, auto_on_r, flag_b} || rxq[5] !== {4'b0, dbg_underrun}
                   || rxq[6] !== {3'b0, img_idx} || rxq[7] !== {7'b0, img_wav}) begin
             fail_msg("T5 状态包内容不对");
             for (integer i = 0; i < 8; i = i + 1)
@@ -348,6 +365,42 @@ module tb_uart;
         repeat (100) @(posedge clk);
         if (core.bri_level !== 4'd8) fail_msg("T11 亮度上界未钳位（应到 8 停住）");
         else $display("T11b brightness cmd (9档/钳位): PASS");
+        drain_tx;
+
+        // T12: 自动轮播状态遥测——状态包 flagB 字节 bit4 + ACK 的 flags 字节 bit0
+        //（Web 控制台据此显示"自动轮播 开/关"，见 docs/web_console.md）
+        auto_on_r = 1'b1;
+        drain_tx_idle;                             // T11b 连发留下的在途 ACK 必须排干净
+        fork
+            uart_send_pair(8'h53);                 // 'S' → 状态包
+            uart_recv(8);
+        join
+        if ((rxq[rxq_n-4] & 8'h10) !== 8'h10) begin
+            fail_msg("T12 状态包 flagB bit4 未反映自动轮播=开");
+            $display("      pkt[4]=%02x（应为 ??1?，即 bit4=1）", rxq[rxq_n-4]);
+        end else
+            $display("T12a 状态包 自动轮播=开（flagB bit4）: PASS");
+
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h4E);                 // 'N' → ACK
+            uart_recv(8);
+        join
+        if ((rxq[rxq_n-1] & 8'h01) !== 8'h01) begin
+            fail_msg("T12 ACK flags 字节 bit0 未反映自动轮播=开");
+            $display("      pkt[7]=%02x（应为 ??1）", rxq[rxq_n-1]);
+        end else
+            $display("T12b ACK flags 字节 自动轮播=开: PASS");
+
+        // 关掉再验一次（反向断言：确认不是恒 1）
+        auto_on_r = 1'b0;
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h4E);
+            uart_recv(8);
+        join
+        if ((rxq[rxq_n-1] & 8'h01) !== 8'h00) fail_msg("T12 ACK flags 字节 bit0 应为 0");
+        else $display("T12c ACK flags 字节 自动轮播=关: PASS");
         drain_tx;
 
         if (errors == 0) $display("==== ALL PASS ====");

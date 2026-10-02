@@ -8,6 +8,15 @@ module top(
     input                       uart_rx,        // CH340G USB-UART（1Mbaud 8N1）
     output                      uart_tx,
 
+    // 以太网 RGMII（板载 RTL8211 PHY，引脚见 pin.adc）
+    input                       eth_rgmii_rxc,
+    input                       eth_rgmii_rx_ctl,
+    input  [3:0]                eth_rgmii_rxd,
+    output                      eth_rgmii_txc,
+    output                      eth_rgmii_tx_ctl,
+    output [3:0]                eth_rgmii_txd,
+    output                      eth_phy_reset,
+
 	output [5:0]                seg_sel,
 	output [7:0]                seg_data,
 
@@ -61,6 +70,7 @@ wire        display_valid;
 wire [3:0]  state_code;
 wire [4:0]  img_idx_w;        // UART 遥测：当前图索引
 wire        img_wav_w;        // UART 遥测：该图是否配同名 WAV
+wire        auto_play_w;      // 遥测：自动轮播开关当前状态
 // ---- 板级调试面板（数码管 6 位，只读，不影响功能）----
 wire [7:0]  dbg_fat_state;   // fat32_ro FSM 状态（0=RST 1=ISSUE 2=STREAM 3=MOUNT
                              //  4=BPBDEC 5=FATDEC 6=DIRDONE 7=DATADONE 8=MOUNTED
@@ -218,6 +228,11 @@ wire vk_next_n, vk_auto_n, vk_prev_n;
 wire [7:0]  cmd_byte;
 wire        cmd_val_w, tx_req_w;
 wire [63:0] tx_pkt_w;
+wire [7:0]  uart_cmd;        // UART 前端命令出口
+wire        uart_cmd_val;
+// 以太网（RGMII ↔ 板载 RTL8211 PHY）
+// ⚠ 这些名字**已经是模块端口（ANSI 端口自带线网）**，不能再 wire 声明一遍
+//（TD 报 HDL-5372 "redeclaration of ANSI port"）。
 wire [3:0]  vol_gain;
 wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
@@ -243,7 +258,8 @@ ctrl_core #(
     .flag_b         ({hdmi_locked, dbg_fat_err, disp_buf_idx[1], disp_buf_idx[0]}),
     .dbg_underrun   (dbg_underrun),
     .img_idx        (img_idx_w),
-    .img_wav        (img_wav_w)
+    .img_wav        (img_wav_w),
+    .auto_on        (auto_play_w)
 );
 
 // UART 前端：只管 8N1 收发与 [CMD,~CMD] 成帧（命令表在 ctrl_core.v）
@@ -255,11 +271,58 @@ uart_link #(
     .rst            (rst_all),
     .rx             (uart_rx),
     .tx             (uart_tx),
-    .cmd            (cmd_byte),
-    .cmd_val        (cmd_val_w),
+    .cmd            (uart_cmd),
+    .cmd_val        (uart_cmd_val),
     .tx_req         (tx_req_w),
     .tx_pkt         (tx_pkt_w)
 );
+
+// ===================== 以太网前端（官方 TEMAC + UDP 栈，RGMII PHY）=====================
+// 子系统内 udp_clk（千兆 125M / 百兆 12.5M，见 eth_subsys 的 GIGABIT）与
+// ctrl_core(sd_card_clk) 的命令/应答用握手/toggle 跨域。
+wire        eth_cmd_pending;
+wire [7:0]  eth_cmd;
+// ⚠ 这些信号都必须在例化**之前**声明（否则端口上的名字会被隐式声明成 1bit 线网，
+// 与后面的声明冲突：HDL-7225 critical）。eth_cmd_ack_t 由 cmd_arb 驱动（wire）；
+// eth_tx_tog 在下面的 always 块里赋值（reg）。
+wire        eth_cmd_ack_t;
+reg         eth_tx_tog;
+
+eth_subsys u_eth_subsys(
+    .clk_50              (clk),
+    .rst_all             (rst_all),
+    .phy1_rgmii_rx_clk   (eth_rgmii_rxc),
+    .phy1_rgmii_rx_ctl   (eth_rgmii_rx_ctl),
+    .phy1_rgmii_rx_data  (eth_rgmii_rxd),
+    .phy1_rgmii_tx_clk   (eth_rgmii_txc),
+    .phy1_rgmii_tx_ctl   (eth_rgmii_tx_ctl),
+    .phy1_rgmii_tx_data  (eth_rgmii_txd),
+    .phy_reset           (eth_phy_reset),
+    .cmd                 (eth_cmd),
+    .cmd_pending         (eth_cmd_pending),
+    .cmd_ack_t           (eth_cmd_ack_t),
+    .tx_tog              (eth_tx_tog),
+    .tx_pkt              (tx_pkt_w)
+);
+
+// 命令仲裁 + 以太网命令握手 → 抽成 cmd_arb 模块（在 ctrl_core.v 里）。
+// 抽出来的原因：这段胶水原先只在顶层、不在任何仿真范围内，"命令晚一拍"的 bug
+// 只能上板发现；现在由 boardtest 的 tb_cmd_arb 覆盖。
+// ⚠ 模块内部必须**组合取用** eth_cmd（pending 期间稳定），给数据打拍就会晚一拍。
+cmd_arb u_cmd_arb (
+    .clk          (sd_card_clk),
+    .eth_pending  (eth_cmd_pending),
+    .eth_cmd      (eth_cmd),
+    .eth_ack_tog  (eth_cmd_ack_t),
+    .uart_cmd     (uart_cmd),
+    .uart_cmd_val (uart_cmd_val),
+    .cmd_val      (cmd_val_w),
+    .cmd_byte     (cmd_byte)
+);
+
+// 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）
+always @(posedge sd_card_clk)
+    if (tx_req_w) eth_tx_tog <= ~eth_tx_tog;
 
 // 音量增益（ctrl_core 的 vol_gain：0..8，8=原始，0=静音）：24bit 有符号 ×gain>>3。
 // gain=8 时 ≡ 原值（现有字节级音频比对用例不受影响）
@@ -311,6 +374,7 @@ sd_card_bmp #(
     .auto_period_s     (auto_period_s),
     .img_idx_out       (img_idx_w),
     .img_wav_out       (img_wav_w),
+    .auto_play_out     (auto_play_w),   // 自动轮播开关状态 → ctrl_core 打进遥测包
     .state_code        (state_code),
     .bmp_width         (16'd1280),
     .bmp_height        (16'd720),
@@ -361,6 +425,8 @@ sd_card_bmp #(
 // 遥测同源（state_code/dbg_fat_state/flag_a/flag_b/dbg_underrun 仍喂
 // uart_link 状态包）。保留 seg_scan/seg_decoder 与引脚约束供后续模块
 // 复用（通用扫描/译码器，与调试语义无关），现显示固定占位 '8'。
+// （2026-10-02 以太网定位期间曾临时改为 o_diag 诊断显示，定位完成后已拆，
+//   方法见 docs/ethernet.md 的「调试过程记录」。）
 wire [6:0] seg_ph;
 seg_decoder u_seg_ph (.bin_data(4'h8), .seg_data(seg_ph));
 seg_scan seg_scan_m0(

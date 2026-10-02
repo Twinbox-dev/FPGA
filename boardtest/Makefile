@@ -25,7 +25,7 @@ $(SIM): $(VSRCS) $(CSRCS)
 regress: $(SIM)
 	../scripts/run_all_sims.sh
 
-.PHONY: run clean regress
+.PHONY: run clean regress readeng vdelay uart ethfront cmdarb
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -48,3 +48,17 @@ vdelay:
 uart:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_uart vsrc/tb_uart.v 		../board/user_source/hdl_source/SD/uart_link.v 		../board/user_source/hdl_source/SD/ctrl_core.v 		-o sim_uart --Mdir build_uart
 	./build_uart/sim_uart
+
+# 以太网应用层自检（eth_front）：RX 解命令/握手/TX 整帧。
+# 以太网子系统下面三层（加密 UDP 栈、TEMAC 门级网表、PLL/ODDR 等厂商原语）
+# Verilator 编不了，只测我们写的应用层——不可仿真的边界（UDP 栈的应用侧接口）
+# 由本 TB 扮演，方法同 SD 卡的 stub_sd_card_top.v / 串口的 tb_uart.v。
+ethfront:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_ethfront vsrc/tb_ethfront.v ../board/user_source/hdl_source/ETH/eth_front.v -o sim_ethfront --Mdir build_ethfront
+	./build_ethfront/sim_ethfront
+
+# 命令仲裁自检（cmd_arb：多传输前端 → ctrl_core 的唯一汇合点）。
+# 这段胶水原本只在顶层、不在任何仿真范围内，"命令晚一拍"的 bug 只能上板发现。
+cmdarb:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_cmd_arb vsrc/tb_cmd_arb.v ../board/user_source/hdl_source/SD/ctrl_core.v -o sim_cmdarb --Mdir build_cmdarb
+	./build_cmdarb/sim_cmdarb

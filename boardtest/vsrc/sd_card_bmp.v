@@ -65,6 +65,7 @@ module sd_card_bmp #(
     // ---- UART 遥测：当前图索引 / 该图是否配同名 WAV（状态包保留字节）----
     output      [4:0]           img_idx_out,   // 当前/最近尝试的图索引（5bit，≤31）
     output                      img_wav_out,   // 该图有合法同名 WAV
+    output                      auto_play_out, // 自动轮播开关当前状态（遥测，与 board/ 同步）
     // ---- 板级调试面板（仅板上接线；仿真空置）----
     output      [7:0]           dbg_fat_state,
     output                      dbg_fat_err,
@@ -392,6 +393,7 @@ module sd_card_bmp #(
     assign prev_idx   = bmp_prv_map[6*img_idx[4:0] +: 6];
     assign img_idx_out = img_idx[4:0];     // UART 遥测
     assign img_wav_out = pair_valid[img_idx[4:0]];
+    assign auto_play_out = auto_play_en;
 
     assign dbg_fat_state = fat_dbg;
     assign dbg_fat_err   = fat_err;

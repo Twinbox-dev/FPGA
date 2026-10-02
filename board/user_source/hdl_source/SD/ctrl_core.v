@@ -55,7 +55,8 @@ module ctrl_core #(
     input  [3:0]        flag_b,
     input  [3:0]        dbg_underrun,        // clk 域粘滞位，内部 2FF 同步
     input  [4:0]        img_idx,
-    input               img_wav
+    input               img_wav,
+    input               auto_on             // 自动轮播开关当前状态（sd_card_bmp 遥测）
 );
     // ================= 命令语义 =================
     localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_PREV = 8'h50,
@@ -144,9 +145,13 @@ module ctrl_core #(
     // 'S' 的应答内容：A5 | state | fat | flagA | flagB | underrun | img | wav
     wire [63:0] status_pkt;
     assign tx_req = v2;
+    // ⚠ 每个字段都必须是**整字节**。曾把 pkt[6] 写成 {3'b0, bri_level}（7 位），
+    //   整条拼接到不了 64 位 → 赋值给 tx_pkt[63:0] 时高位补零，**所有字段错位半个
+    //   字节**；只因原来 pkt[7] 恒 0 才没暴露（新加的 auto 标志位一比就露馅，
+    //   tb_uart T12 抓住）。判据：拼接总位宽必须正好 64。
     assign tx_pkt = d2_stat ? status_pkt :
-                    {8'h00,                       // pkt[7] 保留
-                     {3'b0, bri_level},           // pkt[6] 亮度档位
+                    {{7'b0, auto_on},             // pkt[7] 标志位：bit0=自动轮播开关
+                     {4'b0, bri_level},           // pkt[6] 亮度档位
                      {7'b0, img_wav},             // pkt[5] 该图配 WAV
                      {3'b0, img_idx},             // pkt[4] 当前图索引
                      {4'b0, auto_period_s},       // pkt[3] 轮播周期（秒）
@@ -196,9 +201,46 @@ module ctrl_core #(
     assign status_pkt = {{7'b0, img_wav},
                          {3'b0, img_idx},
                          {4'b0, und_s1},
-                         {4'b0, flag_b},
+                         {3'b0, auto_on, flag_b},   // flagB 字节空出的 bit4 = 自动轮播开关
                          {4'b0, flag_a},
                          dbg_fat_state,
                          {4'b0, state_code},
                          8'hA5};
+endmodule
+
+// ---------------------------------------------------------------------------
+// cmd_arb — 多传输前端的命令仲裁（2026-10-02 从顶层抽出，为了可测）
+//
+// 顶层原先这段 10 行胶水不在任何仿真范围内，导致"命令晚一拍"的 bug 只能上板
+// 发现（按 N 回来的是上一条 A 的 ACK）。抽成本模块后由 tb_cmd_arb 覆盖。
+//
+// 职责：把「以太网前端的异步握手（pending 电平 + 稳定命令字节）」和「串口前端的
+// 同域单拍 valid」汇成 ctrl_core 要的 (cmd_val, cmd_byte)，并把取走确认
+// （eth_ack_tog 翻转）回给 eth_front 清 pending。
+//
+// ⚠ 命令字节必须**组合取用** eth_cmd——它从 pending 置位到被 ack 清除之间是稳定的
+//（eth_front 保证），同步器已提供足够余量；若给数据打一拍，那一拍送出的会是
+// **上一条**命令，且本拍命令被丢弃（每次按键的效果推迟到下一次按键）。
+// ---------------------------------------------------------------------------
+module cmd_arb (
+    input  wire        clk,             // 与 ctrl_core 同域（板上 sd_card_clk）
+    input  wire        eth_pending,     // 以太网：命令就绪（电平，取走前保持）
+    input  wire [7:0]  eth_cmd,         // 以太网：命令字节（pending 期间稳定）
+    output reg         eth_ack_tog,     // 取走确认（翻转 → eth_front 清 pending）
+    input  wire [7:0]  uart_cmd,        // 串口：命令字节（同域、单拍有效）
+    input  wire        uart_cmd_val,
+    output wire        cmd_val,         // → ctrl_core
+    output wire [7:0]  cmd_byte         // → ctrl_core
+);
+    reg [2:0] pend_sync;
+    always @(posedge clk)
+        pend_sync <= {pend_sync[1:0], eth_pending};
+
+    wire eth_take = pend_sync[1] & ~pend_sync[2];      // pending 上升沿（同步后）
+
+    always @(posedge clk)
+        if (eth_take) eth_ack_tog <= ~eth_ack_tog;
+
+    assign cmd_val  = eth_take | uart_cmd_val;
+    assign cmd_byte = eth_take ? eth_cmd : uart_cmd;   // 组合取用，勿打拍！
 endmodule

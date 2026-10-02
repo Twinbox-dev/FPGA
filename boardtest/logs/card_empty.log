@@ -1,5 +1,4 @@
 ===== board sd_card_bmp 验证 (img/card_empty.img, golden: OK, 0 项) =====
   期望顺序: 首图=0 第二=0 第三=0
-  [SIM_FAST] SD 直连扇区档：SPI 协议栈不在本次覆盖内
   PASS: S0 空卡：无图不装载不挂死
 ===== 1 passed, 0 failed =====

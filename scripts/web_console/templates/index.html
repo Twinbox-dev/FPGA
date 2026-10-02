@@ -125,6 +125,9 @@
   .btns button:active:not(:disabled) { transform:scale(.97); }
   .btns button:disabled { opacity:.38; cursor:not-allowed; }
   .btns button.hit { border-color:var(--ok); box-shadow:0 0 0 3px rgba(90,209,156,.18); }
+  /* 自动轮播按钮的"当前开着"状态（由板卡遥测驱动，见 parseMetrics） */
+  .btns button.on { border-color:var(--ok); box-shadow:0 0 0 2px rgba(90,209,156,.45) inset; }
+  .btns button.on .key { background:var(--ok); color:#06231a; }
   .btns .ico { font-size:15px; line-height:1; opacity:.9; }
   .btns .key {
     display:inline-flex; justify-content:center; align-items:center;
@@ -137,15 +140,16 @@
   .btns.q4 .ico { font-size:18px; }
 
   /* ---------- 实时指标 ---------- */
-  .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  /* 5 个瓦片排一行：列数=瓦片数，否则第 5 个会掉到第二行显眼地空一半 */
+  .metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
   .m {
-    text-align:center; padding:11px 6px; border-radius:10px;
+    text-align:center; padding:9px 3px; border-radius:9px;
     background:rgba(0,0,0,.28); border:1px solid var(--panel-line);
   }
-  .m .v { font-family:var(--mono); font-size:24px; font-weight:700;
+  .m .v { font-family:var(--mono); font-size:21px; font-weight:700;
     color:var(--acc); line-height:1.25; transition:color .2s; }
   .m .v.flash { color:var(--ok); }
-  .m .k { font-size:10.5px; color:var(--faint); margin-top:2px; }
+  .m .k { font-size:10px; color:var(--faint); margin-top:2px; white-space:nowrap; }
   .m .k .u { color:var(--dim); }
 
   /* ---------- 串口连接 ---------- */
@@ -297,7 +301,7 @@
   @media (max-width: 900px) {
     main { grid-template-columns:1fr; padding:0 18px; }
     .hwrap { flex-wrap:wrap; gap:10px; padding:12px 18px; }
-    .metrics { grid-template-columns:1fr 1fr; }
+    .metrics { grid-template-columns:repeat(3,1fr); }
     table.cmd th, table.cmd td { padding:6px 9px; font-size:11.5px; }
     .log { height:38vh; }
   }
@@ -388,14 +392,19 @@
     </div>
 
     <div class="card ethcard" id="ethCard" style="display:none">
-      <h2>以太网控制（占位）</h2>
-      <div class="hint">
-        FPGA 侧 eth 前端尚未实现——本页已按「传输无关」预留：
-        后端 <code>/api/cmd</code> 的 eth 路由返回 501，
-        落地时只需在 <code>web_console/app.py</code> 加一个 EthTransport，
-        前端与本页结构不变。
+      <h2>以太网连接</h2>
+      <div class="conn">
+        <input id="ethIp" value="192.168.137.2" title="板卡 IP" style="min-width:150px">
+        <button class="primary" id="btnEthConn">连接</button>
+        <button class="ghost" id="btnEthDisc" disabled>断开</button>
       </div>
-      <div class="note">数据面（图/音上传）规划走 frame_fifo_write 写口，与本控制面互不影响。</div>
+      <div class="hint" style="margin-top:12px">
+        板卡固定 <b>192.168.137.2:1</b>，回包发本机 <b>192.168.137.1:2</b>——
+        本机网卡需有 <b>192.168.137.1/24</b>（子网掩码 255.255.255.0），网线直连即可。<br>
+        首次连接 Windows 防火墙会询问是否放行 python 监听 UDP 端口 2，选「允许」。<br>
+        命令帧与串口同款 <code>[CMD,~CMD]</code>，UDP 载荷 = 8 字节应用头 + 2 字节命令。
+      </div>
+      <div class="note">先点「连接」再发命令；板卡侧 UDP 无连接，未收到 ACK 先查网线与 IP 网段。</div>
     </div>
   </div>
 
@@ -408,6 +417,7 @@
         <div class="m"><div class="v" id="mPer">–</div><div class="k">周期 <span class="u">s</span></div></div>
         <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度 <span class="u">/8</span></div></div>
         <div class="m"><div class="v" id="mImg">–</div><div class="k">图片 <span class="u">idx</span></div></div>
+        <div class="m"><div class="v" id="mAuto">–</div><div class="k">自动轮播</div></div>
       </div>
     </div>
 
@@ -432,6 +442,7 @@
 <script>
 let mode = "serial";            // serial | eth
 let connected = false, count = 0, pollTimer = null;
+const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
 const log = document.getElementById("log");
 const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
               ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅"};
@@ -469,10 +480,10 @@ btnClear.onclick = () => {
   btnClear.disabled = true;
 };
 
-function setBadge(on, port) {
+function setBadge(on, text) {
   const b = document.getElementById("linkBadge");
-  if (on) { b.className = "badge ok";  b.innerHTML = `<span class="d"></span>串口已连接 ${port || ""}`; }
-  else    { b.className = "badge err"; b.innerHTML = `<span class="d"></span>串口未连接`; }
+  b.className = "badge " + (on ? "ok" : "err");
+  b.innerHTML = `<span class="d"></span>${text || (on ? "已连接" : "未连接")}`;
 }
 
 /* ---------- 双控切换：serial / eth（滑块动画）---- */
@@ -492,9 +503,16 @@ function setMode(m) {
   document.getElementById("ethCard").style.display = (m === "eth") ? "" : "none";
   document.getElementById("serialCard").style.display = (m === "eth") ? "none" : "";
   document.getElementById("ctlHint").innerHTML = (m === "eth")
-    ? "以太网控制尚未实现：FPGA 侧 eth 前端落地后本面板直接可用。"
+    ? "按键即发（走以太网 UDP）；板卡每条命令都会回 <b>ACK</b>，<b>S</b> 回系统全景状态包。"
     : "按键即发；板卡每条命令都会回 <b>ACK</b>（音量/周期/亮度当前值），<b>S</b> 回系统全景状态包。";
-  addLog("sys", "SYS", m === "eth" ? "已切换到以太网模式（占位）" : "已切换到串口模式");
+  // 连接态随传输切换：两个通道各自独立，互不影响
+  const on = !!connState[m];
+  const name = (m === "eth") ? "以太网" : "串口";
+  setBadge(on, on ? `${name}已连接` : `${name}未连接`);
+  setLink(on, "");
+  addLog("sys", "SYS", m === "eth"
+    ? `已切换到以太网模式（${connState.eth ? "已连接" : "未连接"}）`
+    : `已切换到串口模式（${connState.serial ? "已连接" : "未连接"}）`);
 }
 document.getElementById("mSerial").onclick = () => setMode("serial");
 document.getElementById("mEth").onclick = () => setMode("eth");
@@ -591,36 +609,48 @@ async function loadPorts(autoConnect){
   }
 }
 
-/* ---------- 连接管理 ---------- */
+/* ---------- 连接管理（串口/以太网各自连接，切换模式只换发送路径）---------- */
+async function post(url, body) {
+  try {
+    const r = await fetch(url, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body || {})
+    });
+    return await r.json();
+  } catch (e) {
+    addLog("err", "ERR", "请求异常: " + e); toast("请求异常", true);
+    return {ok: false, error: String(e)};
+  }
+}
+
 async function conn() {
   const port = document.getElementById("port").value.trim();
   const baud = parseInt(document.getElementById("baud").value) || 1000000;
   if (!port) { toast("没有可用串口", true); return; }
-  try {
-    const r = await fetch("/api/serial/connect", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({port, baud})
-    });
-    const j = await r.json();
-    if (j.ok) toast(`串口 ${port}@${baud} 已连接`);
-    else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
-  } catch (e) {
-    addLog("err", "ERR", "请求异常: " + e); toast("请求异常", true);
-  }
+  const j = await post("/api/serial/connect", {port, baud});
+  if (j.ok) toast(`串口 ${port}@${baud} 已连接`);
+  else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
 }
+
+async function ethConn() {
+  const board = document.getElementById("ethIp").value.trim() || "192.168.137.2";
+  const j = await post("/api/eth/connect", {board});
+  if (j.ok) toast(`以太网 ${board}:1 已连接`);
+  else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
+}
+
 document.getElementById("btnConn").onclick = conn;
 document.getElementById("btnDisc").onclick = async () => {
-  await fetch("/api/serial/disconnect", {method:"POST"}).catch(()=>{});
-  toast("已断开");
+  await post("/api/serial/disconnect"); toast("串口已断开");
 };
 document.getElementById("btnRefresh").onclick = () => loadPorts(false);
+document.getElementById("btnEthConn").onclick = ethConn;
+document.getElementById("btnEthDisc").onclick = async () => {
+  await post("/api/eth/disconnect"); toast("以太网已断开");
+};
 
 /* ---------- 命令发送 ---------- */
 async function sendKey(k) {
-  if (mode === "eth") {
-    addLog("err", "ERR", "以太网通道尚未实现（FPGA 侧待开发）");
-    return;
-  }
   try {
     const r = await fetch("/api/cmd", {
       method: "POST",
@@ -650,10 +680,18 @@ function flash(id){
 function parseMetrics(text){
   const g = re => { const m = text.match(re); return m ? m[1] : null; };
   const v = g(/音量=(\d+)/), p = g(/周期=(\d+)/), b = g(/亮度=(\d+)/), i = g(/img=(\d+)/);
+  const a = g(/自动轮播=(开|关)/);          // 来自 ACK 的 flags 字节 / 状态包的 flagB bit4
   if (v !== null){ document.getElementById("mVol").textContent = v; flash("mVol"); }
   if (p !== null){ document.getElementById("mPer").textContent = p; flash("mPer"); }
   if (b !== null){ document.getElementById("mBri").textContent = b; flash("mBri"); }
   if (i !== null){ document.getElementById("mImg").textContent = i; flash("mImg"); }
+  if (a !== null){                          // 瓦片 + A 按钮高亮同步
+    const on = (a === "开");
+    document.getElementById("mAuto").textContent = a;
+    flash("mAuto");
+    const btn = document.querySelector('#pad button[data-k="a"]');
+    if (btn) btn.classList.toggle("on", on);
+  }
 }
 
 /* ---------- 连接态同步 ---------- */
@@ -664,6 +702,9 @@ function setLink(on, port){
   document.getElementById("port").disabled = on;
   document.getElementById("baud").disabled = on;
   document.getElementById("btnRefresh").disabled = on;
+  document.getElementById("btnEthConn").disabled = on;
+  document.getElementById("btnEthDisc").disabled = !on;
+  document.getElementById("ethIp").disabled = on;
   document.querySelectorAll("#pad button").forEach(b => b.disabled = !on);
   if (!on && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
   if (on && document.getElementById("poll").checked && !pollTimer)
@@ -680,10 +721,15 @@ function listen() {
   evsrc.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === "link") {
-      setBadge(m.serial, m.port);
-      setLink(!!m.serial, m.port);
-      addLog(m.serial ? "sys" : "err", "SYS",
-             m.serial ? `串口已连接 ${m.port || ""}` : "串口已断开");
+      const mk = m.mode || "serial";
+      connState[mk] = !!m.connected;
+      const name = (mk === "eth") ? "以太网" : "串口";
+      if (mk === mode) {                 // 只反映当前模式的连接态
+        setBadge(mk, m.connected ? `${name}已连接 ${m.port || ""}` : `${name}未连接`);
+        setLink(!!m.connected, m.port);
+      }
+      addLog(m.connected ? "sys" : "err", "SYS",
+             m.connected ? `${name}已连接 ${m.port || ""}` : `${name}已断开`);
     } else if (m.type === "pkt") {
       addLog(m.kind === "ack" ? "ack" : "st",
              m.kind === "ack" ? "ACK" : "STA", m.text);
@@ -697,9 +743,12 @@ function listen() {
   await buildPad();
   const st = await (await fetch("/api/status")).json().catch(()=>({}));
   if (st.baud) document.getElementById("baud").value = st.baud;
+  if (st.eth_board) document.getElementById("ethIp").value = st.eth_board;
   document.getElementById("autoConn").checked = st.auto_connect !== false;
-  setBadge(!!st.serial_open, st.serial_port);
-  setLink(!!st.serial_open, st.serial_port);
+  connState.serial = !!st.serial_open;
+  connState.eth = !!st.eth_open;
+  setBadge(connState.serial, connState.serial ? `串口已连接 ${st.serial_port || ""}` : "串口未连接");
+  setLink(connState.serial, st.serial_port);
   listen();
   slide();
   await loadPorts(!st.serial_open);

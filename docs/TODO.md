@@ -382,3 +382,96 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
       实时指标瓦片（音量/周期/亮度/img 从 ACK/状态包文本解析+闪烁）；自动轮询
       状态开关（1s）；hit 动画/终端式回包区等。粗查无问题（RANGE/元素 id/
       connected 门控齐全）。docs/web_console.md 已同步。
+
+## 2026-09-30 第十五轮：以太网移植（官方 TEMAC + UDP 栈），待用户 TD 侧操作
+
+- [x] 发现官方 demo `32_Ethernet_test`（APUG013 UDP 参考设计）：TEMAC_CORE
+      官方 MAC IP + udp_ip_protocol_stack 官方协议栈 + RGMII PHY（板载
+      RTL8211）——自写 MAC 2-3 周的工作量被官方 IP 取代，W5500 方案废弃。
+- [x] 移植：demo 的 15 个源文件拷入 board/.../ETH/（temac_block、rgmii 接口、
+      IDDR/ODDR、client fifo、时钟生成等原样；不拷 tpg/loopback/test 顶层）；
+      新写 `eth_front.v`（应用层：RX 跳 8 字节头解析 [CMD,~CMD]，TX 组头+应答
+      包 16 字节；不依赖 demo 缺失的 ram_fifo 库宏）+ `eth_subsys.v`（子系统
+      打包：时钟/复位/UDP 栈/TEMAC/fifo/eth_front，网络配置 192.168.137.2
+      百兆）；top 集成 + 命令仲裁（eth 优先）+ RGMII 引脚（demo adc 同款）+ .al
+      登记 18 项（TEMAC_CORE.ipc 在 IP_FILE 段）。
+- [x] tb_uart 12 项回归全绿（top/ctrl_core 改动不涉主仿真路径）。
+- [x] 文档 docs/ethernet.md（网络配置/帧格式/文件清单/CDC 设计/待办）。
+- [ ] **用户 TD 侧**：重新生成 TEMAC_CORE.ipc → 综合 → 查新时钟域时序 →
+      上板网线直连（PC 侧 192.168.137.1/24）。
+- [x] **Web 控制台 EthTransport + eth 模式落地**（2026-10-01）：后端 UDP socket
+      （bind 本机 :2 收包/发往板卡 :1，剥 8 字节应用头解码）；两条链路共享
+      `SUBS` 订阅表推同一条 SSE；前端双控开关改为两通道**各自独立连接**
+      （`connState`），eth 卡片换成真实连接面板（板卡 IP 输入 + 连接/断开）。
+      未上板验证（待网线），本机路由/收发已用测试客户端冒烟通过。
+- [ ] **遗留风险**：①应用头格式从 tpg 源码反推（APUG013 PDF 加密未读），若
+      上板不通先核对头的字节序/长度语义；②demo 顶层 udp 栈 RX 有
+      `.temac_rx_valid(!temac_rx_valid)` 取反（fifo _n 低有效），已照抄；
+      ③TX 首字节时序（ack 拍 valid 置位、SEND 拍出 buf[0]）需上板验证。
+- [x] **上板验证通过（2026-09-29）：ACK 应答 + 亮度 全部正常，功能一切稳定。提交。**
+- [x] 用户重综合通过（无需手动生成 TEMAC IP——TEMAC_CORE_gate.v 网表直接参与
+      综合，.ipc 留作以后重新生成的配置）。时序复核见 docs/ethernet.md：
+      **setup 全局 0 违例**，以太网各域干净；hold 主体为 eth↔sd 跨域握手
+      路径伪违例（2FF 同步覆盖，功能安全），已记录判读依据。
+- [x] **根因④（最根本，千兆收发时钟）**：RGMII 时钟接法是从**百兆** demo 抄的
+      （`gtx_clk/gtx_clk_90` 都接 0° 时钟、`rgmii_rxc` 直连原时钟）。千兆 125MHz
+      必须移相 90°。已照厂商 **HX4S20 千兆例程**（`DEMO/33_HX4S20_Etherent_test_
+      01_02_final_1000`）改：`gtx_clk=clk_125_out`、`gtx_clk_90=temac_clk90`、
+      `rgmii_rxc=rx_pll 的 clk1_out`。**rx_pll 内联在 eth_subsys.v**（不单独建
+      文件——TD 保存工程时会覆盖 .al，手工新增的源文件条目会被抹掉、报
+      `xxx is a black box`；生成出来的 IP 本就是 EG_PHY_PLL 原语包装）。
+      症状：收发全废（收到的字节是垃圾、发出去的 PC 收不到），但链路协商正常。
+      ⚠ rx_pll FIN=125M 仅千兆可用。
+- [x] **以太网控制实测通过（2026-10-02）**：ping 9/10 通；Web 控制台 eth 模式
+      下所有命令（N/P/A/S/音量/周期/亮度）都能触发、ACK 正常。
+- [x] **根因⑤（命令晚一拍）**：顶层命令仲裁用寄存器 `eth_cmd_c` 送 ctrl_core，
+      非阻塞赋值让 `eth_take` 那一拍送出的还是**上一条**命令，且本拍命令被丢。
+      表现：ACK 错位一拍（按 N 回 A 的 ACK）、画面"感觉慢几秒"。已改为组合取用
+      `eth_cmd`。**这条是用户实测发现的**（"按下自动轮播，再按下一张，回来的是
+      自动轮播的 ACK"）。
+- [x] **顺手修掉**：`eth_front` 发送漏发 8 字节应用头（`tx_buf` 只有 64 位却按
+      16 字节索引），改 128 位整帧 `{tx_pkt, TX_HDR}`。
+- [x] **补 eth 仿真**（2026-10-02，用户要求）：`tb_ethfront`（11 项，含应用头不
+      参与解析/跨包不误配/栈未就绪不丢帧）+ 把顶层仲裁抽成 `cmd_arb` 模块
+      （放 `ctrl_core.v` 内，不新增文件以免被 TD 覆盖 .al）并补 `tb_cmd_arb`
+      （6 项，含"连续两条命令不串"）。两个 TB 都做了**变异验证**：
+      - 应用头改回旧写法 → tb_ethfront T6/T8 FAIL
+      - 命令字节过寄存器打拍 → tb_cmd_arb T1/T2/T4 FAIL（复现"ACK 错位"症状）
+- [x] **自动轮播状态遥测**（2026-10-02）：`sd_card_bmp.auto_play_out` →
+      `ctrl_core.auto_on` → ACK 的 flags 字节 bit0 + 状态包 flagB bit4；
+      前端加指标瓦片 + A 按钮高亮。**顺带抓出并修掉一个潜伏 bug**：ACK 拼接
+      只有 63 位（`{3'b0, bri_level}` 少一位）→ 高位补零、字段错位半字节。
+- [x] **HDL critical 全清**（2026-10-02）：隐式声明（HDL-7225）改为先声明后用、
+      RGMII 端口重复声明（HDL-5372）删除、`tx_rdy_w` 重复声明（HDL-5007）删除。
+- [x] **速率决定（2026-10-02，用户拍板）**：**跑千兆**。综合时序有违例
+      （125M eth 域 Fmax 44MHz、setup -5.3ns/281 端点，SDRAM 域也被拖），
+      **属已知且接受的风险**——功能实测通过、最坏只影响以太网模块本身。
+      `GIGABIT` 参数 + `pin.adc` 注释保留了切回百兆的完整方法（百兆时序全绿）。
+- [x] **根因③（千兆发送）**：RGMII 发送引脚缺 `OUTDEL`——千兆 TXC=125MHz 时
+      时钟须比数据晚 ~2ns 才采得准。已照厂商 **HX4S20 千兆例程**
+      （`DEMO/33_HX4S20_Etherent_test_01_02_final_1000`）改 `pin.adc`：
+      `txc {DS=16; SLEWRATE=FAST; OUTDEL=3;}`、`tx_ctl/txd {DS=16; SLewRATE=FAST;}`。
+      症状：链路/接收全正常、板子也在发包，但 PC 收不到任何字节。
+- [x] **根因⑥（复位后 eth 永久失效，2026-10-02 二次上板）**：按复位键打断以太网
+      后 IP 回不来（显示/串口正常、PHY 链路仍在 1G、拔插网线无效 → 只有板内 eth
+      逻辑死了）。我们自己的状态全部有复位且自校正、IP 暴露的复位一个没漏 →
+      只能是 IP 内部（门级网表/加密 IP 的初始化多半只在配置时刻生效）。
+      已改：`eth_subsys` 只上电复位一次（`eth_rst_latch`），按键复位不再打断 eth。
+      卡死时用断电重上电恢复。
+- [ ] **以太网功能实测待网线**（PC 侧 192.168.137.1 + Web 控制台 eth 模式）。
+- [x] **首次上板实测（2026-10-02，网线到位）：ping 不通，定位到两个根因**——
+      **①（主因）`eth_rst_in` 极性接反**：`clk_gen_rst_gen.reset` 高有效，
+      demo 的 `~key1`（按键平时为高）在"不按"时是 0；我们的 `rst_all` 平时
+      已是 0，却写成 `~rst_all` → 平时恒 1 → 整个以太网子系统永久复位
+      （PHY 链路仍正常协商，故现象极迷惑）。已改为 `eth_rst_in = rst_all`。
+      **②
+      `input_local_ip_address_valid`/`input_local_udp_port_num_valid` 移植时
+      错接 `1'b0`（以为"不用动态 IP/端口"），官方栈靠该 valid 装载地址/端口，
+      0 = 从未装载 → 板卡无 IP → ARP 不回。已改回 demo 用法（valid 恒 1 +
+      常量地址/端口）。另发现官方 demo 上电 IP 是 240.**0**（每 10 分钟 +1），
+      用 demo 验链路要 ping 240.0。详见 docs/ethernet.md。
+- [x] **网络配置改为 192.168.137.x**（2026-10-01，用户笔记本地址）：板卡
+      `LOCAL_IP=192.168.137.2` / 回包 `DST_IP=192.168.137.1`（子网 255.255.255.0），
+      端口 1/2 不变；eth_subsys.v 参数 + 头注释、docs/ethernet.md、docs/web_console.md
+      同步。
+- [ ] 可选优化：SDC 加 eth↔sd 跨域 set_false_path（当前伪违例已记录判读依据）。
