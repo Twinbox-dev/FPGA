@@ -17,3 +17,4 @@ img/golden/
 *.fst
 __pycache__/
 *.pyc
+.lock.f

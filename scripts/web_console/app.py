@@ -42,10 +42,10 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 # ---------------------------------------------------------------------------
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
-        "]": 0x5D, "[": 0x5B}
+        "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
-        "]": "亮度+", "[": "亮度-"}
+        "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-"}
 
 
 def send_bytes(key: str) -> bytes:
@@ -74,10 +74,11 @@ def decode_pkt(pkt: bytes) -> str:
     und_s = " ".join(flags_und[i] for i in range(2) if bits_und[i])
 
     auto_on = (fb >> 4) & 1              # flagB 字节空出的 bit4 = 自动轮播开关
+    ct      = (fa >> 4) & 0xF            # flagA 字节空出的高 4 位 = 对比度档位
 
     return (f"state=0x{state:X} fat=0x{fat:02X} buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
-            f"自动轮播={'开' if auto_on else '关'} | "
+            f"对比度={ct}/6 自动轮播={'开' if auto_on else '关'} | "
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
 
 
@@ -91,15 +92,19 @@ def decode_ack(pkt: bytes) -> str:
     _, cmd, vol, per, img, wav, bri, flags = pkt[:8]
     name = {0x4E: "下一张", 0x50: "上一张", 0x41: "自动轮播",
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
-            0x5D: "亮度+", 0x5B: "亮度-"}.get(cmd, f"0x{cmd:02X}")
+            0x5D: "亮度+", 0x5B: "亮度-",
+            0x2E: "对比度+", 0x2C: "对比度-"}.get(cmd, f"0x{cmd:02X}")
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
+    ct    = (flags >> 1) & 0xF           # flags bit[4:1] = 对比度档位
     if   cmd in (0x2B, 0x2D): detail = f"音量={vol}/8"
     elif cmd in (0x3E, 0x3C): detail = f"周期={per}s"
     elif cmd in (0x5D, 0x5B): detail = f"亮度={bri}/8"
+    elif cmd in (0x2E, 0x2C): detail = f"对比度={ct}/6"
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
     elif cmd in (0x4E, 0x50): detail = img_s
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
-                                        f"{img_s} 自动轮播={'开' if flags & 1 else '关'}")
+                                        f"对比度={ct}/6 {img_s} "
+                                        f"自动轮播={'开' if flags & 1 else '关'}")
     return f"ACK {name} | {detail}"
 
 
@@ -493,7 +498,7 @@ def api_keys():
     groups = [("播放", ["p", "n", "a", "s"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
-              ("亮度", ["[", "]"])]
+              ("亮度 / 对比度", ["[", "]", ",", "."])]
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 

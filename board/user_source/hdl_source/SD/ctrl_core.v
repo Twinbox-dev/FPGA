@@ -16,11 +16,13 @@
 //   '+'(2B)=音量+1   '-'(2D)=音量-1（8 档，8=原始，0=静音）
 //   '>'(3E)=轮播周期+1s  '<'(3C)=轮播周期-1s（1..10s，上电=1s）
 //   ']'(5D)=亮度+1     '['(5B)=亮度-1（9 档，4=原始 0 偏移，跨时钟域走格雷码）
+//   '.'(2E)=对比度+1   ','(2C)=对比度-1（7 档，2=原始 k=1.0，同样走格雷码）
 // 未知命令静默忽略。
 //
 // 应答（return）：除 'S'（回 status_pkt）外，每条被接受的命令都在**参数生效
 // 后**（延迟两拍）自动回一包 ACK，由 tx_req/tx_pkt 交给前端组帧发送：
-//   5A | cmd 回显 | vol_gain | auto_period_s | img_idx | img_wav | bri_level | 00
+//   5A | cmd 回显 | vol_gain | auto_period_s | img_idx | img_wav | bri_level | flags
+// flags：bit0 = 自动轮播开关，bit[4:1] = 对比度档位（其余保留）
 // 'S' 的应答 = status_pkt（A5 开头）。
 //
 // 时钟：与命令消费方同域（板上为 sd_card_clk）——虚拟按键脉冲直接注入
@@ -48,6 +50,7 @@ module ctrl_core #(
     output reg [3:0]    vol_gain,            // 0..8：8=原始音量，0=静音
     output reg [3:0]    auto_period_s,       // 轮播周期（秒，1..10）
     output [3:0]        bri_gray,            // 亮度档位（格雷码，跨时钟域用）
+    output [3:0]        ct_gray,             // 对比度档位（格雷码，跨时钟域用）
     // 状态回读源（与 top 遥测同源）
     input  [3:0]        state_code,
     input  [7:0]        dbg_fat_state,
@@ -62,10 +65,11 @@ module ctrl_core #(
     localparam CMD_NEXT = 8'h4E, CMD_AUTO = 8'h41, CMD_PREV = 8'h50,
                CMD_STAT = 8'h53, CMD_VOLUP = 8'h2B, CMD_VOLDN = 8'h2D,
                CMD_PERUP = 8'h3E, CMD_PERDN = 8'h3C,
-               CMD_BRIUP = 8'h5D, CMD_BRIDN = 8'h5B;
+               CMD_BRIUP = 8'h5D, CMD_BRIDN = 8'h5B,
+               CMD_CTUP  = 8'h2E, CMD_CTDN  = 8'h2C;   // '.'/',' 对比度（无需 Shift）
 
     reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn;
-    reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn;
+    reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn, cmd_cup, cmd_cdn;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -73,11 +77,13 @@ module ctrl_core #(
             cmd_stat <= 0; cmd_vup <= 0; cmd_vdn <= 0;
             cmd_pup  <= 0; cmd_pdn  <= 0;
             cmd_bup  <= 0; cmd_bdn  <= 0;
+            cmd_cup  <= 0; cmd_cdn  <= 0;
         end else begin
             cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_prev <= 1'b0;
             cmd_stat <= 1'b0; cmd_vup <= 1'b0; cmd_vdn <= 1'b0;
             cmd_pup  <= 1'b0; cmd_pdn <= 1'b0;
             cmd_bup  <= 1'b0; cmd_bdn <= 1'b0;
+            cmd_cup  <= 1'b0; cmd_cdn <= 1'b0;
             if (cmd_val) begin
                 case (cmd)
                     CMD_NEXT: cmd_next <= 1'b1;
@@ -90,6 +96,8 @@ module ctrl_core #(
                     CMD_PERDN: cmd_pdn <= 1'b1;
                     CMD_BRIUP: cmd_bup <= 1'b1;
                     CMD_BRIDN: cmd_bdn <= 1'b1;
+                    CMD_CTUP:  cmd_cup <= 1'b1;
+                    CMD_CTDN:  cmd_cdn <= 1'b1;
                     default: ;
                 endcase
             end
@@ -98,11 +106,15 @@ module ctrl_core #(
 
     // ================= 控制参数（与命令分离，供各功能模块取用）=================
     reg [3:0] bri_level;                   // 亮度 9 档：4=原始（0 偏移）
+    reg [3:0] ct_level;                    // 对比度 7 档：0..6，2=原始(k=1.0)
+                                           // 增益表（围绕中灰 128）：0:0.5 1:0.75
+                                           // 2:1.0 3:1.25 4:1.5 5:1.75 6:2.0
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             vol_gain      <= 4'd8;         // 音量 8 档：8=原始，0=静音
             auto_period_s <= 4'd1;         // 轮播周期 1..10 秒（上电 1s，与旧行为一致）
             bri_level     <= 4'd4;         // 亮度 9 档：4=原始（0 偏移）
+            ct_level      <= 4'd2;         // 对比度 7 档：2=原始
         end else begin
             if (cmd_vup)
                 vol_gain <= (vol_gain == 4'd8) ? 4'd8 : vol_gain + 1'b1;
@@ -116,12 +128,17 @@ module ctrl_core #(
                 bri_level <= (bri_level >= 4'd8) ? 4'd8 : bri_level + 1'b1;
             else if (cmd_bdn)
                 bri_level <= (bri_level <= 4'd0) ? 4'd0 : bri_level - 1'b1;
+            if (cmd_cup)
+                ct_level <= (ct_level >= 4'd6) ? 4'd6 : ct_level + 1'b1;
+            else if (cmd_cdn)
+                ct_level <= (ct_level <= 4'd0) ? 4'd0 : ct_level - 1'b1;
         end
     end
 
-    // 亮度跨时钟域（sd_card_clk → video_clk）：格雷码每次步进只变 1 位，
+    // 亮度/对比度跨时钟域（sd_card_clk → video_clk）：格雷码每次步进只变 1 位，
     // 多位 2FF 同步后恒为合法旧值或新值（二进制多位直传会出现过渡混合值）
     assign bri_gray = (bri_level >> 1) ^ bri_level;
+    assign ct_gray  = (ct_level  >> 1) ^ ct_level;
 
     // ============ 应答（return）：参数生效后延迟两拍回包 ============
     // 命令脉冲在 v1 拍产生、参数在同一沿之后才更新，故延迟到 v2 拍组包——
@@ -150,7 +167,8 @@ module ctrl_core #(
     //   字节**；只因原来 pkt[7] 恒 0 才没暴露（新加的 auto 标志位一比就露馅，
     //   tb_uart T12 抓住）。判据：拼接总位宽必须正好 64。
     assign tx_pkt = d2_stat ? status_pkt :
-                    {{7'b0, auto_on},             // pkt[7] 标志位：bit0=自动轮播开关
+                    {{3'b0, ct_level, auto_on},   // pkt[7] 标志位：bit0=自动轮播开关
+                                                  //   bit[4:1]=对比度档位
                      {4'b0, bri_level},           // pkt[6] 亮度档位
                      {7'b0, img_wav},             // pkt[5] 该图配 WAV
                      {3'b0, img_idx},             // pkt[4] 当前图索引
@@ -202,7 +220,7 @@ module ctrl_core #(
                          {3'b0, img_idx},
                          {4'b0, und_s1},
                          {3'b0, auto_on, flag_b},   // flagB 字节空出的 bit4 = 自动轮播开关
-                         {4'b0, flag_a},
+                         {ct_level, flag_a},        // flagA 字节空出的高 4 位 = 对比度档位
                          dbg_fat_state,
                          {4'b0, state_code},
                          8'hA5};

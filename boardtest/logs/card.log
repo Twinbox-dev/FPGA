@@ -44,4 +44,4 @@
   PASS: S8 上一张提交
   PASS: S8b 上一图像素与 golden 比对
   PASS: S8c 上一张音频（原子提交）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
-===== 33 passed, 0 failed | 1448.7 Mcyc, 355.7s, 4.1 Mcyc/s =====
+===== 33 passed, 0 failed | 1448.7 Mcyc, 337.2s, 4.3 Mcyc/s =====

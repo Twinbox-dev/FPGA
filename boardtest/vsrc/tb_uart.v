@@ -30,7 +30,7 @@ module tb_uart;
     wire [7:0]  cmd_w;
     wire        cmd_val_w, tx_req_w;
     wire [63:0] tx_pkt_w;
-    wire [3:0]  vol_gain_w, ap_s_w, bri_gray_w;
+    wire [3:0]  vol_gain_w, ap_s_w, bri_gray_w, ct_gray_w;
 
     uart_link #(
         .CLK_FREQ_HZ    (100_000_000),
@@ -61,6 +61,7 @@ module tb_uart;
         .vol_gain      (vol_gain_w),
         .auto_period_s (ap_s_w),
         .bri_gray      (bri_gray_w),
+        .ct_gray       (ct_gray_w),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
@@ -75,7 +76,7 @@ module tb_uart;
     // 短参数测试测不出 vk_cnt 位宽截断（23 位时 10M 被截成 16ms，板上
     // 永远过不了 50ms 去抖，仿真却全绿）
     wire tx_full, vk_next_n_full, vk_auto_n_full, vk_prev_n_full;
-    wire [7:0]  cmd_f;  wire cmd_val_f, txr_f;  wire [63:0] pkt_f;  wire [3:0] vg_f, ap_f, bg_f;
+    wire [7:0]  cmd_f;  wire cmd_val_f, txr_f;  wire [63:0] pkt_f;  wire [3:0] vg_f, ap_f, bg_f, ctg_f;
     uart_link dut_full (
         .clk           (clk),
         .rst           (rst),
@@ -99,6 +100,7 @@ module tb_uart;
         .vol_gain      (vg_f),
         .auto_period_s (ap_f),
         .bri_gray      (bg_f),
+        .ct_gray       (ctg_f),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
@@ -251,7 +253,7 @@ module tb_uart;
         if (rxq_n != 8) begin
             fail_msg("T5 状态包字节数不对");
         end else if (rxq[0] !== 8'hA5 || rxq[1] !== {4'b0, state_code}
-                  || rxq[2] !== dbg_fat_state || rxq[3] !== {4'b0, flag_a}
+                  || rxq[2] !== dbg_fat_state || rxq[3] !== {core.ct_level, flag_a}
                   || rxq[4] !== {3'b0, auto_on_r, flag_b} || rxq[5] !== {4'b0, dbg_underrun}
                   || rxq[6] !== {3'b0, img_idx} || rxq[7] !== {7'b0, img_wav}) begin
             fail_msg("T5 状态包内容不对");
@@ -401,7 +403,45 @@ module tb_uart;
         join
         if ((rxq[rxq_n-1] & 8'h01) !== 8'h00) fail_msg("T12 ACK flags 字节 bit0 应为 0");
         else $display("T12c ACK flags 字节 自动轮播=关: PASS");
-        drain_tx;
+        drain_tx_idle;
+
+        // T13: 对比度（'.'升 ','降）——7 档、边界钳位、遥测位
+        //（ACK flags bit[4:1] 与状态包 flagA 高 4 位）
+        if (core.ct_level !== 4'd2) fail_msg("T13 上电对比度不是 2（原始）");
+        uart_send_pair(8'h2E);                                  // '.' -> 3
+        repeat (100) @(posedge clk);
+        if (core.ct_level !== 4'd3) fail_msg("T13 对比度+ 未生效");
+        for (int k = 0; k < 6; k++) uart_send_pair(8'h2E);      // 上界钳位 -> 6
+        repeat (100) @(posedge clk);
+        if (core.ct_level !== 4'd6) fail_msg("T13 对比度上界未钳位（应到 6 停住）");
+        for (int k = 0; k < 8; k++) uart_send_pair(8'h2C);      // ',' 下界钳位 -> 0
+        repeat (100) @(posedge clk);
+        if (core.ct_level !== 4'd0) fail_msg("T13 对比度下界未钳位（应到 0 停住）");
+        else $display("T13a 对比度命令 7 档/钳位: PASS");
+
+        // 遥测：升到 1 档后，ACK flags bit[4:1] = 1（auto_on_r 此时为 0）
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h2E);                              // '.' -> 1
+            uart_recv(8);
+        join
+        if ((rxq[rxq_n-1] & 8'h1E) !== 8'h02) begin
+            fail_msg("T13 ACK flags 的对比度位不对（bit[4:1] 应为 01）");
+            $display("      pkt[7]=%02x", rxq[rxq_n-1]);
+        end else
+            $display("T13b ACK flags 对比度遥测: PASS");
+
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h53);                              // 'S' -> 状态包
+            uart_recv(8);
+        join
+        if ((rxq[rxq_n-5] >> 4) !== 4'd1) begin                 // pkt[3] = flagA 字节
+            fail_msg("T13 状态包 flagA 高 4 位的对比度不对");
+            $display("      pkt[3]=%02x（高 4 位应为 1）", rxq[rxq_n-5]);
+        end else
+            $display("T13c 状态包对比度遥测: PASS");
+        drain_tx_idle;
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);

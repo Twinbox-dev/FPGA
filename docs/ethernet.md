@@ -33,8 +33,10 @@ RTL/时钟骨架的来源）与 `33_HX4S20_Etherent_test_01_02_final_1000`
 | 板→PC 应答帧 | 0x0002 | 8 字节：`5A|cmd回显|vol|period|img|wav|bri|flags` 或 A5 状态包 |
 
 **flags 字节**（ACK 的第 8 字节，2026-10-02 起启用）：`bit0 = 自动轮播开关当前状态`
-（板端 `sd_card_bmp.auto_play_out` → `ctrl_core.auto_on` 打进包；原来是保留的 `00`）。
-状态包里的 `flagB` 字节空出的 **bit4** 同样承载该状态。PC 侧
+（板端 `sd_card_bmp.auto_play_out` → `ctrl_core.auto_on` 打进包；原来是保留的 `00`），
+`bit[4:1] = 对比度档位`（0..6，2=原始 k=1.0）。
+状态包里的 `flagB` 字节空出的 **bit4** 承载轮播状态、**`flagA` 字节空出的高 4 位**
+承载对比度档位。PC 侧
 `decode_ack`/`decode_pkt` 解析后显示"自动轮播=开/关"（前端瓦片 + A 按钮高亮）。
 ⚠ 包长/帧长**都没有变**（用的都是保留位）；但**新 PC 端配旧 bit 会一直显示"关"**
 （该字节恒 0），故前端与 bit 要一起更新。

@@ -236,6 +236,7 @@ wire        uart_cmd_val;
 wire [3:0]  vol_gain;
 wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
+wire [3:0]  ct_gray;         // 对比度档位（格雷码，跨时钟域到 video_clk）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -252,6 +253,7 @@ ctrl_core #(
     .vol_gain       (vol_gain),
     .auto_period_s  (auto_period_s),
     .bri_gray       (bri_gray),
+    .ct_gray        (ct_gray),
     .state_code     (state_code),
     .dbg_fat_state  (dbg_fat_state),
     .flag_a         ({video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}),
@@ -468,9 +470,24 @@ video_delay video_delay_m0(
 );
 
 // 首图提交前黑屏；提交后一直显示当前显示缓冲区内容
-// 亮度调节：ctrl_core 的档位（格雷码）跨时钟域 2FF 同步到 video_clk
-// （格雷码每次步进只变 1 位，同步后恒为合法旧值/新值），解码后每通道加
-// 偏移 (level-4)×16 并钳位 [0,255]——档位 4 为原始（0 偏移）
+//
+// ===================== 图像调节级：对比度 → 亮度 → 一次钳位 =====================
+// 两个档位都由 ctrl_core 给出（格雷码）跨时钟域 2FF 同步到 video_clk——
+// 格雷码每次步进只变 1 位，同步后恒为合法旧值/新值（二进制多位直传会出现
+// 过渡混合值）。这里也是以后"音频脉动条/OSD 叠加"的注入点。
+//
+//   对比度：围绕中灰 128 的增益 d×(k)（d = c-128），7 档用移位加减精确实现
+//   亮度：  偏移 (level-4)×16
+reg  [3:0] ct_gray_s0, ct_gray_s1;
+always @(posedge video_clk) begin
+    ct_gray_s0 <= ct_gray;
+    ct_gray_s1 <= ct_gray_s0;
+end
+wire [3:0] ct_bin_v = {ct_gray_s1[3],
+                       ct_gray_s1[3] ^ ct_gray_s1[2],
+                       ct_gray_s1[3] ^ ct_gray_s1[2] ^ ct_gray_s1[1],
+                       ct_gray_s1[3] ^ ct_gray_s1[2] ^ ct_gray_s1[1] ^ ct_gray_s1[0]};
+
 reg  [3:0] bri_gray_s0, bri_gray_s1;
 always @(posedge video_clk) begin
     bri_gray_s0 <= bri_gray;
@@ -480,21 +497,35 @@ wire [3:0] bri_bin_v = {bri_gray_s1[3],
                         bri_gray_s1[3] ^ bri_gray_s1[2],
                         bri_gray_s1[3] ^ bri_gray_s1[2] ^ bri_gray_s1[1],
                         bri_gray_s1[3] ^ bri_gray_s1[2] ^ bri_gray_s1[1] ^ bri_gray_s1[0]};
-wire signed [8:0] bri_off = $signed({1'b0, bri_bin_v, 4'b0}) - $signed(9'd64);  // (level-4)×16
+wire signed [9:0] bri_off = $signed({1'b0, bri_bin_v, 4'b0}) - $signed(10'd64);  // (level-4)×16
 
-function [7:0] bri_clamp;
-    input [7:0] c;
-    reg signed [9:0] t;
+// 逐像素调节。对比度增益表（档位:增益）：
+//   0:0.5   1:0.75   2:1.0(原始)   3:1.25   4:1.5   5:1.75   6:2.0
+function [7:0] adj_px;
+    input [7:0]        c;
+    input [3:0]        lv;              // 对比度档位
+    reg signed [10:0]  d, r, t;
     begin
-        t = $signed({1'b0, c}) + $signed(bri_off);
-        bri_clamp = (t < 0) ? 8'd0 : (t > 10'sd255) ? 8'd255 : t[7:0];
+        d = $signed({1'b0, c}) - 11'sd128;          // -128..127
+        case (lv)
+            4'd0:    r = d >>> 1;                   // 0.5
+            4'd1:    r = d - (d >>> 2);             // 0.75
+            4'd2:    r = d;                         // 1.0（原始）
+            4'd3:    r = d + (d >>> 2);             // 1.25
+            4'd4:    r = d + (d >>> 1);             // 1.5
+            4'd5:    r = d + (d >>> 1) + (d >>> 2); // 1.75
+            4'd6:    r = d <<< 1;                   // 2.0
+            default: r = d;
+        endcase
+        t = r + 11'sd128 + $signed(bri_off);        // 回到中灰 + 亮度偏移
+        adj_px = (t < 11'sd0) ? 8'd0 : (t > 11'sd255) ? 8'd255 : t[7:0];
     end
 endfunction
 
-wire [23:0] vout_bri = {bri_clamp(vout_data_raw[23:16]),
-                        bri_clamp(vout_data_raw[15:8]),
-                        bri_clamp(vout_data_raw[7:0])};
-assign vout_data = display_valid ? vout_bri : 24'd0;
+wire [23:0] vout_adj = {adj_px(vout_data_raw[23:16], ct_bin_v),
+                        adj_px(vout_data_raw[15:8],  ct_bin_v),
+                        adj_px(vout_data_raw[7:0],   ct_bin_v)};
+assign vout_data = display_valid ? vout_adj : 24'd0;
 
 frame_read_write #(
     .WRITE_V_FLIP     (1),

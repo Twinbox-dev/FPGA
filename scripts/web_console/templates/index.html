@@ -415,7 +415,7 @@
       <div class="metrics">
         <div class="m"><div class="v" id="mVol">–</div><div class="k">音量 <span class="u">/8</span></div></div>
         <div class="m"><div class="v" id="mPer">–</div><div class="k">周期 <span class="u">s</span></div></div>
-        <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度 <span class="u">/8</span></div></div>
+        <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度<span class="u">/对比度</span></div></div>
         <div class="m"><div class="v" id="mImg">–</div><div class="k">图片 <span class="u">idx</span></div></div>
         <div class="m"><div class="v" id="mAuto">–</div><div class="k">自动轮播</div></div>
       </div>
@@ -442,11 +442,13 @@
 <script>
 let mode = "serial";            // serial | eth
 let connected = false, count = 0, pollTimer = null;
+let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两个数
 const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
 const log = document.getElementById("log");
 const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
-              ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅"};
-const RANGE = {"播放":"", "音量":"0–8", "轮播周期":"1–10s", "亮度":"0–8"};
+              ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅", ".":"◑", ",":"◐"};
+const RANGE = {"播放":"", "音量":"0–8", "轮播周期":"1–10s",
+               "亮度 / 对比度":"亮度 0–8 · 对比度 0–6"};
 
 /* ---------- toast ---------- */
 let toastT = null;
@@ -668,7 +670,7 @@ async function sendKey(k) {
 document.addEventListener("keydown", e => {
   if (document.activeElement && document.activeElement.tagName === "INPUT") return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if ("npa+-<>[]s".includes(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接串口", true); }
+  if ("npa+-<>[]s,.".includes(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接串口", true); }
 });
 
 /* ---------- 指标：从 ACK 文本里提取 ---------- */
@@ -681,9 +683,15 @@ function parseMetrics(text){
   const g = re => { const m = text.match(re); return m ? m[1] : null; };
   const v = g(/音量=(\d+)/), p = g(/周期=(\d+)/), b = g(/亮度=(\d+)/), i = g(/img=(\d+)/);
   const a = g(/自动轮播=(开|关)/);          // 来自 ACK 的 flags 字节 / 状态包的 flagB bit4
+  const c = g(/对比度=(\d+)/);             // ACK flags bit[4:1] / 状态包 flagA 高 4 位
   if (v !== null){ document.getElementById("mVol").textContent = v; flash("mVol"); }
   if (p !== null){ document.getElementById("mPer").textContent = p; flash("mPer"); }
-  if (b !== null){ document.getElementById("mBri").textContent = b; flash("mBri"); }
+  if (b !== null){ briShown = b; }          // 亮度与对比度合成一个瓦片：4/2
+  if (c !== null){ ctShown  = c; }
+  if (b !== null || c !== null){
+    document.getElementById("mBri").textContent = briShown + "/" + ctShown;
+    flash("mBri");
+  }
   if (i !== null){ document.getElementById("mImg").textContent = i; flash("mImg"); }
   if (a !== null){                          // 瓦片 + A 按钮高亮同步
     const on = (a === "开");
