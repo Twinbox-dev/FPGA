@@ -51,6 +51,9 @@ ctrl_core 持有：音量在 top 送 HDMI 核前做 `×gain>>3`（gain=8 恒等�
 | 0x5B | `[` | 亮度 -1 |
 | 0x2E | `.` | 对比度 +1（7 档，2=原始 k=1.0）|
 | 0x2C | `,` | 对比度 -1 |
+| 0x51 | `Q` | 音频脉动条开关（默认关）|
+| 0x27 | `'` | 脉动灵敏度 +1（4 档 0..3，上电 1）|
+| 0x3B | `;` | 脉动灵敏度 -1 |
 | 0x53 | `S` | 回读一包状态 |
 
 - 未知字节、不成对字节**静默丢弃**。
@@ -79,7 +82,7 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 即"命令回执"：
 
 ```
-5A | cmd回显 | vol_gain | period_s | img_idx | wav_flag | bri_level | 00
+5A | cmd回显 | vol_gain | period_s | img_idx | wav_flag | bri_level | flags
 ```
 
 | 字节 | 含义 |
@@ -88,6 +91,7 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 | vol_gain | 当前音量档（0..8，8=原始） |
 | period_s | 当前轮播周期（1..10 秒） |
 | bri_level | 当前亮度档（0..8，4=原始 0 偏移） |
+| flags | bit0=自动轮播开关；bit[3:1]=对比度档位（0..6，2=原始）；<br>bit4=**音频脉动条开关**；bit[6:5]=**脉动灵敏度**（0..3，上电 1）；bit7 保留 |
 
 控制参数的实时值看 ACK 包；系统全景看状态包。与原七段调试面板**同源**
 （面板已退休，UART 是该组遥测的唯一出口）。flagA/flagB 为准静态电平直取；

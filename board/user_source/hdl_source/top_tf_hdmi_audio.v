@@ -175,7 +175,58 @@ always @(posedge clk) begin
     end
 end
 
-assign rst_all = rst_all_reg;
+assign rst_all = rst_all_reg | wd_rst;
+
+// ---- boot 看门狗（2026-10-03，根因经 UART 遥测确诊）----
+// 现象：冷上电有概率黑屏/无图，复位键即愈；黑屏时 `S` 回读 state=0x0
+//（SD 卡 init 未完成）——rst_all 释放仅等 PLL+20ms，SD 卡自身上电 boot
+// 可长达秒级，init FSM 在卡未就绪时发出的 CMD0 进入不前进的状态，且整条
+// boot 链（init→挂载→首图→音频）都是"一次性、无重试"设计。
+// 自愈 = 自动替用户按复位键：rst_all 释放后 display_valid 迟迟不来，则
+// 重新拉高 rst_all 一段时间（整体重跑，与手动复位等效；以太网不受影响
+// ——eth_subsys 只上电复位一次）。限 3 次，防止真坏卡无限循环重置 UART。
+reg [27:0] wd_cnt;             // 5s @ 50MHz = 250_000_000
+reg [1:0]  wd_att;             // 已重试次数
+reg        wd_rst = 1'b0;
+reg        wd_armed = 1'b0;    // rst_all 释放后开始值守
+reg        disp_v_s0, disp_v_s1;
+wire       display_valid_clk;  // display_valid 的 clk 域视图
+always @(posedge clk) begin
+    if (!rst_n) begin
+        disp_v_s0 <= 1'b0; disp_v_s1 <= 1'b0;
+    end else begin
+        disp_v_s0 <= display_valid;
+        disp_v_s1 <= disp_v_s0;
+    end
+end
+assign display_valid_clk = disp_v_s1;
+always @(posedge clk or posedge rst_n) begin
+    if (!rst_n) begin
+        wd_cnt <= 0; wd_att <= 2'd0; wd_rst <= 1'b0; wd_armed <= 1'b0;
+    end else if (wd_rst) begin
+        // 复位脉冲保持 1ms（50_000 拍）后释放，系统整体重跑
+        wd_cnt <= wd_cnt + 1'b1;
+        if (wd_cnt >= 27'd50_000) begin
+            wd_rst  <= 1'b0;
+            wd_cnt  <= 27'd0;
+        end
+    end else if (rst_all_reg && !wd_armed) begin
+        wd_armed <= 1'b1;                  // rst_all（基线部分）释放 → 开始值守
+        wd_cnt   <= 27'd0;
+    end else if (wd_armed && !display_valid_clk) begin
+        if (wd_cnt >= 27'd250_000_000) begin
+            wd_cnt <= 27'd0;
+            if (wd_att < 2'd2) begin       // 最多 3 次尝试
+                wd_att  <= wd_att + 1'b1;
+                wd_rst  <= 1'b1;
+            end
+            // 3 次失败后放弃：真坏卡场景，保持黑屏，用户手动处理
+        end else begin
+            wd_cnt <= wd_cnt + 1'b1;
+        end
+    end
+    // display_valid 一旦出现 → wd_armed 保持、计数冻结（不再干预运行期）
+end
 
 // 视频读 FIFO 下溢粘滞：显示活动期（de 高）而 FIFO 空 = 带宽不够。
 // 跳过每帧第一条活动行：帧首 SDRAM 突发尚未填满 FIFO 属正常竞态，不算下溢。
@@ -237,6 +288,8 @@ wire [3:0]  vol_gain;
 wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
 wire [3:0]  ct_gray;         // 对比度档位（格雷码，跨时钟域到 video_clk）
+wire        bar_en;          // 音频脉动条开关（pulse_bar）
+wire [1:0]  bar_sens_gray;   // 脉动灵敏度 0..3（格雷码，跨时钟域）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -254,6 +307,8 @@ ctrl_core #(
     .auto_period_s  (auto_period_s),
     .bri_gray       (bri_gray),
     .ct_gray        (ct_gray),
+    .bar_en         (bar_en),
+    .bar_sens_gray  (bar_sens_gray),
     .state_code     (state_code),
     .dbg_fat_state  (dbg_fat_state),
     .flag_a         ({video_pll_lock, sys_pll_lock, Sdr_init_done, display_valid}),
@@ -525,7 +580,28 @@ endfunction
 wire [23:0] vout_adj = {adj_px(vout_data_raw[23:16], ct_bin_v),
                         adj_px(vout_data_raw[15:8],  ct_bin_v),
                         adj_px(vout_data_raw[7:0],   ct_bin_v)};
-assign vout_data = display_valid ? vout_adj : 24'd0;
+
+// ---- 音频脉动条（Q 开关/灵敏度在 ctrl_core；渲染在调色级之后覆盖，绝对色）----
+wire [23:0] bar_rgb;
+wire        bar_hit;
+pulse_bar pulse_bar_m0(
+    .clk_a           (sd_card_clk),
+    .rst_a           (rst_all),
+    .aud_l           (aud_l_g),        // 音量调节后 → 音量低条也矮
+    .aud_r           (aud_r_g),
+    .aud_val         (aud_valid),      // 48kHz 输出样本有效
+    .sens_gray       (bar_sens_gray),
+    .bar_en          (bar_en),
+    .clk_v           (video_clk),
+    .rst_v           (rst_all),
+    .de_r            (de),
+    .vs_r            (vs),
+    .bar_rgb         (bar_rgb),
+    .bar_hit         (bar_hit)
+);
+
+assign vout_data = bar_hit       ? bar_rgb :
+                   display_valid ? vout_adj  : 24'd0;
 
 frame_read_write #(
     .WRITE_V_FLIP     (1),

@@ -31,6 +31,7 @@ module tb_uart;
     wire        cmd_val_w, tx_req_w;
     wire [63:0] tx_pkt_w;
     wire [3:0]  vol_gain_w, ap_s_w, bri_gray_w, ct_gray_w;
+    wire        bar_en_w;  wire [1:0] bar_sens_gray_w;   // 脉动条遥测（T14）
 
     uart_link #(
         .CLK_FREQ_HZ    (100_000_000),
@@ -62,6 +63,8 @@ module tb_uart;
         .auto_period_s (ap_s_w),
         .bri_gray      (bri_gray_w),
         .ct_gray       (ct_gray_w),
+        .bar_en        (bar_en_w),
+        .bar_sens_gray (bar_sens_gray_w),
         .state_code    (state_code),
         .dbg_fat_state (dbg_fat_state),
         .flag_a        (flag_a),
@@ -425,8 +428,8 @@ module tb_uart;
             uart_send_pair(8'h2E);                              // '.' -> 1
             uart_recv(8);
         join
-        if ((rxq[rxq_n-1] & 8'h1E) !== 8'h02) begin
-            fail_msg("T13 ACK flags 的对比度位不对（bit[4:1] 应为 01）");
+        if ((rxq[rxq_n-1] & 8'h0E) !== 8'h02) begin
+            fail_msg("T13 ACK flags 的对比度位不对（bit[3:1] 应为 001）");
             $display("      pkt[7]=%02x", rxq[rxq_n-1]);
         end else
             $display("T13b ACK flags 对比度遥测: PASS");
@@ -441,6 +444,47 @@ module tb_uart;
             $display("      pkt[3]=%02x（高 4 位应为 1）", rxq[rxq_n-5]);
         end else
             $display("T13c 状态包对比度遥测: PASS");
+        drain_tx_idle;
+
+        // T14: 音频脉动条（'Q' 开关 / ';' ''' 灵敏度 4 档）
+        //      ACK flags：bit4=bar_en，bit[6:5]=灵敏度（格雷 2 位）
+        if (core_full.bar_en_r !== 1'b0) fail_msg("T14 上电脉动条应为关");
+        if (core_full.bar_sens !== 2'd1) fail_msg("T14 上电灵敏度应为 1");
+        uart_send_pair(8'h51);                                  // 'Q' -> 开
+        repeat (100) @(posedge clk);
+        if (core_full.bar_en_r !== 1'b1) fail_msg("T14 'Q' 开关未生效");
+        else $display("T14a 'Q' 开启脉动条: PASS");
+        uart_send_pair(8'h51);                                  // 'Q' -> 关
+        repeat (100) @(posedge clk);
+        if (core_full.bar_en_r !== 1'b0) fail_msg("T14 'Q' 再次按下未关闭");
+        else $display("T14b 'Q' 关闭脉动条: PASS");
+        for (int k = 0; k < 5; k++) uart_send_pair(8'h27);      // ''' 上界钳位 -> 3
+        repeat (100) @(posedge clk);
+        if (core_full.bar_sens !== 2'd3) fail_msg("T14 灵敏度上界未钳位（应到 3 停住）");
+        for (int k = 0; k < 5; k++) uart_send_pair(8'h3B);      // ';' 下界钳位 -> 0
+        repeat (100) @(posedge clk);
+        if (core_full.bar_sens !== 2'd0) fail_msg("T14 灵敏度下界未钳位（应到 0 停住）");
+        else $display("T14c 灵敏度 4 档/钳位: PASS");
+
+        // 遥测：开 + 灵敏度 2（格雷 3），ACK flags = {0, 11, 1, ccc, a}
+        uart_send_pair(8'h27);                                  // ''' -> 1
+        uart_send_pair(8'h27);                                  // ''' -> 2
+        uart_send_pair(8'h51);                                  // 'Q' -> 开
+        repeat (100) @(posedge clk);
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h4E);                              // 'N' -> ACK
+            uart_recv(8);
+        join
+        if ((rxq[rxq_n-1] & 8'h70) !== 8'h50
+            || (rxq[rxq_n-1] & 8'h10) !== 8'h10) begin
+            fail_msg("T14 ACK flags 遥测不对（bit4=1、bit[6:5]=格雷11）");
+            $display("      pkt[7]=%02x", rxq[rxq_n-1]);
+        end else
+            $display("T14d ACK flags 脉动遥测: PASS");
+        uart_send_pair(8'h3B);                                  // ';' 回灵敏度 1
+        uart_send_pair(8'h51);                                  // 'Q' 回关
+        repeat (100) @(posedge clk);
         drain_tx_idle;
 
         if (errors == 0) $display("==== ALL PASS ====");

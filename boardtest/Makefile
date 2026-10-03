@@ -25,7 +25,7 @@ $(SIM): $(VSRCS) $(CSRCS)
 regress: $(SIM)
 	../scripts/run_all_sims.sh
 
-.PHONY: run clean regress readeng vdelay uart ethfront cmdarb
+.PHONY: run clean regress readeng vdelay uart ethfront cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -62,3 +62,9 @@ ethfront:
 cmdarb:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_cmd_arb vsrc/tb_cmd_arb.v ../board/user_source/hdl_source/SD/ctrl_core.v -o sim_cmdarb --Mdir build_cmdarb
 	./build_cmdarb/sim_cmdarb
+
+# 音频脉动条自检（pulse_bar：包络 + 渲染都在主仿真盲区——显示通路/音频出口，
+# 按 tb_vdelay/tb_uart 先例补独立自检）
+pulsebar:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_pulsebar vsrc/tb_pulsebar.v ../board/user_source/hdl_source/SD/pulse_bar.v -o sim_pulsebar --Mdir build_pulsebar
+	./build_pulsebar/sim_pulsebar

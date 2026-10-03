@@ -263,6 +263,11 @@ module sd_card_bmp #(
     reg        ald_start_pulse;       // 请求拍：restart wav_reader + 触发打包器
     reg        boot_ald;              // 本次 ald 为 boot 首图配对（完成时不切图只换音）
     reg        ald_boot_done;         // boot 音频已安排（防重复）
+    // ---- 音频 boot 自愈看门狗（2026-10-03，见 TODO 第十七轮）----
+    reg [29:0] aud_wd_cnt;            // 8s @ 100MHz = 800_000_000
+    reg        aud_rescan;            // 重扫描在途（期间封锁 boot_ald 触发，防旧数据竞争）
+    reg [1:0]  aud_retry_cnt;         // 已重试次数（上限 3；播放成功即清零）
+    wire       aud_playing;           // 播放域真实出声（PL_RUN）
     reg        ld_kick;               // 主域→装载 FSM：直接发文件请求（音频先发文件后开写口）
     reg [5:0]  ald_wav_idx;
     reg [1:0]  ald_buf;               // 目标音频缓冲（aud_disp_buf 的对侧）
@@ -388,6 +393,7 @@ module sd_card_bmp #(
     assign img_idx_out = img_idx[4:0];     // UART 遥测
     assign img_wav_out = pair_valid[img_idx[4:0]];
     assign auto_play_out = auto_play_en;   // 遥测：自动轮播开关（ctrl_core 打进 ACK/状态包）
+    assign aud_playing   = (plstate == PL_RUN);   // 播放域真实出声（音频自愈看门狗用）
 
     assign dbg_fat_state = fat_dbg;
     assign dbg_fat_err   = fat_err;
@@ -592,6 +598,9 @@ module sd_card_bmp #(
             load_start_pulse      <= 1'b0;
             load_busy             <= 1'b0;
             load_timeout_cnt      <= 32'd0;
+            aud_wd_cnt            <= 30'd0;
+            aud_rescan            <= 1'b0;
+            aud_retry_cnt         <= 2'd0;
             write_done_seen       <= 1'b0;
             first_image_committed <= 1'b0;
             auto_play_en          <= 1'b0;
@@ -655,6 +664,9 @@ module sd_card_bmp #(
                 ald_boot_done         <= 1'b0;
                 aud_disp_buf          <= 2'd2;
                 aud_cmt_valid         <= 1'b0;
+                aud_wd_cnt            <= 30'd0;
+                aud_rescan            <= 1'b0;
+                aud_retry_cnt         <= 2'd0;
             end
             else if (fat_err) begin
                 // FAT 挂载失败/索引越界：清装载，保持黑屏
@@ -776,8 +788,11 @@ module sd_card_bmp #(
 
                 // ---- boot 音频：首图提交时配对表未建（扫描才建），一律走的静音提交；
                 // 扫描完成后若首图有配对，重读 WAV 入对侧缓冲提交（仅一次）----
+                // ⚠ !aud_rescan：重扫描在途时封锁——否则 rescan 清 ald_boot_done
+                //   到扫描块清 aud_scan_done_r 之间的 1 拍窗口里，触发条件用**旧扫描
+                //   的残留 wav_len_rec** 提前点火，与重扫描抢写口。
                 if (aud_scan_done_r && !ald_boot_done && !load_busy && fat_idle &&
-                    first_image_committed) begin
+                    !aud_rescan && first_image_committed) begin
                     ald_boot_done <= 1'b1;
                     if (pair_valid[img_idx[4:0]]) begin
                         boot_ald        <= 1'b1;
@@ -788,6 +803,36 @@ module sd_card_bmp #(
                         ld_kick         <= 1'b1;
                         ald_start_pulse <= 1'b1;
                     end
+                end
+
+                // ---- 音频 boot 自愈看门狗：图已提交+扫描完+当前图有配对，而
+                //      音频 8s 未进入播放态 → 重跑整条音频 boot（重扫描 + 重新
+                //      boot_ald），图像显示不受影响。复位键偶发丢音（音频 boot
+                //      链一次性、无重试，见 TODO 第十七轮）的结构性解法。----
+                if (aud_rescan) begin
+                    if (aud_scan_done_r && !aud_scan_active) begin
+                        aud_rescan    <= 1'b0;
+                        ald_boot_done <= 1'b0;   // 扫描重跑完成 → 触发条件重新成立
+                    end
+                end
+                else if (first_image_committed && aud_scan_done_r &&
+                         pair_valid[img_idx[4:0]] && !aud_playing &&
+                         !ald_active && !load_busy) begin
+                    if (aud_wd_cnt >= 30'd800_000_000) begin
+                        aud_wd_cnt       <= 30'd0;
+                        aud_rescan       <= 1'b1;
+                        scan_start_pulse <= 1'b1;   // 扫描块重跑并清 aud_scan_done_r
+                        aud_retry_cnt    <= aud_retry_cnt + 1'b1;
+                    end
+                    else begin
+                        aud_wd_cnt <= aud_wd_cnt + 1'b1;
+                    end
+                end
+                else begin
+                    aud_wd_cnt <= 30'd0;
+                end
+                if (aud_playing) begin
+                    aud_retry_cnt <= 2'd0;           // 播放成功即恢复全部重试额度
                 end
 
                 // ---- 按键请求（装载中只记一次，连按不累积）----
@@ -1214,8 +1259,11 @@ module sd_card_bmp #(
                 pair_valid      <= 32'd0;
             end
             else if (scan_start_pulse) begin
-                // 外控块首图提交：启动扫描（本块独占扫描相位寄存器，避免多驱动）
+                // 外控块首图提交 / 音频自愈重扫：启动扫描（本块独占扫描相位
+                // 寄存器，避免多驱动）。⚠ 必须清 done_r——自愈重扫期间若不清，
+                // boot_ald 触发条件在 1 拍后重新成立，用旧扫描数据提前点火。
                 aud_scan_active <= 1'b1;
+                aud_scan_done_r <= 1'b0;
                 aud_k           <= 6'd0;
                 npass_active    <= 1'b1;
                 npass_k         <= 6'd0;

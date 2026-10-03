@@ -35,4 +35,4 @@
   PASS: S8 上一张提交
   PASS: S8b 上一图像素与 golden 比对
   PASS: S8d 上一张无配对：静音态（pair_on=0、样本全 0x80、无读请求）
-===== 25 passed, 0 failed | 988.2 Mcyc, 267.4s, 3.7 Mcyc/s =====
+===== 25 passed, 0 failed | 988.2 Mcyc, 276.9s, 3.6 Mcyc/s =====

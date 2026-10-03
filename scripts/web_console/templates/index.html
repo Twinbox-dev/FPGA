@@ -574,6 +574,12 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
       <div class="btns">
         <button data-k="["><span class="ico">🔅</span><span>亮度 -</span><span class="key">[</span></button>
         <button data-k="]"><span class="ico">🔆</span><span>亮度 +</span><span class="key">]</span></button>
+      </div></div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>音频脉动<span class="rg">底部条</span></div>
+      <div class="btns">
+        <button data-k="q"><span class="ico">🎵</span><span>脉动 开/关</span><span class="key">Q</span></button>
+        <button data-k=";"><span class="ico">▼</span><span>灵敏度 -</span><span class="key">;</span></button>
+        <button data-k="'"><span class="ico">▲</span><span>灵敏度 +</span><span class="key">'</span></button>
       </div></div>`;
   host.querySelectorAll("button").forEach(b => {
     b.disabled = !connected;
@@ -670,7 +676,7 @@ async function sendKey(k) {
 document.addEventListener("keydown", e => {
   if (document.activeElement && document.activeElement.tagName === "INPUT") return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if ("npa+-<>[]s,.".includes(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接串口", true); }
+  if ("npa+-<>[]s,.q;'".includes(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接串口", true); }
 });
 
 /* ---------- 指标：从 ACK 文本里提取 ---------- */
@@ -683,7 +689,9 @@ function parseMetrics(text){
   const g = re => { const m = text.match(re); return m ? m[1] : null; };
   const v = g(/音量=(\d+)/), p = g(/周期=(\d+)/), b = g(/亮度=(\d+)/), i = g(/img=(\d+)/);
   const a = g(/自动轮播=(开|关)/);          // 来自 ACK 的 flags 字节 / 状态包的 flagB bit4
-  const c = g(/对比度=(\d+)/);             // ACK flags bit[4:1] / 状态包 flagA 高 4 位
+  const c = g(/对比度=(\d+)/);             // ACK flags bit[3:1] / 状态包 flagA 高 4 位
+  const bar = g(/脉动=(开|关)/);           // ACK flags bit4（'Q' 应答）
+  const sn  = g(/灵敏度=(\d)/);            // ACK flags bit[6:5]
   if (v !== null){ document.getElementById("mVol").textContent = v; flash("mVol"); }
   if (p !== null){ document.getElementById("mPer").textContent = p; flash("mPer"); }
   if (b !== null){ briShown = b; }          // 亮度与对比度合成一个瓦片：4/2
@@ -699,6 +707,10 @@ function parseMetrics(text){
     flash("mAuto");
     const btn = document.querySelector('#pad button[data-k="a"]');
     if (btn) btn.classList.toggle("on", on);
+  }
+  if (bar !== null){                        // Q 按钮高亮跟随板端状态（ACK 驱动）
+    const btn = document.querySelector('#pad button[data-k="q"]');
+    if (btn) btn.classList.toggle("on", bar === "开");
   }
 }
 

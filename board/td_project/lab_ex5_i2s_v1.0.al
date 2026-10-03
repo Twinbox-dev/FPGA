@@ -285,7 +285,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="43"/>
+                    <Attr Name="CompileOrder" Val="44"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/eth_subsys.v">
@@ -293,7 +293,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="44"/>
+                    <Attr Name="CompileOrder" Val="45"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/eth_front.v">
@@ -301,7 +301,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="45"/>
+                    <Attr Name="CompileOrder" Val="46"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/temac_block.v">
@@ -309,7 +309,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="46"/>
+                    <Attr Name="CompileOrder" Val="47"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/rgmii_interface.v">
@@ -317,7 +317,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="47"/>
+                    <Attr Name="CompileOrder" Val="48"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/IDDR.v">
@@ -325,7 +325,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="48"/>
+                    <Attr Name="CompileOrder" Val="49"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/ODDR.v">
@@ -333,7 +333,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="49"/>
+                    <Attr Name="CompileOrder" Val="50"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/BUFGMUX.v">
@@ -342,7 +342,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="50"/>
+                    <Attr Name="CompileOrder" Val="51"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/RAMB16_S9_S9.v">
@@ -350,7 +350,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="51"/>
+                    <Attr Name="CompileOrder" Val="52"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/tx_client_fifo.v">
@@ -358,7 +358,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="52"/>
+                    <Attr Name="CompileOrder" Val="53"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/rx_client_fifo.v">
@@ -366,7 +366,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="53"/>
+                    <Attr Name="CompileOrder" Val="54"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/clk_gen_rst_gen.v">
@@ -374,7 +374,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="54"/>
+                    <Attr Name="CompileOrder" Val="55"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/pll_gen.v">
@@ -382,7 +382,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="55"/>
+                    <Attr Name="CompileOrder" Val="56"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/div_clk_gen.v">
@@ -390,7 +390,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="56"/>
+                    <Attr Name="CompileOrder" Val="57"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/tx_clk_en_gen.v">
@@ -398,7 +398,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="57"/>
+                    <Attr Name="CompileOrder" Val="58"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/ETH/temac_clk_gen.v">
@@ -406,7 +406,7 @@
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="58"/>
+                    <Attr Name="CompileOrder" Val="59"/>
                 </FileInfo>
             </File>
             <File Path="../user_source/hdl_source/SD/ctrl_core.v">
@@ -423,6 +423,14 @@
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
                     <Attr Name="CompileOrder" Val="41"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/SD/pulse_bar.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="43"/>
                 </FileInfo>
             </File>
         </Verilog>

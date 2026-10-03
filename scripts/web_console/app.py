@@ -42,10 +42,12 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 # ---------------------------------------------------------------------------
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
-        "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C}
+        "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
+        "q": 0x51, ";": 0x3B, "'": 0x27}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
-        "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-"}
+        "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
+        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-"}
 
 
 def send_bytes(key: str) -> bytes:
@@ -93,17 +95,23 @@ def decode_ack(pkt: bytes) -> str:
     name = {0x4E: "下一张", 0x50: "上一张", 0x41: "自动轮播",
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
             0x5D: "亮度+", 0x5B: "亮度-",
-            0x2E: "对比度+", 0x2C: "对比度-"}.get(cmd, f"0x{cmd:02X}")
+            0x2E: "对比度+", 0x2C: "对比度-",
+            0x51: "脉动条", 0x3B: "灵敏度+", 0x27: "灵敏度-"}.get(cmd, f"0x{cmd:02X}")
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
-    ct    = (flags >> 1) & 0xF           # flags bit[4:1] = 对比度档位
+    ct    = (flags >> 1) & 0x7           # flags bit[3:1] = 对比度档位
+    bar   = (flags >> 4) & 1             # flags bit4 = 脉动条开关
+    sens  = (flags >> 5) & 0x3           # flags bit[6:5] = 脉动灵敏度
+    bar_s = f"脉动={'开' if bar else '关'} 灵敏度={sens}/3"
     if   cmd in (0x2B, 0x2D): detail = f"音量={vol}/8"
     elif cmd in (0x3E, 0x3C): detail = f"周期={per}s"
     elif cmd in (0x5D, 0x5B): detail = f"亮度={bri}/8"
     elif cmd in (0x2E, 0x2C): detail = f"对比度={ct}/6"
+    elif cmd == 0x51:         detail = bar_s
+    elif cmd in (0x3B, 0x27): detail = bar_s
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
     elif cmd in (0x4E, 0x50): detail = img_s
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
-                                        f"对比度={ct}/6 {img_s} "
+                                        f"对比度={ct}/6 {bar_s} {img_s} "
                                         f"自动轮播={'开' if flags & 1 else '关'}")
     return f"ACK {name} | {detail}"
 
@@ -494,11 +502,13 @@ def api_ports():
 @app.route("/api/keys")
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
-    order = ["p", "n", "a", "s", "-", "+", "<", ">", "[", "]"]
+    order = ["p", "n", "a", "s", "-", "+", "<", ">", "[", "]",
+             ";", "'", "q"]
     groups = [("播放", ["p", "n", "a", "s"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
-              ("亮度 / 对比度", ["[", "]", ",", "."])]
+              ("亮度 / 对比度", ["[", "]", ",", "."]),
+              ("音频脉动", [";", "'", "q"])]
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 
