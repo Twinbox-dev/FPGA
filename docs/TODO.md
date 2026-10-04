@@ -678,3 +678,41 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
       也有实证，环问题可以安心上板。
 - [x] **附：SIM_FAST 档在 card_user_real（MBR+真卡结构）boot 后死锁**——快速档
       缺陷独立立卡，待查（不影响全保真档结论）。
+
+## 2026-10-05 第二十轮：写侧分叉探针（下轮开工，方案已定）
+
+**现状（板上实证）**：多分辨率信箱功能打通——IMG3/4/5 装载成功（解码像素=w×h 整、
+已发射=len 整、锁存高度正确）、环全健康、超时兜底生效。**残余：图像雪花/撕裂/
+白条 + 音频杂**（黑边逻辑正确、坏点随切图变动）。
+
+**时序线**：into_burst 组合链违例 −6.7(4a8362f 就有)→−7.5→−7.9→−8.196（窗口化
+比较仍违例，报告 01:58 为窗口版）→ **已寄存化**（09ec7c6，判决晚一拍无功能
+影响，tb_readeng 全 PASS）→ **待综合看报告**：into_burst 路径应消失。
+官方 SDRAM IP 自带违例不可调，我们的逻辑必须时序干净。
+
+**撕裂定位三分法（下轮实施写侧分叉后）**：
+- 写侧分叉数据 ≠ 原图 → 解码/发射上游错
+- 写侧分叉 = 原图，显存读回 ≠ 原图 → 写引擎/地址错（当前最大嫌疑）
+- 两者都 = 原图 → 显示读通路错
+音频杂大概率与撕裂同源（共 SDRAM 写通路，音频缓冲同受害）。
+
+**写侧分叉实施清单（用户拍板开工，注意：上位机以太网模块改动多别改错）**：
+1. sd_card_bmp：输出 tap_word[31:0]/tap_val（图像会话 img_word_val/img_word，
+   涂黑/音频不打）；tap 时钟=sd_card_clk
+2. top：tap 三线接 eth_subsys → eth_front（加 tap_clk/tap_val/tap_word 端口）
+3. eth_front：Gray 异步 FIFO（512×32，双钟 sd_card_clk→udp_clk，写 125M 域
+   推/读拉）+ 流包 FSM：FIFO 攒 255 字发一包（应用头 8B[AA BB CC DD 00 03
+   len] + seq[15:0] + 255×word LSB 字节先发，udp_data_length=8+2+1020=1030）；
+   与现有 ACK 16 字节小包路径并存（TX_WAIT 分支仲裁：tx_pulse 优先）；
+   序号供 PC 检测缺口；包尾不足 255 字不封包（等下次装载，FIFO 跨会话
+   fifo_aclr 语义待定——建议装载开始清 FIFO+seq 清零，PC 按 seq 回卷判新会话）
+4. PC：EthTransport 收流包（type 区分）→ 按 seq 重组 words[]（缺口报告）→
+   前端 canvas：RGB565→RGB888，行 r 落显示行 y0+h−1−r（h=收到字数/640，
+   y0=(720−h)/2，vflip 补偿同 RTL）→ 与原图逐字比对差异报告
+5. 验证：装载 IMG2 应收满 460800 字；比对差异定位写通路
+6. 已知风险：Gray FIFO 手写需仔细（跨钟指针同步）；eth_front TX 状态机扩展
+   勿动 ACK 路径；综合后先查时序报告确认无新增违例
+
+**提交状态**：fix/multires-engine-timing 分支 @09ec7c6（dde10a8 全量+寄存化
+修正），main @4a8362f。分支里混入临时文件（scripts/_fix_engine.py 残版、
+boardtest/logs/*.log）待清理。
