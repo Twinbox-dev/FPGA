@@ -93,9 +93,17 @@ wire into_burst;
 // 尾部清空判据：rem_words <= rdusedw+1。窗口形式拆解：高 11 位为零（NOR，快）
 // + 低 10 位比较——避免 21 位加法器+比较器级联进组合路径（时序违例 -7.5/-7.9 根因，
 // 4a8362f 时代本路径即 -6.7ns 接受违例，多分辨率挂死疑与其边际误触发相关）
-assign into_burst = ((rem_words[ADDR_BITS-1:10] == 0
+wire into_burst_c = ((rem_words[ADDR_BITS-1:10] == 0
                       && rem_words[9:0] <= (rdusedw + 1'b1))
-                     || (rdusedw > BURST_SIZE)) && (~App_rd_busy);//当rd在突发时不会进入burst
+                     || (rdusedw > BURST_SIZE)) && (~App_rd_busy);
+// 判决寄存一拍：把 21 位比较+长布线从 S_CHECK_FIFO/O_wr_busy 的组合路径上切走
+// （2026-10-04 时序违例 -6.7→-8.2 布线主导，逻辑重构无效）。晚一拍仅使 burst
+// 启动/O_wr_busy 延迟一拍，FIFO 512 深缓冲吸收，无功能影响。
+reg into_burst_r;
+always @(posedge mem_clk or posedge rst)
+    if (rst) into_burst_r <= 1'b0;
+    else     into_burst_r <= into_burst_c;
+assign into_burst = into_burst_r;//当rd在突发时不会进入burst
 
 assign App_wr_addr = {App_wr_addr_r[ADDR_BITS - 1:0]};
 //assign O_wr_busy = (state != S_IDLE || (S_IDLE && write_req_d2));
