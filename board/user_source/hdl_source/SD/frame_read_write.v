@@ -77,6 +77,7 @@ module frame_read_write
 	input[ADDR_BITS - 1:0]           write_addr_3,               // data write module write request base address 1, used when write_addr_index = 3
 	input[1:0]                       write_addr_index,           // select valid base address from write_addr_0 write_addr_1 write_addr_2 write_addr_3
 	input[ADDR_BITS - 1:0]           write_len,                  // data write module write request data length
+	input signed[19:0]               vrow_off,                   // 2026-10-03 信箱行偏移（透传至 frame_fifo_write）
 	input                            write_en,                   // data write module write request for one data
 	input[WRITE_DATA_BITS - 1:0]     write_data                 // write data
 
@@ -149,6 +150,7 @@ frame_fifo_write_m0
 	.write_addr_3               (write_addr_3             ),
 	.write_addr_index           (write_addr_index         ),    
 	.write_len                  (write_len                ),
+	.vrow_off                   (vrow_off                 ),
 	.fifo_aclr                  (write_fifo_aclr          ),
 	.rdusedw                 	(rdusedw                  )
 );

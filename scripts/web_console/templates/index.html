@@ -446,7 +446,8 @@ let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两�
 const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
 const log = document.getElementById("log");
 const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
-              ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅", ".":"◑", ",":"◐"};
+              ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅", ".":"◑", ",":"◐",
+              "q":"🎵", "l":"📋"};
 const RANGE = {"播放":"", "音量":"0–8", "轮播周期":"1–10s",
                "亮度 / 对比度":"亮度 0–8 · 对比度 0–6"};
 
@@ -521,10 +522,12 @@ document.getElementById("mEth").onclick = () => setMode("eth");
 window.addEventListener("resize", slide);
 
 /* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
+let PADKEYS = new Set("npa+-<>[]s,.q;'l".split(""));
 async function buildPad(){
   let d;
   try { d = await (await fetch("/api/keys")).json(); }
   catch(e){ return fallbackPad(); }
+  PADKEYS = new Set(d.keys.map(x => x.key));
   const host = document.getElementById("pad");
   host.innerHTML = "";
   d.groups.forEach(g => {
@@ -676,7 +679,7 @@ async function sendKey(k) {
 document.addEventListener("keydown", e => {
   if (document.activeElement && document.activeElement.tagName === "INPUT") return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if ("npa+-<>[]s,.q;'".includes(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接串口", true); }
+  if (PADKEYS.has(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接", true); }
 });
 
 /* ---------- 指标：从 ACK 文本里提取 ---------- */

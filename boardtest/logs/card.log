@@ -1,47 +1,432 @@
-===== board sd_card_bmp 验证 (img/card.img, golden: OK, 10 项) =====
+===== board sd_card_bmp 验证 (img/card.img, golden: OK, 13 项) =====
   期望顺序: 首图=0 第二=1 第三=2
-      [t=31] state=0 disp=0 dv=0 pixbuf=0 wft=0
-      [t=215109] state=2 disp=0 dv=0 pixbuf=0 wft=0
-      [t=251033] state=1 disp=0 dv=0 pixbuf=0 wft=0
-      [t=251034] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=251035] state=3 disp=0 dv=0 pixbuf=0 wft=0
-      [t=251038] state=4 disp=0 dv=0 pixbuf=0 wft=0
-      [t=103306198] state=1 disp=0 dv=1 pixbuf=460800 wft=1
+      [t=31] st=0 dv=0 first=0 lidx=0 fat=1 scanA=0 scanD=0 abd=0 fic=0 nrp=0 prp=0 lb=0 ld=0
+      [t=215109] st=2 dv=0 first=0 lidx=0 fat=1 scanA=0 scanD=0 abd=0 fic=0 nrp=0 prp=0 lb=0 ld=0
+      [t=251033] st=1 dv=0 first=0 lidx=0 fat=8 scanA=0 scanD=0 abd=0 fic=0 nrp=0 prp=0 lb=0 ld=0
+      [t=251035] st=4 dv=0 first=0 lidx=0 fat=8 scanA=0 scanD=0 abd=0 fic=1 nrp=0 prp=0 lb=1 ld=0
+      [t=714130] st=3 dv=0 first=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=714133] st=4 dv=0 first=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p2000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p4000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p6000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p8000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p10000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p12000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p14000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p16000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p18000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p20000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p22000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p24000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p26000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p28000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p30000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p32000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p34000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p36000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p38000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p40000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p42000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p44000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p46000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p48000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p50000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p52000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p54000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p56000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p58000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p60000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p62000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p64000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p66000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p68000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p70000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p72000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p74000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p76000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p78000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p80000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p82000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p84000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p86000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p88000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p90000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p92000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p94000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p96000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p98000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p100000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [p102000000] st=4 dv=0 lidx=0 fat=2 scanA=0 scanD=0 abd=0 nrp=0 prp=0 lb=1 ld=6
+      [t=103766998] st=1 dv=1 first=0 lidx=0 fat=8 scanA=0 scanD=0 abd=0 fic=1 nrp=0 prp=0 lb=0 ld=0
       [终态] state=1 disp=0 dv=1 pixbuf=460800 wft_set=1
   PASS: S1 首图装载并提交（display_valid 上升）
   PASS: S1b 写口握手发生过（write_req 曾拉高）
   PASS: S1c 首图像素与 golden 逐像素比对
   PASS: SA 音频扫描完成（aud_scan_done）
   PASS: SA0 扫描项数与 golden 一致
-  PASS: SA0 项#5 合法 WAV：PCM 24000 字节逐字节比对 + data_bytes=24000
-  PASS: SB0 项#5 BUF2 内容：6144 字 + 0x80 填充逐字节比对（RTL 6144 字, len=6144）
-  PASS: SA1 项#6 合法 WAV：PCM 12000 字节逐字节比对 + data_bytes=12000
-  PASS: SB1 项#6 BUF2 内容：3072 字 + 0x80 填充逐字节比对（RTL 3072 字, len=3072）
-  PASS: SA2 项#7 格式拒绝（fmt_err，无样本流出）
-  PASS: SA3 项#8 格式拒绝（fmt_err，无样本流出）
-  PASS: SA4 项#9 格式拒绝（fmt_err，无样本流出）
+  PASS: SA0 项#8 合法 WAV：PCM 24000 字节逐字节比对 + data_bytes=24000
+  PASS: SB0 项#8 BUF2 内容：6144 字 + 0x80 填充逐字节比对（RTL 6144 字, len=6144）
+  PASS: SA1 项#9 合法 WAV：PCM 12000 字节逐字节比对 + data_bytes=12000
+  PASS: SB1 项#9 BUF2 内容：3072 字 + 0x80 填充逐字节比对（RTL 3072 字, len=3072）
+  PASS: SA2 项#10 格式拒绝（fmt_err，无样本流出）
+  PASS: SA3 项#11 格式拒绝（fmt_err，无样本流出）
+  PASS: SA4 项#12 格式拒绝（fmt_err，无样本流出）
       配对表: [#0→IMG001  ] [#1→IMG002  ] [#2→静音] [#3→静音] [#4→静音] 
-[#0→IMG001  ] [#1→IMG002  ] [#2→静音] [#3→静音] [#4→静音] 
+[#0→IMG001  ] [#1→IMG002  ] [#2→静音] [#3→静音] [#4→静音] [#5→静音] [#6→静音] [#7→静音] 
   PASS: SC 首图配对播放（BUF3 循环）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
+      [t=209796184] st=4 dv=1 first=0 lidx=1 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=2
+      [p209796185] st=4 dv=1 lidx=1 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=2
+      [t=209959282] st=3 dv=1 first=0 lidx=1 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=209959285] st=4 dv=1 first=0 lidx=1 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p211796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p213796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p215796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p217796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p219796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p221796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p223796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p225796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p227796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p229796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p231796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p233796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p235796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p237796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p239796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p241796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p243796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p245796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p247796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p249796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p251796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p253796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p255796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p257796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p259796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p261796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p263796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p265796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p267796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p269796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p271796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p273796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p275796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p277796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p279796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p281796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p283796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p285796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p287796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p289796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p291796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p293796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p295796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p297796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p299796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p301796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p303796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p305796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p307796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p309796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p311796185] st=4 dv=1 lidx=1 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=313461159] st=1 dv=1 first=0 lidx=1 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S2 按键切换 → 第二张提交
   PASS: S2b 第二图像素与 golden 比对
   PASS: SD 随图切换音频（原子提交）：BUF2 24576 样本逐字节比对（×2 上采样, len=3072）
+      [t=365077108] st=4 dv=1 first=0 lidx=2 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=2
+      [p365077109] st=4 dv=1 lidx=2 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=2
+      [t=365240206] st=3 dv=1 first=0 lidx=2 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=365240209] st=4 dv=1 first=0 lidx=2 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p367077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p369077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p371077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p373077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p375077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p377077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p379077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p381077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p383077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p385077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p387077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p389077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p391077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p393077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p395077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p397077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p399077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p401077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p403077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p405077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p407077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p409077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p411077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p413077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p415077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p417077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p419077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p421077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p423077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p425077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p427077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p429077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p431077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p433077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p435077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p437077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p439077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p441077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p443077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p445077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p447077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p449077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p451077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p453077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p455077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p457077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p459077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p461077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p463077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p465077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p467077109] st=4 dv=1 lidx=2 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=468293074] st=1 dv=1 first=0 lidx=2 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S3 按键切换 → 第三张提交
   PASS: S3b 第三图像素与 golden 比对
   PASS: SE 第三图无配对：静音态（pair_on=0、样本全 0x80、无读请求）
+      [t=508693075] st=4 dv=1 first=0 lidx=3 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=2
+      [p508693076] st=4 dv=1 lidx=3 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=2
+      [t=508856172] st=3 dv=1 first=0 lidx=3 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=508856175] st=4 dv=1 first=0 lidx=3 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p510693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p512693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p514693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p516693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p518693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p520693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p522693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p524693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p526693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p528693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p530693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p532693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p534693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p536693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p538693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p540693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p542693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p544693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p546693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p548693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p550693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p552693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p554693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p556693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p558693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p560693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p562693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p564693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p566693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p568693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p570693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p572693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p574693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p576693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p578693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p580693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p582693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p584693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p586693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p588693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p590693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p592693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p594693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p596693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p598693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p600693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p602693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p604693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p606693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p608693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p610693076] st=4 dv=1 lidx=3 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=611909040] st=1 dv=1 first=0 lidx=3 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S4 第四张提交
   PASS: S4b 第四图像素与 golden 比对
   PASS: SF 第四图无配对：静音态（pair_on=0、样本全 0x80、无读请求）
   PASS: SCb 播放零欠采样（underrun 应恒 0）
-      卡自检：索引 4 非合法图，验证跳过路径
+      [t=652309041] st=4 dv=1 first=0 lidx=4 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=2
+      [p652309042] st=4 dv=1 lidx=4 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=2
+      [t=652472138] st=3 dv=1 first=0 lidx=4 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=652472141] st=4 dv=1 first=0 lidx=4 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p654309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p656309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p658309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p660309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p662309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p664309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p666309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p668309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p670309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p672309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p674309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p676309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p678309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p680309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p682309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p684309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p686309042] st=4 dv=1 lidx=4 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=686827556] st=1 dv=1 first=0 lidx=4 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S5 下一项处理正确（合法图提交 / 坏图跳过）
+  PASS:       像素与 golden 比对
+      [p688309042] st=1 dv=1 lidx=4 fat=2 scanA=1 scanD=1 abd=1 nrp=1 prp=0 lb=0 ld=0
+      [t=689144499] st=4 dv=1 first=0 lidx=5 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=0
+      [t=689607594] st=3 dv=1 first=0 lidx=5 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=689607597] st=4 dv=1 first=0 lidx=5 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p690309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p692309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p694309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p696309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=697687360] st=1 dv=1 first=0 lidx=5 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S6 下一项处理正确（合法图提交 / 坏图/WAV 跳过）
   PASS:       像素与 golden 比对
+      [p698309042] st=1 dv=1 lidx=5 fat=2 scanA=1 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p700309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p702309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p704309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p706309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p708309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p710309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p712309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p714309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p716309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p718309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p720309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p722309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p724309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p726309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p728309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p730309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p732309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p734309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p736309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p738309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p740309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p742309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p744309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p746309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p748309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p750309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p752309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p754309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p756309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p758309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p760309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p762309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p764309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p766309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p768309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p770309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p772309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p774309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p776309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p778309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p780309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p782309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p784309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p786309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p788309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p790309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p792309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p794309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p796309042] st=1 dv=1 lidx=5 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [t=797787363] st=4 dv=1 first=0 lidx=6 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=0
+      [t=798250458] st=3 dv=1 first=0 lidx=6 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=798250461] st=4 dv=1 first=0 lidx=6 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p798309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p800309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p802309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p804309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p806309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p808309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p810309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p812309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p814309042] st=4 dv=1 lidx=6 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=815022920] st=1 dv=1 first=0 lidx=6 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S7 自动轮播：开启后自动提交下一张
   PASS: S7b 自动轮播图像素与 golden 比对
-  PASS: S7c 自动轮播音频（原子提交）：BUF2 24576 样本逐字节比对（×2 上采样, len=3072）
+      [p816309042] st=1 dv=1 lidx=6 fat=2 scanA=1 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p818309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p820309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p822309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p824309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p826309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p828309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p830309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p832309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p834309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p836309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p838309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p840309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p842309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p844309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p846309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p848309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p850309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p852309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p854309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p856309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p858309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p860309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p862309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p864309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p866309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p868309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p870309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p872309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p874309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p876309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p878309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p880309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p882309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p884309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p886309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p888309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p890309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p892309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p894309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p896309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p898309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p900309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p902309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p904309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p906309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p908309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p910309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p912309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p914309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p916309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p918309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p920309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p922309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p924309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p926309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p928309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p930309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p932309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p934309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p936309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p938309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p940309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p942309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
+      [p944309042] st=1 dv=1 lidx=6 fat=8 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S7d 自动轮播关闭后停止切换
+      [t=945822921] st=4 dv=1 first=0 lidx=5 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=2
+      [t=945986018] st=3 dv=1 first=0 lidx=5 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=5
+      [t=945986021] st=4 dv=1 first=0 lidx=5 fat=2 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=1 ld=6
+      [p946309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p948309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p950309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [p952309042] st=4 dv=1 lidx=5 fat=2 scanA=0 scanD=1 abd=1 nrp=0 prp=0 lb=1 ld=6
+      [t=954065784] st=1 dv=1 first=0 lidx=5 fat=8 scanA=0 scanD=1 abd=1 fic=1 nrp=0 prp=0 lb=0 ld=0
   PASS: S8 上一张提交
   PASS: S8b 上一图像素与 golden 比对
-  PASS: S8c 上一张音频（原子提交）：BUF3 49152 样本逐字节比对（×2 上采样, len=6144）
-===== 33 passed, 0 failed | 1448.7 Mcyc, 357.1s, 4.1 Mcyc/s =====
+  PASS: S8d 上一张无配对：静音态（pair_on=0、样本全 0x80、无读请求）
+===== 33 passed, 0 failed | 994.1 Mcyc, 318.6s, 3.1 Mcyc/s =====

@@ -579,3 +579,102 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
       失败时扫描是否完成；②3 次重试用尽后放弃，若根因是卡侧（用户怀疑卡本
       身）重试也无济于事；③可加"扫描失败重试"（当前只有 boot_ald 成功路径的
       看门狗，扫描环节失败无观测）；④digit 面板已拆，可临时复用观测 aud 相位。
+
+## 2026-10-03 第十八轮：多分辨率信箱适配（基础合规 + 扩展 A3）
+
+- [x] **背景**：赛题基础要求写明"读取 640x480 24bit BMP"，而 bmp_dec 此前只接受
+      1280x720——评委按赛题规格放裸 640 卡会被当坏图跳过（合规缺口）。用户拍板
+      契约分层：**PC 只解压/转容器（分辨率保持原样，仅超 1280x720 时等比缩小），
+      FPGA 信箱适配任意 <=720p 的 24bit BMP → 1280x720 输出**（居中+黑边，
+      比例不失真——不做拉伸，4:3→16:9 拉伸会变形）。
+- [x] **bmp_dec**：头校验放宽为 `1<=w<=1280 && 1<=h<=720 && 24bpp && 不压缩`；
+      导出 o_img_w/h；**行 4 字节对齐填充跳过**（pad=(4-w*3%4)%4，⚠ 不能取
+      row_bytes[1:0]——4 对齐后恒 0）；完成判据改为 px_cnt==w*h；新增
+      **o_hdr_ok**（byte53 置位、i_restart 清零）。
+- [x] **frame_fifo_write**：新增 `vrow_off` 端口（20bit 有符号，字）——vflip
+      首地址加该偏移，使部分高度会话（h<720）的首流行落在帧的 y0+h-1 行
+      （居中）。全帧会话 off=0 行为不变。tb_readeng 新增 T2b 验证（首字精确
+      落 BUF0+599*640）；⚠ T2b 首版单位写错（-120 行 vs -76800 字）。
+- [x] **sd_card_bmp 信箱打包器重写**：装载序列重排 LD_FILL（全帧涂黑会话，
+      460800 字垫非图像区）→ LD_FILE（等 o_hdr_ok）→ LD_IMG_ACK（len=img_h*640）
+      → LD_STREAM（发射）。发射 FSM 按流序逐行输出 1280px：行内 [x0,x0+w) 弹
+      **64x24 弹性缓冲**（纯触发器堆——源 1px/96clk ≪ 汇 1px/clk，边距期积压
+      ~14px，刻意避开大深度 BRAM 推断陷阱），窗口外补黑。写口 mux 三态
+      （fill/音频/图像），vrow_off 涂黑会话强制 0（负偏移会回卷砸音频区）。
+- [x] **调试三连（S3b 棋盘格 8px 相移暴露）**：
+      ①C++ 写模型 exp_len 硬编码 N_WORDS → 信箱会话永不 finish → 3s 超时
+      （S5-S8 连锁）→ 改用 dut->write_len；
+      ②golden 信箱模型行映射写反（br=h-1-row → br=row）：解码器按**文件序**
+      发射（文件行 0=显示最底行），发射序比对不可再翻转——IMG003 棋盘格
+      （8px 周期）第一次暴露该类错误，横向均匀的 IMG001/002 不敏感；
+      ③**o_hdr_ok 缺失**：img_w_dec 跨装载保持旧值，`(img_w_dec!=0)` 判据让
+      新会话拿**上一张图的尺寸**提前开门（S8b 出现 IMG004 被 320 列窗口
+      letterbox 的实锤）→ bmp_dec 新增 o_hdr_ok（restart 清零）。
+- [x] **测试资产**：gen_bmp 新增 IMG005(640x480)/IMG006(333x217 奇宽+行填充)/
+      XODD(500x300)/ZBADSIZE(1281x721 拒绝)；gen_card 自动纳入；golden 信箱
+      模型（发射序比对，含行对齐 stride）。
+- [x] **回归**：mini 单图卡 23/23；全量 7 卡 FAIL=0（card 33 含 4 个多分辨率
+      用例、card_mbr 30）。card.img 装载时长因小图显著缩短。
+- [x] **PC 契约落地**：prep_media.sh / 桌面 bmp转720p.py 改为"保持原分辨率，
+      仅超 1280x720 等比缩小"，尺寸校验随 BMP 头。
+- [ ] **待用户综合上板**：裸 640×480 卡直接可显示（居中黑边）= 基础合规 +
+      扩展 A3 同时拿下。
+- [x] **板级"按下一张没反应/环缺图/单向切图"三 bug 连环（2026-10-04，真实卡
+      结构复现卡 card_real.img 在仿真中完整复现后修复）**：
+      ①**文件请求双主人无仲裁**：音频扫描的 aud_req_pulse 与图像 file_req 直接
+      或入 fat32，扫描窗口（boot 后 1-4s，每张无配对图切换也会重扫描）内两请求
+      同拍撞车，图像请求被吞 → "按下一张没反应"。修复：扫描项改道装载 FSM
+      （scan_kick），fat32 的 i_file_req 单一来源。
+      ②**scan_req_active 永不清除**：①的改道引入——扫描项经 FSM 发完请求后
+      标志滞留 1，此后所有图像装载的 file_idx 被劫持成滞留的 aud_req_idx（指向
+      某个 WAV）→ img_err 弃载 → 环只剩旧图、无法循环。修复：LD_FILE 发完请求
+      即清 + 装载发起时兜底清。
+      ③**开机首图捕获竞态**：first_idx_r 捕获与 boot 装载发起同拍，装载采到
+      旧值 0（= WAV 条目）→ img_err 跳过又把真首图跳过。修复：装载发起门控加
+      first_idx_captured。
+      验证：card_real.img（卷标+LFN+SYSTEM~1+交错文件，1:1 复刻用户卡结构）
+      27/27；全量 7 卡 FAIL=0（33/30/1/23/31/25/27）。
+
+## 2026-10-04 第十九轮：环端失灵排查（板级"环还是坏的"第二轮）+ 'L' 转储通道
+
+- [x] **覆盖盲区实锤**：board_sim 原 S5/S6 只从 boot 图按 2 次 next、S8 prev 回退到
+      首个合法图即 break——多图卡的**回绕边**（尾图 next→首图 / 首图 prev→尾图）
+      从未被踩到。板级两轮"环端失灵"均落在此盲区，仿真全绿≠环没病。
+- [x] **S9/S10 全环遍历用例**：从光标双向各绕整环一圈回起点，每步自适应期望
+      （合法图提交比对/非法项跳过）。S8 补 cursor 写回（此前 S8 后 cursor 失真，
+      S9 首步会拿错误的期望起点）。
+- [x] **真卡镜像落盘**：用户 TF 卡（14.6G，usbipd→WSL sde）**只读** dd 前
+      256MiB（用户约束 ≤1G）→ img/card_user_real.img。dump_dir.py 解析：MBR
+      （LBA2048）+ FAT×2 + 数据区@17MiB；目录序 IMG0.WAV→…→IMG0.BMP 与
+      mdir 一致；全部簇链在截取内（scripts/dump_dir.py 复核 OK）。
+      IMG3/IMG4 无配对 WAV、IMG3/4/5 为多分辨率小图——正是"切到 IMG3 死"的
+      高危结构。
+- [x] **'L' 播放列表转储落地**（板级排障主通道，此前 ctrl_core 只有空管道）：
+      sd_card_bmp 新增生产者（pl_dump_start → N+1 个 64bit 包，包间 400µs）。
+      条目包 {01,idx,is_bmp,pair_valid,pair_wav,nxt,prv}、收口包 {10,计数/
+      first_bmp/光标/装载状态}。is_bmp 用跳表重建（i==first_bmp 或
+      nxt[prv[i]]==i；i==0 单独判；bmp_cnt==0 全 0）——**不占用** fat32_ro
+      与音频扫描共享的 i_pl_idx 查找口。top 三线接线；board_top/board_sim
+      S11 golden 比对（建表算法同构重构）；docs/uart_link.md 包格式 +
+      scripts/pl_dump.py（串口/UDP 双模式，nxt 环完整性自动判断裂）。
+- [x] **boardtest 副本重建事故与恢复**：误用 board 副本直接覆盖 boardtest
+      副本（SIM_FAST 端口/1ms 去抖 ifdef/探针标注丢失）→ scripts/
+      sync_boardtest_sd.py 从 board 副本 + 三类增量确定性重建（26 处标注，
+      含丢失轮次的 4 个新探针）。**教训：两副本差异是结构性的，同步必须走
+      脚本，禁止裸 cp。**
+- [ ] **待仿真结论**：build_ring/sim_ring × card_user_real（全保真档）后台
+      运行中——S9/S10 过=RTL 环逻辑对真卡结构无恙，板上故障另有其因（'L'
+      转储上板取证）；S9/S10 挂=仿真复现，直接修。
+- [ ] 待用户综合上板（多分辨率信箱 + 本轮全部改动），上板先发 'L' 存证。
+
+- [x] **第十九轮续（同日深夜）：S10 假失败复盘——RTL 无罪**
+      首版 S10"上一张环遍历"4 个像素失配经 HDROK 取文件序列实证为**测试自身
+      bug**：press_adaptive 硬编码 press_next，prev 环实际又按了一圈 next——
+      模型按 prv 链出期望、RTL 按 nxt 执行，内容错位=假失败（"陈旧 write_len"
+      亦同理：fidx=7 配 len=307200 恰是 IMG5 640x480 的正确长度）。
+      HDROK 序列证明 RTL 导航完全自洽：S9 从光标 7 出发 7→9→1→3→5→6→7
+      精确回环。修复：press_adaptive 加 prev_dir 参数。
+- [ ] **修正版 S10（真 prev 环）card_user_real 重跑验证中**。→ 过=prev 回绕边
+      也有实证，环问题可以安心上板。
+- [x] **附：SIM_FAST 档在 card_user_real（MBR+真卡结构）boot 后死锁**——快速档
+      缺陷独立立卡，待查（不影响全保真档结论）。

@@ -43,11 +43,43 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
-        "q": 0x51, ";": 0x3B, "'": 0x27}
+        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
-        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-"}
+        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)"}
+
+
+def decode_dump(pkt: bytes) -> str:
+    """转储包（'L'）：高 2 位 01=条目 / 10=收口 / 11=装载快照，见 docs/uart_link.md。"""
+    v = int.from_bytes(pkt, "big")
+    tag = v >> 62
+    if tag == 0b01:
+        idx, bmp = (v >> 57) & 0x1F, (v >> 56) & 1
+        pv, pw = (v >> 55) & 1, (v >> 49) & 0x3F
+        nx, pr = (v >> 43) & 0x3F, (v >> 37) & 0x3F
+        line = f"列表[{idx:2d}] {'BMP' if bmp else 'WAV'}"
+        if bmp:
+            line += f" 配对={'WAV'+str(pw) if pv else '无'} nxt={nx} prv={pr}"
+        elif pv:
+            line += f" 配对WAV={pw}"
+        return line
+    if tag == 0b10:
+        fc, bc, wc = (v >> 56) & 0x3F, (v >> 50) & 0x3F, (v >> 44) & 0x3F
+        fb, ii = (v >> 38) & 0x3F, (v >> 33) & 0x1F
+        lb, sa, ld = (v >> 27) & 1, (v >> 26) & 1, (v >> 23) & 0x7
+        return (f"转储收口: 文件{fc} BMP{bc} WAV{wc} 首图{fb} | "
+                f"光标={ii} 装载中={lb} 扫描中={sa} ld={ld}")
+    if tag == 0b11:
+        res = (v >> 60) & 3
+        ld = (v >> 57) & 0x7
+        wc = (v >> 36) & 0x1FFFFF
+        pc = (v >> 16) & 0xFFFFF
+        h = (v >> 4) & 0xFFF
+        rn = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}.get(res, res)
+        return (f"装载快照: 结果={rn} 终态ld={ld} 已发射={wc}字 "
+                f"解码像素={pc} 锁存高度={h}")
+    return f"转储未知包 {pkt.hex()}"
 
 
 def send_bytes(key: str) -> bytes:
@@ -98,6 +130,11 @@ def decode_ack(pkt: bytes) -> str:
             0x2E: "对比度+", 0x2C: "对比度-",
             0x51: "脉动条", 0x3B: "灵敏度+", 0x27: "灵敏度-"}.get(cmd, f"0x{cmd:02X}")
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
+    RESULT = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}
+    LDNAME = {0: 'IDLE', 1: 'FILL_REQ', 2: 'FILL_RUN', 3: 'FILE',
+              4: 'IMG_WAIT', 5: 'IMG_ACK', 6: 'STREAM', 7: '音频段'}
+    diag = (f"上次装载={RESULT.get((wav >> 5) & 3)}/{LDNAME.get((wav >> 2) & 7)}"
+            f"{' 装载中' if (wav >> 1) & 1 else ''}")
     ct    = (flags >> 1) & 0x7           # flags bit[3:1] = 对比度档位
     bar   = (flags >> 4) & 1             # flags bit4 = 脉动条开关
     sens  = (flags >> 5) & 0x3           # flags bit[6:5] = 脉动灵敏度
@@ -109,10 +146,11 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd == 0x51:         detail = bar_s
     elif cmd in (0x3B, 0x27): detail = bar_s
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
-    elif cmd in (0x4E, 0x50): detail = img_s
+    elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
+    elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
                                         f"对比度={ct}/6 {bar_s} {img_s} "
-                                        f"自动轮播={'开' if flags & 1 else '关'}")
+                                        f"自动轮播={'开' if flags & 1 else '关'} | {diag}")
     return f"ACK {name} | {detail}"
 
 
@@ -227,11 +265,17 @@ class SerialLink:
         except Exception as e:
             self.close()
             return f"串口写入失败: {e}"
+        if key == "l":
+            # 'L' 后板卡回 N+2 个 8 字节包：读线程切换到定长分帧
+            self.dump_left = 64
+            self.dump_anchored = False
+            self.dump_swap = None
         return ""
 
     # ---- 读线程：字节流 → 解码包 → 广播 ----
     def _reader(self):
         buf = bytearray()
+        self.dump_left, self.dump_anchored, self.dump_swap = 0, False, None
         while self.ser is not None:
             try:
                 chunk = self.ser.read(64)
@@ -241,6 +285,39 @@ class SerialLink:
                 continue
             buf.extend(chunk)
             while True:
+                if self.dump_left > 0:           # 转储流：先锚定 L 的 ACK(5A 4C)，再 8 字节定长分帧
+                    if not self.dump_anchored:
+                        if len(buf) < 2:
+                            break
+                        if buf[0] == 0x5A and buf[1] == 0x4C:
+                            self.dump_anchored = True
+                        else:
+                            del buf[:1]          # 丢掉 pre-L 残留（被吞的 ACK 等）
+                            continue
+                    if len(buf) < 8:
+                        break
+                    pkt = bytes(buf[:8])
+                    del buf[:8]
+                    if pkt[0] in (0xA5, 0x5A):   # ACK/状态：原序（ctrl_core 本就 LSB 组包）
+                        text = decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt)
+                        kind = "status" if pkt[0] == 0xA5 else "ack"
+                    else:
+                        # 字节序自适应：首条目组 byte0=0x00 → 旧 bit 流（MSB-first 组包
+                        # 被 LSB 先行线上整包颠倒）；tag 01 开头 → 新 bit 流（已 RTL 修正）
+                        if self.dump_swap is None:
+                            self.dump_swap = (pkt[0] == 0x00)
+                        if self.dump_swap:
+                            pkt = pkt[::-1]
+                        tag = pkt[0] >> 6
+                        if tag == 0b11:
+                            self.dump_left = 0   # 装载快照（最后一包）→ 回常规分帧
+                        else:
+                            self.dump_left -= 1
+                        text, kind = decode_dump(pkt), "dump"
+                    self.broadcast({"type": "pkt", "kind": kind,
+                                    "text": text,
+                                    "ts": time.strftime("%H:%M:%S")})
+                    continue
                 ia, ib = buf.find(b"\xA5"), buf.find(b"\x5A")
                 cand = [x for x in (ia, ib) if x >= 0]
                 if not cand:
@@ -445,6 +522,10 @@ class EthTransport:
             else:
                 continue
             if pkt[0] not in (0xA5, 0x5A):
+                if (pkt[0] >> 6) in (0b01, 0b10, 0b11):   # 转储包
+                    self.broadcast({"type": "pkt", "kind": "dump",
+                                    "text": decode_dump(pkt),
+                                    "ts": time.strftime("%H:%M:%S")})
                 continue
             msg = {"type": "pkt",
                    "kind": "status" if pkt[0] == 0xA5 else "ack",
@@ -503,12 +584,13 @@ def api_ports():
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
     order = ["p", "n", "a", "s", "-", "+", "<", ">", "[", "]",
-             ";", "'", "q"]
+             ";", "'", "q", "l"]
     groups = [("播放", ["p", "n", "a", "s"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
-              ("音频脉动", [";", "'", "q"])]
+              ("音频脉动", [";", "'", "q"]),
+              ("调试", ["l"])]
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 

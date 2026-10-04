@@ -289,7 +289,12 @@ wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
 wire [3:0]  ct_gray;         // 对比度档位（格雷码，跨时钟域到 video_clk）
 wire        bar_en;          // 音频脉动条开关（pulse_bar）
+wire [19:0] sd_card_vrow_off;// 信箱行偏移（sd_card_bmp → frame_read_write）
 wire [1:0]  bar_sens_gray;   // 脉动灵敏度 0..3（格雷码，跨时钟域）
+wire        pl_dump_start_w; // 'L' 播放列表转储：ctrl_core 发起 → sd_card_bmp 吐包
+wire [63:0] pl_pkt_w;
+wire        pl_pkt_val_w;
+wire [7:0]  ld_diag_w;       // 装载诊断快照 → ACK pkt[5]
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -316,7 +321,11 @@ ctrl_core #(
     .dbg_underrun   (dbg_underrun),
     .img_idx        (img_idx_w),
     .img_wav        (img_wav_w),
-    .auto_on        (auto_play_w)
+    .auto_on        (auto_play_w),
+    .pl_pkt         (pl_pkt_w),
+    .pl_pkt_val     (pl_pkt_val_w),
+    .pl_dump_start  (pl_dump_start_w),
+    .ld_diag        (ld_diag_w)
 );
 
 // UART 前端：只管 8N1 收发与 [CMD,~CMD] 成帧（命令表在 ctrl_core.v）
@@ -446,6 +455,7 @@ sd_card_bmp #(
     .write_en          (sd_card_write_en),
     .write_data        (sd_card_write_data),
     .write_len         (sd_card_write_len),
+    .o_wr_vrow_off     (sd_card_vrow_off),
     // 音频观测/播放口
     .aud_smp           (),
     .aud_sval          (),
@@ -474,7 +484,11 @@ sd_card_bmp #(
     .SD_MOSI           (sd_mosi),
     .SD_MISO           (sd_miso),
     .dbg_fat_state     (dbg_fat_state),
-    .dbg_fat_err       (dbg_fat_err)
+    .dbg_fat_err       (dbg_fat_err),
+    .pl_dump_start     (pl_dump_start_w),
+    .pl_pkt            (pl_pkt_w),
+    .pl_pkt_val        (pl_pkt_val_w),
+    .ld_diag           (ld_diag_w)
 );
 
 // ===================== 七段数码管（预留）=====================
@@ -648,6 +662,7 @@ frame_read_write #(
     .write_addr_3      (BUF3_ADDR),
     .write_addr_index  (write_buf_idx),
     .write_len         (sd_card_write_len),
+    .vrow_off          (sd_card_vrow_off),
     .write_en          (sd_card_write_en),
     .write_data        (sd_card_write_data),
 

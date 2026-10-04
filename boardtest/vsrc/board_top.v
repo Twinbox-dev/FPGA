@@ -48,7 +48,11 @@ module board_top (
     output wire        SD_nCS,
     output wire        SD_DCLK,
     output wire        SD_MOSI,
-    input  wire        SD_MISO
+    input  wire        SD_MISO,
+    // ---- 播放列表转储（'L' 调试命令，S11）----
+    input  wire        pl_dump_start,
+    output wire [63:0] pl_pkt,
+    output wire        pl_pkt_val
 );
     sd_card_bmp u_sd_card_bmp_m0 (
         .clk                 (clk),
@@ -101,6 +105,9 @@ module board_top (
         .SD_nCS              (SD_nCS),
         .SD_DCLK             (SD_DCLK),
         .SD_MOSI             (SD_MOSI),
-        .SD_MISO             (SD_MISO)
+        .SD_MISO             (SD_MISO),
+        .pl_dump_start       (pl_dump_start),
+        .pl_pkt              (pl_pkt),
+        .pl_pkt_val          (pl_pkt_val)
     );
 endmodule
