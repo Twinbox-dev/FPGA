@@ -295,6 +295,9 @@ wire        pl_dump_start_w; // 'L' 播放列表转储：ctrl_core 发起 → sd
 wire [63:0] pl_pkt_w;
 wire        pl_pkt_val_w;
 wire [7:0]  ld_diag_w;       // 装载诊断快照 → ACK pkt[5]
+wire [31:0] tap_word_w;      // 写侧分叉：图像发射字 → 以太网流
+wire        tap_val_w;
+wire        tap_end_w;       // 图像会话结束脉冲（eth 侧冲洗 FIFO 触发）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -368,7 +371,12 @@ eth_subsys u_eth_subsys(
     .cmd_pending         (eth_cmd_pending),
     .cmd_ack_t           (eth_cmd_ack_t),
     .tx_tog              (eth_tx_tog),
-    .tx_pkt              (tx_pkt_w)
+    .tx_pkt              (tx_pkt_w),
+    .sys_rst             (rst_all),
+    .tap_clk             (sd_card_clk),
+    .tap_val             (tap_val_w),
+    .tap_word            (tap_word_w),
+    .tap_end             (tap_end_w)
 );
 
 // 命令仲裁 + 以太网命令握手 → 抽成 cmd_arb 模块（在 ctrl_core.v 里）。
@@ -488,7 +496,10 @@ sd_card_bmp #(
     .pl_dump_start     (pl_dump_start_w),
     .pl_pkt            (pl_pkt_w),
     .pl_pkt_val        (pl_pkt_val_w),
-    .ld_diag           (ld_diag_w)
+    .ld_diag           (ld_diag_w),
+    .tap_word          (tap_word_w),
+    .tap_val           (tap_val_w),
+    .tap_end           (tap_end_w)
 );
 
 // ===================== 七段数码管（预留）=====================

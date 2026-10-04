@@ -10,9 +10,17 @@
 //   PC→板 命令帧：type=0x0001, length=0x0002, 数据=[CMD,~CMD]（与串口同款）
 //   板→PC 应答帧：type=0x0002, length=0x0008, 数据=ctrl_core 的 8 字节包
 //                （5A|cmd回显|vol|period|img|wav|bri|00 或 A5 状态包）
+//   板→PC 流包  ：type=0x0003, length=2+4N（写侧分叉，第二十轮）：
+//                seq[15:0]（LSB 先，每会话从 0 起）+ N×32bit 发射字
+//                （LSB 字节先；字低 16bit=左像素 RGB565，高 16bit=右像素）。
+//                UDP payload = 8 + 2 + 4N（N=255 满包，会话尾短包）。
+//                tap 数据路径：tap_clk(sd_card_clk) 域 Gray 异步 FIFO →
+//                udp_clk 域攒包 BRAM → 与 ACK 包共用 TX FSM（ACK 优先）。
 //
 // 时钟：udp_clk（千兆 125M / 百兆 12.5M，由 udp_clk_gen 按 tri_speed 选）。
-// 复位：reset 高有效（接 eth 子系统复位）。
+// 复位：reset 高有效（接 eth 子系统复位，上电锁存一次）。流通道另用 sys_rst
+//（rst_all）同步到两域——eth 的 reset 按键复位不覆盖，Gray FIFO 两侧必须随
+// 系统复位一起清零，否则指针错位。
 //
 // 注意：demo 的 udp_loopback 依赖 TD 库宏 ram_fifo（工程里无源码），本模块
 // 自带解析/组包逻辑，不依赖 ram_fifo。
@@ -21,6 +29,7 @@ module eth_front(
     input  wire        app_rx_clk,
     input  wire        app_tx_clk,
     input  wire        reset,
+    input  wire        sys_rst,        // rst_all：流通道复位（两域各自同步）
 
     // UDP 栈 RX：payload 字节流（含 8 字节应用头）
     input  wire [7:0]  app_rx_data,
@@ -44,12 +53,18 @@ module eth_front(
     // 应用入口：ctrl_core 应答包（顶层每应答一次翻转 tx_tog；tx_pkt 在翻转
     // 前后稳定）
     input  wire        tx_tog,
-    input  wire [63:0] tx_pkt
+    input  wire [63:0] tx_pkt,
+
+    // 应用入口（写侧分叉）：图像发射流旁路（tap_clk = sd_card_clk 域）
+    input  wire        tap_clk,
+    input  wire        tap_val,
+    input  wire [31:0] tap_word,
+    input  wire        tap_end         // 会话结束脉冲（离开 LD_STREAM）
 );
     localparam HDR0   = 16'hAABB;        // 应用头（APUG013 demo 同款）
     localparam HDR1   = 16'hCCDD;
     localparam TYPE_ACK = 16'h0002;      // 板→PC 应答帧类型
-    localparam PKT_BYTES = 16;           // 应答帧数据长度 = 8 头 + 8 包
+    localparam [15:0] PKT_BYTES = 16'd16; // 应答帧数据长度 = 8 头 + 8 包
 
     // ================= RX：跳过 8 字节头 → [CMD,~CMD] 配对 =================
     reg [15:0] rx_cnt;
@@ -111,18 +126,118 @@ module eth_front(
     end
     wire tx_pulse = (tog_s1 != tog_loc);
 
-    // ================= TX：ctrl_core 应答包 → 带头 UDP帧 =================
+    // ================= 写侧分叉：sys_rst 两域同步 + Gray 异步 FIFO ==========
+    reg tap_rst_s0, tap_rst_s1;          // tap_clk 域
+    always @(posedge tap_clk or posedge sys_rst) begin
+        if (sys_rst) begin
+            tap_rst_s0 <= 1'b1; tap_rst_s1 <= 1'b1;
+        end else begin
+            tap_rst_s0 <= 1'b0; tap_rst_s1 <= tap_rst_s0;
+        end
+    end
+    reg urst_s0, urst_s1;                // udp_clk 域
+    always @(posedge app_tx_clk or posedge sys_rst) begin
+        if (sys_rst) begin
+            urst_s0 <= 1'b1; urst_s1 <= 1'b1;
+        end else begin
+            urst_s0 <= 1'b0; urst_s1 <= urst_s0;
+        end
+    end
+    wire udp_rst = urst_s1;
+
+    // 会话结束：tap_clk 脉冲 → toggle → udp_clk 边沿
+    reg end_tog;
+    always @(posedge tap_clk) begin
+        if (tap_rst_s1)   end_tog <= 1'b0;
+        else if (tap_end) end_tog <= ~end_tog;
+    end
+    reg end_s0, end_s1, end_loc;
+    always @(posedge app_tx_clk or posedge reset) begin
+        if (reset) begin
+            end_s0 <= 1'b0; end_s1 <= 1'b0; end_loc <= 1'b0;
+        end else begin
+            end_s0  <= end_tog;
+            end_s1  <= end_s0;
+            end_loc <= end_s1;
+        end
+    end
+    wire end_pulse = (end_s1 != end_loc);
+
+    wire        fifo_rd_en, fifo_rd_empty, fifo_full;
+    wire [31:0] fifo_rd_data;
+    wire [9:0]  fifo_avail;              // 读侧可见字数（滞后 2 拍，悲观）
+    tap_afifo #(.AW(9), .DW(32)) u_tap_afifo (
+        .wr_clk   (tap_clk),
+        .wr_rst   (tap_rst_s1),
+        .wr_en    (tap_val && !fifo_full),  // 满则丢字：纯旁路观察不反压主路
+        .wr_data  (tap_word),
+        .wr_full  (fifo_full),
+        .rd_clk   (app_tx_clk),
+        .rd_rst   (udp_rst),
+        .rd_en    (fifo_rd_en),
+        .rd_data  (fifo_rd_data),
+        .rd_empty (fifo_rd_empty),
+        .rd_avail (fifo_avail)
+    );
+
+    // ================= TX：ACK 包 / 流包共用一条 FSM =================
     // 时序照抄 demo udp_loopback：request 拉高 → 等 app_tx_ack → 逐拍
-    // valid+data（udp_data_length 保持）→ 发完回 WAIT。
-    localparam TX_WAIT = 2'd0, TX_RDY = 2'd1, TX_ACK = 2'd2, TX_SEND = 2'd3;
-    reg [1:0]  st;
+    // valid+data（udp_data_length 保持）→ 发完回 WAIT。仲裁：ACK 优先
+    //（人控路径延迟小），流包攒满/冲洗时补位。
+    localparam TX_WAIT = 3'd0, TX_RDY  = 3'd1, TX_ACK  = 3'd2, TX_SEND = 3'd4,
+               S_BUILD = 3'd3;
+    reg [2:0]  st;
+    reg        tx_sel;                   // 0=ACK 包（tx_buf）1=流包（str_mem）
+    reg        ack_pend;                 // tx_pulse 到达但总线忙 → 记账
     // 16 字节整帧：字节 0..7 = 应用头，字节 8..15 = tx_pkt（pkt[0] 先发）。
     // ⚠ 曾写成 64 位（只锁 tx_pkt、按 16 字节索引）→ **应用头根本没发出去**，
     //   且 tx_i≥8 读越界位（=0）；PC 侧能看到 ACK 只是走了"没有头"的兜底分支。
     //   头常量按"字节 0 在最低位"写：0xAA BB CC DD 00 02 00 08 → 08_00_02_00_DD_CC_BB_AA
     reg [127:0] tx_buf;
-    reg [4:0]  tx_i;                     // 当前输出字节序号 0..15
-    reg        valid_r;
+    reg [10:0] tx_i;                     // 当前输出字节序号（流包最大 1029）
+    reg        valid_r;                  // ACK 路径 valid
+    reg        out_valid;                // 流包路径 valid（str_q 打一拍配套）
+    // ---- 流包攒包区：1030 字节 = 8 头 + 2 seq + 255×4 字 ----
+    reg [7:0]  str_mem [0:1029];
+    reg [7:0]  str_q;
+    reg [10:0] bi;                       // 攒包字节计数
+    reg [8:0]  pkt_words;                // 本包字数 N（≤255）
+    reg [31:0] word_hold;
+    reg        flush_pend;               // 会话结束待冲洗
+    reg [4:0]  settle_cnt;               // 等 Gray 写指针跨域同步沉降
+    reg [15:0] seq;
+
+    wire [15:0] pkt_len_w = {5'd0, pkt_words, 2'b00} + 16'd10;   // 10+4N
+    wire [15:0] plen_w    = pkt_len_w - 16'd8;                   // 应用头 length 域
+    wire [10:0] bi_pop_end  = {2'b00, pkt_words, 2'b00} + 11'd5;  // 末字弹出拍 4N+5
+    wire [10:0] bi_latch_end= {2'b00, pkt_words, 2'b00} + 11'd6;  // 末字锁存拍 4N+6
+    wire [10:0] bi_build_end= {2'b00, pkt_words, 2'b00} + 11'd10; // 末字节写拍 4N+10
+    wire        settle_done = (settle_cnt == 5'd31);
+    wire        str_go = (fifo_avail >= 10'd255) ||
+                         (flush_pend && settle_done && (fifo_avail != 10'd0));
+
+    // 攒包读口：bi≡1 (mod 4) 拍弹字（1 拍延迟后 bi≡2 拍进 word_hold，
+    // 写 BRAM 落后一拍——时间线见 S_BUILD 注释）
+    assign fifo_rd_en = (st == S_BUILD) && (bi >= 11'd9) &&
+                        (bi <= bi_pop_end) && (bi[1:0] == 2'b01);
+    wire [10:0] boff = bi - 11'd11;      // 当前写地址 = bi-1 的字内偏移 = bi-11
+    wire [7:0]  wb_byte = word_hold[{boff[1:0], 3'b000} +: 8];
+
+    // 应用头常量（流包，字节 0..7）：AA BB CC DD 03 00 len_lo len_hi
+    reg [7:0] hdr_b;
+    always @* begin
+        case (bi[3:0])
+            4'd0: hdr_b = 8'hAA;
+            4'd1: hdr_b = 8'hBB;
+            4'd2: hdr_b = 8'hCC;
+            4'd3: hdr_b = 8'hDD;
+            4'd4: hdr_b = 8'h03;          // type LSB（0x0003 流包）
+            4'd5: hdr_b = 8'h00;
+            4'd6: hdr_b = plen_w[7:0];
+            4'd7: hdr_b = plen_w[15:8];
+            default: hdr_b = 8'h00;
+        endcase
+    end
 
     // 应用头常量：字节序 AA BB CC DD 00 02 00 08（**低字节先发**，所以按字节
     // 从低到高拼：byte0=AA … byte7=08）。用 HDR0/HDR1/TYPE_ACK 拼装避免手写常数出错。
@@ -132,23 +247,57 @@ module eth_front(
                                 HDR0[7:0], HDR0[15:8]};          // AA BB
 
     always @(posedge app_tx_clk or posedge reset) begin
-        if (reset) begin
+        if (reset || udp_rst) begin
             st <= TX_WAIT; app_tx_data_request <= 1'b0;
-            valid_r <= 1'b0; udp_data_length <= 16'd0;
-            tx_i <= 5'd0; tx_buf <= 128'd0;
+            valid_r <= 1'b0; out_valid <= 1'b0;
+            udp_data_length <= 16'd0;
+            tx_i <= 11'd0; tx_buf <= 128'd0;
+            tx_sel <= 1'b0; ack_pend <= 1'b0;
+            bi <= 11'd0; pkt_words <= 9'd0;
+            word_hold <= 32'd0; str_q <= 8'd0;
+            flush_pend <= 1'b0; settle_cnt <= 5'd0;
+            seq <= 16'd0;
         end else begin
+            // ---- 会话结束冲洗：end_pulse 记账 → 等 Gray 写指针沉降 → 攒尾包 ----
+            if (end_pulse) begin
+                flush_pend <= 1'b1;
+                settle_cnt <= 5'd0;
+            end else if (flush_pend && !settle_done)
+                settle_cnt <= settle_cnt + 5'd1;
+            // 冲洗排空（读侧 avail==0 且无包在攒）→ 会话收口：seq 归零
+            if (flush_pend && settle_done && (st == TX_WAIT) &&
+                (fifo_avail == 10'd0)) begin
+                flush_pend <= 1'b0;
+                seq        <= 16'd0;
+            end
+
+            // 总线空闲期到达的 tx_pulse 记账（正在发包时不丢）
+            if (tx_pulse && (st != TX_WAIT))
+                ack_pend <= 1'b1;
+
             case (st)
-                TX_WAIT:
-                    if (tx_pulse) begin
+                TX_WAIT: begin
+                    if (ack_pend || tx_pulse) begin
+                        // 两笔待发：发一笔、留一笔（ack_pend 保持）
+                        ack_pend <= tx_pulse & ack_pend;
                         // 锁存整帧（toggle 到达时 tx_pkt 已稳定）
                         tx_buf <= {tx_pkt, TX_HDR};
-                        tx_i <= 5'd0;
+                        tx_sel <= 1'b0;
+                        tx_i   <= 11'd0;
                         if (udp_tx_ready) begin
                             app_tx_data_request <= 1'b1;
                             st <= TX_ACK;
                         end else
                             st <= TX_RDY;
                     end
+                    else if (str_go) begin
+                        pkt_words <= (fifo_avail >= 10'd255) ? 9'd255
+                                                             : fifo_avail[8:0];
+                        tx_sel <= 1'b1;
+                        bi     <= 11'd0;
+                        st <= S_BUILD;
+                    end
+                end
                 TX_RDY:                      // 等协议栈就绪
                     if (udp_tx_ready) begin
                         app_tx_data_request <= 1'b1;
@@ -157,25 +306,147 @@ module eth_front(
                 TX_ACK:
                     if (app_tx_ack) begin
                         app_tx_data_request <= 1'b0;
-                        udp_data_length     <= PKT_BYTES;
-                        valid_r             <= 1'b1;   // 首字节本拍起有效
-                        tx_i <= 5'd0;
+                        udp_data_length     <= tx_sel ? pkt_len_w : PKT_BYTES;
+                        tx_i <= 11'd0;
+                        if (tx_sel) begin
+                            str_q    <= str_mem[0];   // 首字节预取
+                            out_valid <= 1'b1;
+                        end else
+                            valid_r <= 1'b1;          // 首字节本拍起有效
                         st <= TX_SEND;
                     end else
                         app_tx_data_request <= 1'b1;
                 TX_SEND:
-                    if (tx_i == PKT_BYTES - 1) begin
-                        valid_r <= 1'b0; // 末字节（tx_i=15）已输出
-                        tx_i <= 5'd0;
-                        st <= TX_WAIT;
-                    end else begin
-                        tx_i <= tx_i + 1'b1;
+                    if (tx_sel) begin
+                        // 线序字节 k = str_mem[k]（str_q 前拍预取）
+                        if (tx_i < pkt_len_w - 16'd1)
+                            str_q <= str_mem[tx_i + 11'd1];
+                        if (tx_i == pkt_len_w - 16'd1) begin
+                            out_valid <= 1'b0;
+                            tx_i <= 11'd0;
+                            seq  <= seq + 16'd1;      // 每流包 +1（PC 缺口检测）
+                            st <= TX_WAIT;
+                        end else
+                            tx_i <= tx_i + 11'd1;
                     end
+                    else begin
+                        if (tx_i == PKT_BYTES - 1) begin
+                            valid_r <= 1'b0; // 末字节（tx_i=15）已输出
+                            // 只清"已发出那笔"的记账；本拍恰好又有新 pulse 则保留
+                            if (!tx_pulse)
+                                ack_pend <= 1'b0;
+                            tx_i <= 11'd0;
+                            st <= TX_WAIT;
+                        end else begin
+                            tx_i <= tx_i + 11'd1;
+                        end
+                    end
+                // 攒包：bi=0..9 直写（头+seq）；bi≥11 写 bi-1 号字节（字数据
+                // 滞后一拍）。弹字 bi≡1(mod4)、锁存 bi≡2、写字 bi≥11 —— 
+                // 弹出拍 4N+5、锁存拍 4N+6、末写拍 4N+10（地址 4N+9）。
+                S_BUILD: begin
+                    if (bi <= 11'd9)
+                        str_mem[bi[10:0]] <= (bi < 11'd8) ? hdr_b
+                                           : (bi == 11'd8) ? seq[7:0]
+                                                           : seq[15:8];
+                    else if ((bi >= 11'd11) && (bi <= bi_build_end))
+                        str_mem[bi - 11'd1] <= wb_byte;
+                    if ((bi[1:0] == 2'b10) && (bi >= 11'd10) && (bi <= bi_latch_end))
+                        word_hold <= fifo_rd_data;
+                    if (bi >= bi_build_end) begin
+                        if (udp_tx_ready) begin
+                            app_tx_data_request <= 1'b1;
+                            st <= TX_ACK;
+                        end else
+                            st <= TX_RDY;
+                    end else
+                        bi <= bi + 11'd1;
+                end
                 default: st <= TX_WAIT;
             endcase
         end
     end
-    assign app_tx_data       = tx_buf[8*tx_i[3:0] +: 8];
-    assign app_tx_data_valid = valid_r;
+    assign app_tx_data       = tx_sel ? str_q : tx_buf[8*tx_i[3:0] +: 8];
+    assign app_tx_data_valid = tx_sel ? out_valid : valid_r;
 
+endmodule
+
+// ---------------------------------------------------------------------------
+// tap_afifo — 写侧分叉 Gray 异步 FIFO（512×32，tap_clk → udp_clk）。
+// Cummings 经典结构：格雷码指针 2 级同步跨域；读侧寄存读出（rd_en 次拍出数）；
+// rd_avail = 同步回来的写指针 − 读指针（寄存输出，滞后 2 拍且悲观——只用作
+// 攒包触发阈值与冲洗判空，冲洗前有 32 拍沉降窗，不受滞后影响）。
+// ---------------------------------------------------------------------------
+module tap_afifo #(
+    parameter AW = 9,                    // 2^AW = 512 深
+    parameter DW = 32
+)(
+    input  wire          wr_clk,
+    input  wire          wr_rst,        // 各域已同步化的高有效复位
+    input  wire          wr_en,
+    input  wire [DW-1:0] wr_data,
+    output reg           wr_full,       // 寄存输出（悲观一拍）
+    input  wire          rd_clk,
+    input  wire          rd_rst,
+    input  wire          rd_en,
+    output reg  [DW-1:0] rd_data,       // rd_en 次拍有效
+    output reg           rd_empty,      // 寄存输出（悲观一拍）
+    output reg  [AW:0]   rd_avail
+);
+    reg [AW:0] wbin, wgray;
+    reg [AW:0] rbin, rgray;
+    reg [AW:0] rgray_w1, rgray_w2;       // 读指针 → 写域
+    reg [AW:0] wgray_r1, wgray_r2;       // 写指针 → 读域
+    reg [DW-1:0] mem [0:(1<<AW)-1];
+
+    // ⚠ full/empty 必须**寄存**：组合式 `next == 对侧同步指针` 判据与指针推进
+    //   互为组合环（"恰好剩一个字且使能有效"时振荡——Verilator 直接拒绝收敛）。
+    //   寄存化后只可能悲观（多丢一个写/少弹一个读），不可能越过指针。
+    wire        push_go     = wr_en && !wr_full;
+    wire [AW:0] wbin_next   = wbin + {{AW{1'b0}}, push_go};
+    wire [AW:0] wgray_next  = (wbin_next >> 1) ^ wbin_next;
+    wire        wr_full_next = (wgray_next == {~rgray_w2[AW:AW-1], rgray_w2[AW-2:0]});
+
+    always @(posedge wr_clk) begin
+        if (wr_rst) begin
+            wbin <= {(AW+1){1'b0}}; wgray <= {(AW+1){1'b0}};
+            wr_full <= 1'b1;             // 复位期视为满：不许写
+            rgray_w1 <= {(AW+1){1'b0}}; rgray_w2 <= {(AW+1){1'b0}};
+        end else begin
+            wbin <= wbin_next; wgray <= wgray_next;
+            wr_full <= wr_full_next;
+            if (push_go) mem[wbin[AW-1:0]] <= wr_data;
+            rgray_w1 <= rgray; rgray_w2 <= rgray_w1;
+        end
+    end
+
+    wire        pop_go      = rd_en && !rd_empty;
+    wire [AW:0] rbin_next   = rbin + {{AW{1'b0}}, pop_go};
+    wire [AW:0] rgray_next  = (rbin_next >> 1) ^ rbin_next;
+    wire        rd_empty_next = (rgray_next == wgray_r2);
+
+    // 同步回来的写指针 gray → binary
+    reg [AW:0] wbin_rd;
+    integer i;
+    always @* begin
+        wbin_rd[AW] = wgray_r2[AW];
+        for (i = AW-1; i >= 0; i = i - 1)
+            wbin_rd[i] = wbin_rd[i+1] ^ wgray_r2[i];
+    end
+
+    always @(posedge rd_clk) begin
+        if (rd_rst) begin
+            rbin <= {(AW+1){1'b0}}; rgray <= {(AW+1){1'b0}};
+            rd_data <= {DW{1'b0}};
+            rd_empty <= 1'b1;            // 复位期视为空：不许读
+            wgray_r1 <= {(AW+1){1'b0}}; wgray_r2 <= {(AW+1){1'b0}};
+            rd_avail <= {(AW+1){1'b0}};
+        end else begin
+            rbin <= rbin_next; rgray <= rgray_next;
+            rd_empty <= rd_empty_next;
+            if (pop_go) rd_data <= mem[rbin[AW-1:0]];   // 弹的是当前队头（rbin 非 rbin_next）
+            wgray_r1 <= wgray; wgray_r2 <= wgray_r1;
+            rd_avail <= wbin_rd - rbin;
+        end
+    end
 endmodule

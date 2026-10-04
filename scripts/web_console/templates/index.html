@@ -421,6 +421,20 @@
       </div>
     </div>
 
+    <!-- 以太网流帧预览（写侧分叉）：收到第一帧时显示 -->
+    <div class="card" id="frameCard" style="display:none">
+      <h2>以太网流帧 <span class="u">（写侧分叉预览）</span></h2>
+      <canvas id="frameCv" width="1280" height="720"
+              style="width:100%;background:#000;border-radius:8px"></canvas>
+      <div class="hint" style="margin-top:10px">
+        <span id="frameHint">等待流帧…</span>
+        <span style="margin-left:12px">对照原图（BMP）:
+          <input type="file" id="bmpFile" accept=".bmp" style="max-width:180px">
+        </span>
+        <span id="diffHint" style="margin-left:8px"></span>
+      </div>
+    </div>
+
     <div class="card">
       <h2>板卡回包</h2>
       <div class="term">
@@ -757,9 +771,99 @@ function listen() {
       addLog(m.kind === "ack" ? "ack" : "st",
              m.kind === "ack" ? "ACK" : "STA", m.text);
       parseMetrics(m.text);
+    } else if (m.type === "frame") {
+      showFrame(m);
     }
   };
 }
+
+/* ---------- 以太网流帧（写侧分叉）：拉原始字流 → canvas RGB565 ---------- */
+/* 线序与 RTL 一致：每字 4 字节小端，低 16bit=左像素，高 16bit=右像素。
+   发射行 r = 图像自底向上第 r 行（BMP 文件序），SDRAM vflip 落显示行
+   y0+h-1-r —— 预览照搬同一映射，画出来即屏幕正立方向。 */
+let lastFrameId = 0, frameBuf = null;
+function put565(px, o, v) {
+  const r5 = (v >> 11) & 31, g6 = (v >> 5) & 63, b5 = v & 31;
+  px[o]     = (r5 << 3) | (r5 >> 2);
+  px[o + 1] = (g6 << 2) | (g6 >> 4);
+  px[o + 2] = (b5 << 3) | (b5 >> 2);
+  px[o + 3] = 255;
+}
+async function showFrame(m) {
+  if (m.id === lastFrameId) return;
+  lastFrameId = m.id;
+  try {
+    const r = await fetch("/api/frame");
+    if (!r.ok) return;
+    frameBuf = await r.arrayBuffer();
+    const gaps  = +(r.headers.get("X-Frame-Gaps")  || 0);
+    const words = +(r.headers.get("X-Frame-Words") || 0);
+    const h  = Math.floor(words / 640);
+    const y0 = (720 - h) >> 1;
+    const dv  = new DataView(frameBuf);
+    const ctx = document.getElementById("frameCv").getContext("2d");
+    const img = ctx.createImageData(1280, 720);
+    const px  = img.data;
+    for (let row = 0; row < h; row++) {
+      const y = y0 + h - 1 - row;              // vflip 补偿（同 RTL）
+      let off = row * 640 * 4;
+      for (let c = 0; c < 640; c++, off += 4) {
+        const w = dv.getUint32(off, true);
+        put565(px, (y * 1280 + 2 * c) * 4, w & 0xFFFF);
+        put565(px, (y * 1280 + 2 * c + 1) * 4, w >>> 16);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    document.getElementById("frameCard").style.display = "";
+    document.getElementById("frameHint").textContent =
+      `#${m.id} ${m.ts}：${words} 字（1280×${h}），seq 缺口 ${gaps}`;
+    document.getElementById("diffHint").textContent = "";
+  } catch (e) { /* 拉帧失败不影响主控制台 */ }
+}
+
+/* ---------- 对照原图（本机 BMP）：与流帧逐像素比对，差异标红 ---------- */
+document.getElementById("bmpFile").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  const hint = document.getElementById("diffHint");
+  if (!f || !frameBuf) { hint.textContent = frameBuf ? "" : "尚无流帧"; return; }
+  try {
+    const dv = new DataView(await f.arrayBuffer());
+    if (dv.getUint16(0, true) !== 0x4D42) { hint.textContent = "不是 BMP"; return; }
+    const off  = dv.getUint32(10, true);
+    const w    = dv.getInt32(18, true);
+    const hRaw = dv.getInt32(22, true);
+    const bpp  = dv.getUint16(28, true);
+    if (bpp !== 24) { hint.textContent = "只支持 24bit BMP"; return; }
+    const bottomUp = hRaw > 0, h = Math.abs(hRaw);
+    const stride = (w * 3 + 3) & ~3;
+    const x0 = (1280 - w) >> 1, y0 = (720 - h) >> 1;
+    const rdv = new DataView(frameBuf);
+    const ctx = document.getElementById("frameCv").getContext("2d");
+    const img = ctx.getImageData(0, 0, 1280, 720);
+    const px  = img.data;
+    let bad = 0, total = 0;
+    for (let row = 0; row < h; row++) {
+      const y = y0 + h - 1 - row;                    // 流帧行位置（同渲染）
+      const r = bottomUp ? row : h - 1 - row;        // BMP 自底向上行号
+      for (let x = 0; x < w; x++, total++) {
+        const bo = off + r * stride + x * 3;         // BMP 像素 = B G R
+        const exp = ((dv.getUint8(bo + 2) >> 3) << 11) |
+                    ((dv.getUint8(bo + 1) >> 2) << 5) |
+                     (dv.getUint8(bo) >> 3);
+        const wi = row * 640 + ((x0 + x) >> 1);      // 发射行 r = BMP 行 r
+        const got = ((x0 + x) & 1) ? rdv.getUint32(wi * 4, true) >>> 16
+                                   : rdv.getUint32(wi * 4, true) & 0xFFFF;
+        if (got !== exp) {
+          bad++;
+          const o = (y * 1280 + x0 + x) * 4;         // 差异标红
+          px[o] = 255; px[o + 1] = 0; px[o + 2] = 0; px[o + 3] = 255;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    hint.textContent = bad ? `差异 ${bad}/${total} 像素（标红）` : `一致（${total} 像素）`;
+  } catch (err) { hint.textContent = "解析失败: " + err.message; }
+});
 
 /* ---------- 启动 ---------- */
 (async function init(){

@@ -17,12 +17,23 @@
 //   T9 应用头里的"伪装命令对"不得被解出（头 8 字节不参与解析）
 //   T10 跨包拆分的命令对不得误配（包尾必须清配对状态）
 //   T11 栈未就绪（udp_tx_ready=0）时等住、就绪后原样发出（不丢帧）
+// 写侧分叉（第二十轮）：
+//   T12 tap 灌 300 字 → 满包 seq=0、255 字、头 len=0x03FE、字 LSB 字节先发
+//   T13 tap_end → 冲洗尾包 seq=1、N=45、len=0x0BB6；冲洗完 seq 归零
+//   T14 新会话：尾包 seq 重新从 0 起
+//   T15 仲裁：ACK 与流包同时待发 → ACK 先行，且 ACK 不吃 seq
 `timescale 1ns/1ps
 module tb_ethfront;
 
     reg clk = 0;
     always #5 clk = ~clk;              // 100MHz（eth 域真实是 125M，测试无关）
     reg rst = 1;
+    reg sys_rst = 1;                   // 流通道复位（与 rst 同步释放）
+
+    // ---- 写侧分叉 tap（tap_clk 同 clk）----
+    reg         tap_val = 1'b0;
+    reg  [31:0] tap_word = 32'd0;
+    reg         tap_end  = 1'b0;
 
     // ---- UDP 栈应用侧接口（由本 TB 扮演）----
     reg  [7:0]  rx_data  = 8'd0;
@@ -58,7 +69,12 @@ module tb_ethfront;
         .cmd_pending       (cmd_pending),
         .cmd_ack_t         (cmd_ack_t),
         .tx_tog            (tx_tog),
-        .tx_pkt            (tx_pkt)
+        .tx_pkt            (tx_pkt),
+        .sys_rst           (sys_rst),
+        .tap_clk           (clk),
+        .tap_val           (tap_val),
+        .tap_word          (tap_word),
+        .tap_end           (tap_end)
     );
 
     integer errors = 0;
@@ -104,7 +120,7 @@ module tb_ethfront;
     endtask
 
     // ---- TX 采集：valid 期间逐拍收字节 ----
-    reg [7:0] cap [0:31];
+    reg [7:0] cap [0:2047];
     integer   cap_n = 0;
     reg       cap_en = 0;
     always @(posedge clk) begin
@@ -114,6 +130,48 @@ module tb_ethfront;
         end
     end
 
+    // ---- 等一次完整发送：request → ack → 收 pkt_len 字节 ----
+    task tx_collect(input integer pkt_len);
+        integer guard;
+        begin
+            cap_n = 0; cap_en = 1;
+            guard = 0;
+            while (!tx_request && guard < 40000) begin @(posedge clk); guard = guard + 1; end
+            if (!tx_request) fail_msg("TX: request 未拉高");
+            tx_ack = 1'b1;
+            @(posedge clk);
+            tx_ack = 1'b0;
+            guard = 0;
+            while (cap_n < pkt_len && guard < 40000) begin @(posedge clk); guard = guard + 1; end
+            repeat (4) @(posedge clk);
+            cap_en = 0;
+        end
+    endtask
+
+    // ---- 灌 N 个 tap 字（字 i = {i[15:0], ~i[15:0]} 便于校验字节序）----
+    task tap_feed(input integer n);
+        integer j;
+        begin
+            for (j = 0; j < n; j = j + 1) begin
+                @(posedge clk);
+                tap_val  <= 1'b1;
+                tap_word <= {j[15:0], ~j[15:0]};
+            end
+            @(posedge clk);
+            tap_val <= 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
+    // ---- tap_end 会话结束脉冲 ----
+    task tap_session_end;
+        begin
+            @(posedge clk); tap_end <= 1'b1;
+            @(posedge clk); tap_end <= 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
     // ---- 模拟栈：接受一次发送（request → ack → 收 16 字节）----
     task tx_round(input [63:0] pkt);
         integer guard;
@@ -121,19 +179,7 @@ module tb_ethfront;
             tx_pkt = pkt;
             @(posedge clk);
             tx_tog = ~tx_tog;            // 顶层每应答一次翻转一次
-            cap_n = 0; cap_en = 1;
-            // 等 request 拉高
-            guard = 0;
-            while (!tx_request && guard < 200) begin @(posedge clk); guard = guard + 1; end
-            if (!tx_request) fail_msg("TX: request 未拉高");
-            tx_ack = 1'b1;               // 栈应答
-            @(posedge clk);
-            tx_ack = 1'b0;
-            // 等 16 字节收完
-            guard = 0;
-            while (cap_n < 16 && guard < 400) begin @(posedge clk); guard = guard + 1; end
-            repeat (4) @(posedge clk);
-            cap_en = 0;
+            tx_collect(16);
         end
     endtask
 
@@ -144,7 +190,7 @@ module tb_ethfront;
         exp_hdr[4]=8'h00; exp_hdr[5]=8'h02; exp_hdr[6]=8'h00; exp_hdr[7]=8'h08;
 
         repeat (10) @(posedge clk);
-        rst = 0;
+        rst = 0; sys_rst = 0;
         repeat (10) @(posedge clk);
 
         // ---- T1/T2：解命令 + 握手清除 ----
@@ -248,6 +294,79 @@ module tb_ethfront;
         else if (cap[8] !== 8'hC3 || cap[15] !== 8'hDE)
                                                 fail_msg("T11 就绪恢复后帧内容错");
         else $display("T11 栈未就绪时等待、就绪后原样发出: PASS");
+
+        // ============ 写侧分叉：流包通道（第二十轮）============
+
+        // ---- T12：tap 灌 300 字 → 满包（seq=0，255 字）----
+        // 字 j = {j, ~j}：线序 LSB 先 → 字节流 = ~j[7:0] ~j[15:8] j[7:0] j[15:8]
+        tap_feed(300);
+        tx_collect(10 + 4*255);
+        begin : dbg12
+            integer d;
+            $write("DBG12 cap[0..31]:");
+            for (d = 0; d < 32; d = d + 1) $write(" %02x", cap[d]);
+            $write("\n");
+            $write("DBG12 cap[1020..1029]:");
+            for (d = 1020; d < 1030; d = d + 1) $write(" %02x", cap[d]);
+            $write("\n");
+        end
+        if (cap_n !== 10 + 4*255) fail_msg("T12 满包长度应为 1030 字节");
+        if (cap[0] !== 8'hAA || cap[1] !== 8'hBB || cap[2] !== 8'hCC || cap[3] !== 8'hDD)
+            fail_msg("T12 流包应用头错");
+        if (cap[4] !== 8'h03 || cap[5] !== 8'h00) fail_msg("T12 流包 type 应为 0x0003");
+        // 头 length 域 = 2 + 4*255 = 1022 = 0x03FE
+        if (cap[6] !== 8'hFE || cap[7] !== 8'h03) fail_msg("T12 流包头 length 域错");
+        if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T12 首包 seq 应为 0");
+        // 字 0 = {0x0000,0xFFFF} → FF FF 00 00；字 1 = {0x0001,0xFFFE} → FE FF 01 00
+        if (cap[10] !== 8'hFF || cap[11] !== 8'hFF || cap[12] !== 8'h00 || cap[13] !== 8'h00)
+            fail_msg("T12 字 0 字节序错（应 LSB 先）");
+        if (cap[14] !== 8'hFE || cap[15] !== 8'hFF || cap[16] !== 8'h01 || cap[17] !== 8'h00)
+            fail_msg("T12 字 1 内容错");
+        // 末字（j=254 = {0x00FE,0xFF01}）→ 01 FF FE 00
+        if (cap[1026] !== 8'h01 || cap[1027] !== 8'hFF ||
+            cap[1028] !== 8'hFE || cap[1029] !== 8'h00) fail_msg("T12 末字内容/序错");
+        if (errors == 0) $display("T12 tap 满包 255 字（头/seq/字节序）: PASS");
+
+        // ---- T13：tap_end → 冲洗尾包（seq=1，45 字）----
+        tap_session_end();
+        tx_collect(10 + 4*45);
+        if (cap_n !== 10 + 4*45) fail_msg("T13 尾包长度应为 190 字节");
+        // 头 length 域 = 2 + 180 = 182 = 0x00B6
+        if (cap[6] !== 8'hB6 || cap[7] !== 8'h00) fail_msg("T13 尾包 length 域错");
+        if (cap[8] !== 8'h01 || cap[9] !== 8'h00) fail_msg("T13 尾包 seq 应为 1");
+        // 末字 j=299=0x012B：线序 D4 FE 2B 01
+        if (cap[186] !== 8'hD4 || cap[189] !== 8'h01) fail_msg("T13 尾包末字内容错");
+        if (errors == 0) $display("T13 tap_end 冲洗尾包（seq=1，45 字）: PASS");
+
+        // ---- T14：新会话尾包 seq 重新从 0 起 ----
+        tap_feed(10);
+        tap_session_end();
+        tx_collect(10 + 4*10);
+        if (cap_n !== 50) fail_msg("T14 新会话尾包长度应为 50 字节");
+        if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T14 新会话 seq 应归零");
+        if (cap[6] !== 8'h2A || cap[7] !== 8'h00) fail_msg("T14 新会话尾包 length 域错（42）");
+        if (errors == 0) $display("T14 新会话 seq 归零: PASS");
+
+        // ---- T15：仲裁与记账——流包在途时 ACK 记账不丢、ACK 先行、不吃 seq ----
+        // 流包攒好后栈故意未就绪（流包卡在 TX_RDY），此时到达的 ACK 必须记账，
+        // 就绪后流包先发（已获总线），随后 ACK 补发，seq 不受 ACK 影响。
+        tx_ready = 1'b0;
+        tap_feed(300);
+        tx_pkt = 64'h0000_0000_0000_00A5;
+        tx_tog = ~tx_tog;                          // ACK 到达（此时流包在等就绪）
+        repeat (20) @(posedge clk);
+        if (tx_request !== 1'b0) fail_msg("T15 栈未就绪却已拉 request");
+        tx_ready = 1'b1;
+        tx_collect(10 + 4*255);                    // 流包先走
+        if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T15 流包 seq 应为 0");
+        tx_collect(16);                            // 随后 ACK 补发
+        if (cap_n !== 16) fail_msg("T15 ACK 帧长应为 16");
+        if (cap[4] !== 8'h00 || cap[5] !== 8'h02) fail_msg("T15 ACK type 错");
+        if (cap[8] !== 8'hA5) fail_msg("T15 ACK 载荷首字节错（记账丢失？）");
+        tap_session_end();
+        tx_collect(10 + 4*45);                     // 尾包 seq=1：ACK 未吃 seq
+        if (cap[8] !== 8'h01 || cap[9] !== 8'h00) fail_msg("T15 ACK 后尾包 seq 应仍为 1");
+        if (errors == 0) $display("T15 ACK/流包仲裁与记账（ACK 先行、不吃 seq）: PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILED ====", errors);

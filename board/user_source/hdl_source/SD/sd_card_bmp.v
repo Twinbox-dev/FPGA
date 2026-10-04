@@ -76,6 +76,11 @@ module sd_card_bmp #(
     output reg                  pl_pkt_val,
     output      [7:0]           ld_diag,       // 装载诊断：{0,result[1:0],ld[2:0],busy,img_wav}
 
+    // ---- 写侧分叉探针：图像会话发射字同步馈以太网流（撕裂取证/上位机预览）----
+    output      [31:0]          tap_word,      // 发射字（2 像素 RGB565）
+    output                      tap_val,       // tap_word 有效（图像会话期间）
+    output                      tap_end,       // 会话结束脉冲（离开 LD_STREAM，含弃载）
+
     input                       write_finish_toggle,
     output reg  [1:0]           disp_buf_idx,
 
@@ -403,6 +408,7 @@ module sd_card_bmp #(
     reg         img_have_pix0;
     reg         img_word_val;
     reg         pad_done;                 // 会话末尾填充字已发（补偿 FIFO 输出寄存器在途字）
+    reg         emit_seen;                // 本次会话 img_emit_en 曾升起（pad 只许在收尾发）
     reg  [31:0] img_word;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -416,6 +422,7 @@ module sd_card_bmp #(
             emit_cnt      <= 21'd0;
             pix_cnt       <= 20'd0;
             pad_done      <= 1'b0;
+            emit_seen     <= 1'b0;
         end
         else if (load_start_pulse) begin
             ibuf_wptr     <= 6'd0;
@@ -426,6 +433,7 @@ module sd_card_bmp #(
             emit_cnt      <= 21'd0;
             pix_cnt       <= 20'd0;
             pad_done      <= 1'b0;
+            emit_seen     <= 1'b0;
         end
         else begin
             // 缓冲指针/水位（推=解码像素流；弹=发射窗口内取用）
@@ -451,7 +459,13 @@ module sd_card_bmp #(
 
             // 发射：两两组字
             img_word_val <= 1'b0;
-            if (!img_emit_en && ld_state == LD_STREAM && !pad_done) begin
+            if (img_emit_en)
+                emit_seen <= 1'b1;
+            // 填充字只许在「发射已开过且已收」时补：LD_IMG_ACK 拉起 emit_start_pulse
+            // 后 img_emit_en 晚一拍才升起，这一拍里 !img_emit_en && LD_STREAM 同样
+            // 成立——没有 emit_seen 前置会话开头就错发一个黑字（占掉第 0 字预算，
+            // 整帧右移一字、末字不落 SDRAM = 板上撕裂的直接根因，2026-10-05 实锤）
+            if (emit_seen && !img_emit_en && ld_state == LD_STREAM && !pad_done) begin
                 img_word_val <= 1'b1;        // 会话末尾填充字（不入 SDRAM，见上）
                 img_word     <= 32'd0;
                 pad_done     <= 1'b1;
@@ -538,6 +552,23 @@ module sd_card_bmp #(
     assign img_idx_out = img_idx[4:0];     // UART 遥测
     assign img_wav_out = pair_valid[img_idx[4:0]];
     assign ld_diag     = {1'b0, ld_result, ld_state, load_busy, img_wav_out};
+    assign tap_word    = img_word;
+    assign tap_val     = img_word_val;
+    // 会话结束脉冲：检测「离开 LD_STREAM」而非 write_finish——超时/img_err 弃载
+    // 没有 finish，但以太网侧仍需冲洗 FIFO 残字，否则脏字污染下一帧。
+    // 拍序安全：pad 填充字在 LD_STREAM 内发出（早于 write_finish/弃载退出），
+    // 脉冲到达 eth_front 时所有字已进 Gray FIFO。
+    reg  ld_stream_q, tap_end_r;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            ld_stream_q <= 1'b0; tap_end_r <= 1'b0;
+        end
+        else begin
+            ld_stream_q <= (ld_state == LD_STREAM);
+            tap_end_r   <= ld_stream_q && (ld_state != LD_STREAM);
+        end
+    end
+    assign tap_end     = tap_end_r;
     assign auto_play_out = auto_play_en;   // 遥测：自动轮播开关（ctrl_core 打进 ACK/状态包）
     assign aud_playing   = (plstate == PL_RUN);   // 播放域真实出声（音频自愈看门狗用）
 

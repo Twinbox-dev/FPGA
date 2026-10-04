@@ -716,3 +716,51 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
 **提交状态**：fix/multires-engine-timing 分支 @09ec7c6（dde10a8 全量+寄存化
 修正），main @4a8362f。分支里混入临时文件（scripts/_fix_engine.py 残版、
 boardtest/logs/*.log）待清理。
+
+## 2026-10-05 第二十轮：写侧分叉落地 + 撕裂根因实锤修复（pad 前导误发）
+
+**撕裂根因（仿真全卡复现并修复）**：
+- 现象：全量回归所有「像素与 golden 逐像素比对」失败，首失配全部在行 0
+  （字#0/1/20/80/160/236…），got 多一个 00000000 黑字后全体右移一字。
+- 钉死：失配模式与「会话开头多插一个 pad 黑字」完全自洽（小图行 0 开头是黑，
+  失配推迟到首个非黑像素才显形，位置才"散乱"；正反两向失配都对得上）。
+- 根因：LD_IMG_ACK 同拍发 emit_start_pulse 并切 LD_STREAM，img_emit_en 晚一拍
+  升起——这一拍 `!img_emit_en && LD_STREAM && !pad_done` 成立，**pad 错发在会话
+  开头**，占掉第 0 字预算：整帧 SDRAM 内容右移一字、最后一个真字不落 SDRAM。
+  板上撕裂/白条的直接根因；pad_done 被吃掉后末尾补偿也不复存在。
+- 修复：pad 加 emit_seen 前置（img_emit_en 曾升起才许补），复位/load_start_pulse
+  清零。tb_readeng 直注 FIFO 测不到打包器，所以 T30-T33 拦不住。
+- 上两次提交里 logs 是旧的（33 项小套件，09ec7c6 未重跑全量），回归从未暴露。
+
+**写侧分叉（本轮完工，tb_ethfront 15/15 全绿）**：
+- sd_card_bmp：tap_word/tap_val（原有）+ 新增 tap_end（离开 LD_STREAM 检测，
+  正常收尾/超时/img_err 弃载都覆盖；弃载不发则 FIFO 残字污染下一帧）。
+- eth_front（全内联，不加新文件避 .al 登记问题）：
+  - 内联 tap_afifo：Gray 异步 FIFO 512×32（tap_clk=sd_card_clk 写 → udp_clk 读）。
+    ⚠ 两个教训：①full/empty 必须寄存——组合式 `next==对侧同步指针` 与指针推进
+    互为组合环，"恰好剩一个字且使能有效"时振荡（Verilator 拒绝收敛）；寄存化后
+    只可能悲观不可能越界。②寄存读出弹的是**当前队头 mem[rbin]**（写 mem[rbin_next]
+    会整流丢首字、全体移位一位）。
+  - TX 统一 FSM：TX_WAIT/RDY/ACK/SEND + S_BUILD；tx_sel 选 ACK 包（tx_buf 16B）/
+    流包（str_mem 1030B BRAM 攒包）；ack_pend 记账（pulse 在途不丢，ACK 发完时
+    若恰有新 pulse 则保留）；ACK 优先，流包补位。
+  - 流包：type=0x0003，seq[15:0]+N×32bit（N=255 满包/尾短包），字 LSB 字节先发，
+    udp_data_length=10+4N；BRAM 攒包时序：弹字 bi≡1(mod4)、锁存 bi≡2、写字
+    bi≥11 写 bi-1 地址、末写拍 4N+10。
+  - 会话收口：tap_end → tap 域 toggle → udp 域边沿 → flush_pend，等 32 拍写指针
+    沉降后排空 FIFO，排空即 seq 归零（PC 靠 seq==0 判新会话）。
+  - sys_rst（rst_all）两域各自同步：eth 的 reset 上电锁存一次，按键复位只能靠它，
+    否则 FIFO 写侧清读侧不清、指针错位。
+- eth_subsys/top 接线：sys_rst=rst_all、tap_clk=sd_card_clk、tap_* 三线。
+- 写侧纯旁路：FIFO 满丢字不反压主路；不碰 frame_fifo_write/into_burst 雷区。
+
+**PC 端（web_console）**：
+- app.py：EthTransport 读线程分流包分支（type 0x0003）：seq 重组（seq==0 清会话、
+  缺口计数），静默 0.4s 收口整帧入 ETH_FRAME；SSE 只推 frame 通知；
+  /api/frame 返回原始字流（小端）+ X-Frame-* 元数据头。
+- index.html：流帧卡片 + canvas 渲染（RGB565→888，行 r 落 y0+h−1−r 同 RTL vflip）
+  + 可选本机 24bit BMP 对照 diff（差异标红 + 计数）。
+
+**提交状态**：fix/multires-engine-timing，待回归全绿后提交；综合上板后合并 main。
+**上板顺序**：综合 → 查时序报告（into_burst 路径应消失；千兆 eth −3.6/官方 SDRAM
+−6.7 为已知接受）→ 烧录 → 连以太网 → 装载任意图 → Web 前端看流帧与 diff。
