@@ -298,6 +298,11 @@ wire [7:0]  ld_diag_w;       // 装载诊断快照 → ACK pkt[5]
 wire [31:0] tap_word_w;      // 写侧分叉：图像发射字 → 以太网流
 wire        tap_val_w;
 wire        tap_end_w;       // 图像会话结束脉冲（eth 侧冲洗 FIFO 触发）
+wire [31:0] tap2_word_w;     // 读侧 dump：显示读数据捕获 → 以太网流（type 0x0004）
+wire        tap2_val_w;
+wire        tap2_end_w;
+wire        rdump_start_w;   // 'D' 手动读回触发（ctrl_core）
+wire        dmp_trig_w;      // 读回捕获触发（sd_card_clk 域脉冲，'D' 或装载自动）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -328,6 +333,7 @@ ctrl_core #(
     .pl_pkt         (pl_pkt_w),
     .pl_pkt_val     (pl_pkt_val_w),
     .pl_dump_start  (pl_dump_start_w),
+    .rdump_start    (rdump_start_w),
     .ld_diag        (ld_diag_w)
 );
 
@@ -376,7 +382,11 @@ eth_subsys u_eth_subsys(
     .tap_clk             (sd_card_clk),
     .tap_val             (tap_val_w),
     .tap_word            (tap_word_w),
-    .tap_end             (tap_end_w)
+    .tap_end             (tap_end_w),
+    .tap2_clk            (video_clk),
+    .tap2_val            (tap2_val_w),
+    .tap2_word           (tap2_word_w),
+    .tap2_end            (tap2_end_w)
 );
 
 // 命令仲裁 + 以太网命令握手 → 抽成 cmd_arb 模块（在 ctrl_core.v 里）。
@@ -506,7 +516,9 @@ sd_card_bmp #(
     .ld_diag           (ld_diag_w),
     .tap_word          (tap_word_w),
     .tap_val           (tap_val_w),
-    .tap_end           (tap_end_w)
+    .tap_end           (tap_end_w),
+    .rdump_start       (rdump_start_w),
+    .dmp_trig          (dmp_trig_w)
 );
 
 // ===================== 七段数码管（预留）=====================
@@ -634,6 +646,50 @@ pulse_bar pulse_bar_m0(
 
 assign vout_data = bar_hit       ? bar_rgb :
                    display_valid ? vout_adj  : 24'd0;
+
+// ================== 读侧 dump 捕获窗（video_clk 域，第二十一轮）==================
+// 触发（'D' 或装载提交自动）后从下一个 vsync 起圈取一整帧显示读数据
+// （video_read_en/video_read_data，帧内全 460800 字）经 tap2 馈以太网。
+// 纯旁路观察：不占读引擎会话、不碰音频通道，放音乐时也可自动抓。
+// 判读：捕获帧花而写侧帧净 → SDRAM 读/控制器；捕获帧净而屏显花 → video_delay/HDMI。
+wire        cap_tog_v;                  // sd_card_clk 脉冲 → toggle
+reg         cap_tog;
+always @(posedge sd_card_clk)
+    if (dmp_trig_w) cap_tog <= ~cap_tog;
+reg  cap_s0, cap_s1, cap_s2;            // video_clk 域同步 + 边沿
+always @(posedge video_clk or posedge rst_all) begin
+    if (rst_all) begin
+        cap_s0 <= 1'b0; cap_s1 <= 1'b0; cap_s2 <= 1'b0;
+    end else begin
+        cap_s0 <= cap_tog; cap_s1 <= cap_s0; cap_s2 <= cap_s1;
+    end
+end
+wire cap_req_v = (cap_s1 != cap_s2);
+reg  cap_win, cap_pend, cap_end_r;
+// vs_0/vs_0_d 在下方 video_clk 域诊断块维护，此处复用其值（同域读，无竞争）
+wire vs_rise_v = vs_0 && !vs_0_d;
+always @(posedge video_clk or posedge rst_all) begin
+    if (rst_all) begin
+        cap_win <= 1'b0; cap_pend <= 1'b0; cap_end_r <= 1'b0;
+    end else begin
+        if (cap_req_v)
+            cap_pend <= 1'b1;           // 窗已开期间的重复触发也记一笔
+        cap_end_r <= 1'b0;
+        if (vs_rise_v) begin
+            if (cap_pend) begin
+                cap_win  <= 1'b1;       // vsync 开窗：圈一帧
+                cap_pend <= 1'b0;
+            end
+            else if (cap_win) begin
+                cap_win   <= 1'b0;      // 下一 vsync 关窗
+                cap_end_r <= 1'b1;      // 通知 eth 侧冲洗 FIFO
+            end
+        end
+    end
+end
+assign tap2_val_w  = cap_win && video_read_en;
+assign tap2_word_w = video_read_data;
+assign tap2_end_w  = cap_end_r;
 
 frame_read_write #(
     .WRITE_V_FLIP     (1),

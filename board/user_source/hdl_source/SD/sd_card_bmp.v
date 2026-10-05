@@ -82,6 +82,10 @@ module sd_card_bmp #(
     output                      tap_end,       // 会话结束脉冲（离开 LD_STREAM，含弃载）
 
     input                       write_finish_toggle,
+    // ---- 读侧 dump 触发（'D' 手动 / 装载提交自动）：捕获窗在 top 的 video 域
+    //      圈取显示读数据（video_read_data）——不碰读引擎、不借音频通道 ----
+    input                       rdump_start,       // 'D' 手动触发脉冲（ctrl_core）
+    output                      dmp_trig,          // 读回捕获触发（toggle 源，本域脉冲）（冲洗 FIFO）
     output reg  [1:0]           disp_buf_idx,
 
     output                      write_req,
@@ -559,6 +563,7 @@ module sd_card_bmp #(
     // 拍序安全：pad 填充字在 LD_STREAM 内发出（早于 write_finish/弃载退出），
     // 脉冲到达 eth_front 时所有字已进 Gray FIFO。
     reg  ld_stream_q, tap_end_r;
+    reg  dmp_auto_r;                    // 装载提交自动触发读回捕获（video 域开窗，见提交处）
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             ld_stream_q <= 1'b0; tap_end_r <= 1'b0;
@@ -569,6 +574,8 @@ module sd_card_bmp #(
         end
     end
     assign tap_end     = tap_end_r;
+
+    assign dmp_trig   = rdump_start | dmp_auto_r;
     assign auto_play_out = auto_play_en;   // 遥测：自动轮播开关（ctrl_core 打进 ACK/状态包）
     assign aud_playing   = (plstate == PL_RUN);   // 播放域真实出声（音频自愈看门狗用）
 
@@ -900,6 +907,7 @@ module sd_card_bmp #(
         else begin
             wrfin_tgl_sync  <= {wrfin_tgl_sync[1:0], write_finish_toggle};
             load_start_pulse<= 1'b0;
+            dmp_auto_r      <= 1'b0;
             ld_kick         <= 1'b0;
             ald_start_pulse <= 1'b0;
             scan_start_pulse<= 1'b0;
@@ -982,6 +990,7 @@ module sd_card_bmp #(
                                 img_idx         <= load_idx;
                                 display_valid   <= 1'b1;
                             end
+                            dmp_auto_r  <= 1'b1;   // 读回捕获触发（捕获窗在 video 域）
                             boot_ald <= 1'b0;
                             // 首图显示（含配对音频就绪）后启动音频扫描相位
                             if (!first_image_committed) begin
@@ -1047,6 +1056,7 @@ module sd_card_bmp #(
                             img_idx               <= load_idx;
                             display_valid         <= 1'b1;
                             first_image_committed <= 1'b1;
+                            dmp_auto_r            <= 1'b1;   // 自动读回 dump（无音频借道冲突）
                             aud_cmt_valid         <= 1'b1;
                             cmt_pair              <= 1'b0;
                             cmt_buf               <= aud_disp_buf;

@@ -34,6 +34,10 @@ module tb_ethfront;
     reg         tap_val = 1'b0;
     reg  [31:0] tap_word = 32'd0;
     reg         tap_end  = 1'b0;
+    // ---- 读侧 dump tap2（type 0x0004，与写侧独立 FIFO/seq）----
+    reg         tap2_val = 1'b0;
+    reg  [31:0] tap2_word = 32'd0;
+    reg         tap2_end  = 1'b0;
 
     // ---- UDP 栈应用侧接口（由本 TB 扮演）----
     reg  [7:0]  rx_data  = 8'd0;
@@ -74,7 +78,11 @@ module tb_ethfront;
         .tap_clk           (clk),
         .tap_val           (tap_val),
         .tap_word          (tap_word),
-        .tap_end           (tap_end)
+        .tap_end           (tap_end),
+        .tap2_clk          (clk),
+        .tap2_val          (tap2_val),
+        .tap2_word         (tap2_word),
+        .tap2_end          (tap2_end)
     );
 
     integer errors = 0;
@@ -168,6 +176,29 @@ module tb_ethfront;
         begin
             @(posedge clk); tap_end <= 1'b1;
             @(posedge clk); tap_end <= 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
+    // ---- 灌 N 个 tap2 字（读回源；字 i = {i, ~i}）----
+    task tap2_feed(input integer n);
+        integer j;
+        begin
+            for (j = 0; j < n; j = j + 1) begin
+                @(posedge clk);
+                tap2_val  <= 1'b1;
+                tap2_word <= {j[15:0], ~j[15:0]};
+            end
+            @(posedge clk);
+            tap2_val <= 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
+    task tap2_session_end;
+        begin
+            @(posedge clk); tap2_end <= 1'b1;
+            @(posedge clk); tap2_end <= 1'b0;
             @(posedge clk);
         end
     endtask
@@ -367,6 +398,25 @@ module tb_ethfront;
         tx_collect(10 + 4*47);                     // 尾包 seq=1：ACK 未吃 seq
         if (cap[8] !== 8'h01 || cap[9] !== 8'h00) fail_msg("T15 ACK 后尾包 seq 应仍为 1");
         if (errors == 0) $display("T15 ACK/流包仲裁与记账（ACK 先行、不吃 seq）: PASS");
+
+        // ---- T16：读回源（tap2/type 0x0004）：独立 FIFO、独立 seq ----
+        tap2_feed(10);
+        tap2_session_end();
+        tx_collect(50);
+        if (cap_n !== 50) fail_msg("T16 读回尾包长度应为 50 字节");
+        if (cap[4] !== 8'h04 || cap[5] !== 8'h00) fail_msg("T16 读回包 type 应为 0x0004");
+        if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T16 读回包 seq 应为 0");
+        if (cap[6] !== 8'h2A || cap[7] !== 8'h00) fail_msg("T16 读回尾包 length 域错（42）");
+        if (cap[10] !== 8'hFF || cap[13] !== 8'h00) fail_msg("T16 读回字 0 内容错");
+        if (errors == 0) $display("T16 读回源 type 0x0004（独立 FIFO/seq）: PASS");
+
+        // ---- T17：读回会话之后写侧 seq 仍归零且 type 回 0x0003 ----
+        tap_feed(10);
+        tap_session_end();
+        tx_collect(50);
+        if (cap[4] !== 8'h03) fail_msg("T17 写侧包 type 应回 0x0003");
+        if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T17 写侧 seq 应归零");
+        if (errors == 0) $display("T17 写侧/读回会话互不串扰: PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILED ====", errors);

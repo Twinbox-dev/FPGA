@@ -61,6 +61,7 @@ module ctrl_core #(
     input  [63:0]       pl_pkt,
     input               pl_pkt_val,
     output reg          pl_dump_start,
+    output reg          rdump_start,       // 'D' 显存读回启动脉冲（sd_card_bmp）
     // 状态回读源（与 top 遥测同源）
     input  [3:0]        state_code,
     input  [7:0]        dbg_fat_state,
@@ -79,12 +80,13 @@ module ctrl_core #(
                CMD_BRIUP = 8'h5D, CMD_BRIDN = 8'h5B,
                CMD_CTUP  = 8'h2E, CMD_CTDN  = 8'h2C,   // '.'/',' 对比度（无需 Shift）
                CMD_PLDMP = 8'h4C,                      // 'L' 播放列表转储（调试）
+               CMD_RDUMP = 8'h44,                      // 'D' 显存读回转储（撕裂三分法取证）
                CMD_BARQ  = 8'h51,                      // 'Q' 脉动条开关
                CMD_SENUP = 8'h27, CMD_SENDN = 8'h3B;   // ''';' 灵敏度（' 加 ; 减）
 
     reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn, cmd_pdm;
     reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn, cmd_cup, cmd_cdn;
-    reg cmd_barq, cmd_sup, cmd_sdn;
+    reg cmd_barq, cmd_sup, cmd_sdn, cmd_rdm;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -93,14 +95,14 @@ module ctrl_core #(
             cmd_pup  <= 0; cmd_pdn  <= 0;
             cmd_bup  <= 0; cmd_bdn  <= 0;
             cmd_cup  <= 0; cmd_cdn  <= 0; cmd_pdm <= 0;
-            cmd_barq <= 0; cmd_sup <= 0; cmd_sdn <= 0;
+            cmd_barq <= 0; cmd_sup <= 0; cmd_sdn <= 0; cmd_rdm <= 0;
         end else begin
             cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_prev <= 1'b0;
             cmd_stat <= 1'b0; cmd_vup <= 1'b0; cmd_vdn <= 1'b0;
             cmd_pup  <= 1'b0; cmd_pdn <= 1'b0;
             cmd_bup  <= 1'b0; cmd_bdn <= 1'b0;
             cmd_cup  <= 1'b0; cmd_cdn <= 1'b0; cmd_pdm <= 1'b0;
-            cmd_barq <= 1'b0; cmd_sup <= 1'b0; cmd_sdn <= 1'b0;
+            cmd_barq <= 1'b0; cmd_sup <= 1'b0; cmd_sdn <= 1'b0; cmd_rdm <= 1'b0;
             if (cmd_val) begin
                 case (cmd)
                     CMD_NEXT: cmd_next <= 1'b1;
@@ -116,6 +118,7 @@ module ctrl_core #(
                     CMD_CTUP:  cmd_cup <= 1'b1;
                     CMD_CTDN:  cmd_cdn <= 1'b1;
                     CMD_PLDMP: cmd_pdm <= 1'b1;
+                    CMD_RDUMP: cmd_rdm <= 1'b1;
                     CMD_BARQ:  cmd_barq <= 1'b1;
                     CMD_SENUP: cmd_sup  <= 1'b1;
                     CMD_SENDN: cmd_sdn  <= 1'b1;
@@ -193,12 +196,19 @@ module ctrl_core #(
     end
     wire d2_stat = v2 && (echo2 == CMD_STAT);
     wire d2_pdm  = v2 && (echo2 == CMD_PLDMP);
+    wire d2_rdm  = v2 && (echo2 == CMD_RDUMP);
 
     // 'S' 的应答内容：A5 | state | fat | flagA | flagB | underrun | img | wav
     wire [63:0] status_pkt;
     always @(posedge clk or posedge rst) begin
-        if (rst)               pl_dump_start <= 1'b0;
-        else                   pl_dump_start <= d2_pdm;
+        if (rst) begin
+            pl_dump_start <= 1'b0;
+            rdump_start   <= 1'b0;
+        end
+        else begin
+            pl_dump_start <= d2_pdm;
+            rdump_start   <= d2_rdm;
+        end
     end
     assign tx_req = v2 | pl_pkt_val;
     // ⚠ 每个字段都必须是**整字节**。曾把 pkt[6] 写成 {3'b0, bri_level}（7 位），

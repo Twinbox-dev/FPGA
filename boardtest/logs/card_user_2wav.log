@@ -1048,4 +1048,4 @@
   PASS: S11 跳表与 golden 建表一致
   PASS: S11 项类型与 golden 一致
   PASS: S11 项类型与 golden 一致
-===== 68 passed, 0 failed | 2043.3 Mcyc, 875.4s, 2.3 Mcyc/s =====
+===== 68 passed, 0 failed | 2043.3 Mcyc, 790.6s, 2.6 Mcyc/s =====

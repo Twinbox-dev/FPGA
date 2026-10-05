@@ -60,7 +60,12 @@ module eth_front(
     input  wire        tap_clk,
     input  wire        tap_val,
     input  wire [31:0] tap_word,
-    input  wire        tap_end         // 会话结束脉冲（离开 LD_STREAM）
+    input  wire        tap_end,         // 写会话结束脉冲（离开 LD_STREAM）
+    // 应用入口（读侧 dump，第二十一轮）：显示读数据捕获流（video_clk 域源）
+    input  wire        tap2_clk,        // 捕获源时钟 = video_clk
+    input  wire        tap2_val,
+    input  wire [31:0] tap2_word,
+    input  wire        tap2_end         // 捕获会话结束脉冲
 );
     localparam HDR0   = 16'hAABB;        // 应用头（APUG013 demo 同款）
     localparam HDR1   = 16'hCCDD;
@@ -145,28 +150,44 @@ module eth_front(
         end
     end
     wire udp_rst = urst_s1;
-
-    // 会话结束：tap_clk 脉冲 → toggle → udp_clk 边沿
-    reg end_tog;
-    always @(posedge tap_clk) begin
-        if (tap_rst_s1)   end_tog <= 1'b0;
-        else if (tap_end) end_tog <= ~end_tog;
+    reg vrst_s0, vrst_s1;                // tap2_clk（video_clk）域
+    always @(posedge tap2_clk or posedge sys_rst) begin
+        if (sys_rst) begin
+            vrst_s0 <= 1'b1; vrst_s1 <= 1'b1;
+        end else begin
+            vrst_s0 <= 1'b0; vrst_s1 <= vrst_s0;
+        end
     end
-    reg end_s0, end_s1, end_loc;
+
+    // 会话结束：tap_clk 脉冲 → toggle → udp_clk 边沿（写侧/读回各一路）
+    reg end_tog, end2_tog;
+    always @(posedge tap_clk) begin
+        if (tap_rst_s1)    end_tog <= 1'b0;
+        else if (tap_end)  end_tog <= ~end_tog;
+    end
+    always @(posedge tap2_clk) begin
+        if (vrst_s1)       end2_tog <= 1'b0;
+        else if (tap2_end) end2_tog <= ~end2_tog;
+    end
+    reg end_s0, end_s1, end_loc, end2_s0, end2_s1, end2_loc;
     always @(posedge app_tx_clk or posedge reset) begin
         if (reset) begin
             end_s0 <= 1'b0; end_s1 <= 1'b0; end_loc <= 1'b0;
+            end2_s0 <= 1'b0; end2_s1 <= 1'b0; end2_loc <= 1'b0;
         end else begin
-            end_s0  <= end_tog;
-            end_s1  <= end_s0;
-            end_loc <= end_s1;
+            end_s0  <= end_tog;  end_s1  <= end_s0;  end_loc  <= end_s1;
+            end2_s0 <= end2_tog; end2_s1 <= end2_s0; end2_loc <= end2_s1;
         end
     end
-    wire end_pulse = (end_s1 != end_loc);
+    wire end_pulse  = (end_s1  != end_loc);    // 写侧会话结束
+    wire end2_pulse = (end2_s1 != end2_loc);   // 读回会话结束
 
-    wire        fifo_rd_en, fifo_rd_empty, fifo_full;
-    wire [31:0] fifo_rd_data;
-    wire [9:0]  fifo_avail;              // 读侧可见字数（滞后 2 拍，悲观）
+    // 两条独立流 FIFO：写侧(type 0x0003)/读回(type 0x0004)。会话互斥
+    //（dump 与装载不同时），各自 seq 独立归零——PC 按包 type 分流重组。
+    wire        fifo_rd_en, fifo2_rd_en, fifo_rd_empty, fifo2_rd_empty;
+    wire        fifo_full, fifo2_full;
+    wire [31:0] fifo_rd_data, fifo2_rd_data;
+    wire [9:0]  fifo_avail, fifo2_avail;     // 读侧可见字数（滞后 2 拍，悲观）
     tap_afifo #(.AW(9), .DW(32)) u_tap_afifo (
         .wr_clk   (tap_clk),
         .wr_rst   (tap_rst_s1),
@@ -179,6 +200,19 @@ module eth_front(
         .rd_data  (fifo_rd_data),
         .rd_empty (fifo_rd_empty),
         .rd_avail (fifo_avail)
+    );
+    tap_afifo #(.AW(9), .DW(32)) u_tap2_afifo (
+        .wr_clk   (tap2_clk),
+        .wr_rst   (vrst_s1),
+        .wr_en    (tap2_val && !fifo2_full),
+        .wr_data  (tap2_word),
+        .wr_full  (fifo2_full),
+        .rd_clk   (app_tx_clk),
+        .rd_rst   (udp_rst),
+        .rd_en    (fifo2_rd_en),
+        .rd_data  (fifo2_rd_data),
+        .rd_empty (fifo2_rd_empty),
+        .rd_avail (fifo2_avail)
     );
 
     // ================= TX：ACK 包 / 流包共用一条 FSM =================
@@ -209,9 +243,10 @@ module eth_front(
     reg [10:0] bi;                       // 攒包字节计数
     reg [8:0]  pkt_words;                // 本包字数 N（≤255）
     reg [31:0] word_hold;
-    reg        flush_pend;               // 会话结束待冲洗
+    reg        flush_pend, flush2_pend;  // 会话结束待冲洗（写侧/读回）
+    reg        str_sel;                  // 本包来源：0=写侧 FIFO 1=读回 FIFO
     reg [4:0]  settle_cnt;               // 等 Gray 写指针跨域同步沉降
-    reg [15:0] seq;
+    reg [15:0] seq, seq2;                // 每源独立计数（各自会话内递增、收口归零）
 
     wire [15:0] pkt_len_w = {5'd0, pkt_words, 2'b00} + 16'd10;   // 10+4N
     wire [15:0] plen_w    = pkt_len_w - 16'd8;                   // 应用头 length 域
@@ -219,13 +254,18 @@ module eth_front(
     wire [10:0] bi_latch_end= {2'b00, pkt_words, 2'b00} + 11'd6;  // 末字锁存拍 4N+6
     wire [10:0] bi_build_end= {2'b00, pkt_words, 2'b00} + 11'd10; // 末字节写拍 4N+10
     wire        settle_done = (settle_cnt == 5'd31);
-    wire        str_go = (fifo_avail >= {7'd0, STR_PKT_WORDS}) ||
-                         (flush_pend && settle_done && (fifo_avail != 10'd0));
+    wire        goA = (fifo_avail  >= {7'd0, STR_PKT_WORDS}) ||
+                      (flush_pend  && settle_done && (fifo_avail  != 10'd0));
+    wire        goB = (fifo2_avail >= {7'd0, STR_PKT_WORDS}) ||
+                      (flush2_pend && settle_done && (fifo2_avail != 10'd0));
+    wire        str_go = goA || goB;
 
     // 攒包读口：bi≡1 (mod 4) 拍弹字（1 拍延迟后 bi≡2 拍进 word_hold，
-    // 写 BRAM 落后一拍——时间线见 S_BUILD 注释）
-    assign fifo_rd_en = (st == S_BUILD) && (bi >= 11'd9) &&
-                        (bi <= bi_pop_end) && (bi[1:0] == 2'b01);
+    // 写 BRAM 落后一拍——时间线见 S_BUILD 注释）。弹哪条 FIFO 由 str_sel 定。
+    assign fifo_rd_en  = (st == S_BUILD) && !str_sel && (bi >= 11'd9) &&
+                         (bi <= bi_pop_end) && (bi[1:0] == 2'b01);
+    assign fifo2_rd_en = (st == S_BUILD) &&  str_sel && (bi >= 11'd9) &&
+                         (bi <= bi_pop_end) && (bi[1:0] == 2'b01);
     wire [10:0] boff = bi - 11'd11;      // 当前写地址 = bi-1 的字内偏移 = bi-11
     wire [7:0]  wb_byte = word_hold[{boff[1:0], 3'b000} +: 8];
 
@@ -256,7 +296,7 @@ module eth_front(
             4'd1: hdr_b = 8'hBB;
             4'd2: hdr_b = 8'hCC;
             4'd3: hdr_b = 8'hDD;
-            4'd4: hdr_b = 8'h03;          // type LSB（0x0003 流包）
+            4'd4: hdr_b = str_sel ? 8'h04 : 8'h03;  // type LSB：03=写侧 04=读回
             4'd5: hdr_b = 8'h00;
             4'd6: hdr_b = plen_w[7:0];
             4'd7: hdr_b = plen_w[15:8];
@@ -280,20 +320,28 @@ module eth_front(
             tx_sel <= 1'b0; ack_pend <= 1'b0;
             bi <= 11'd0; pkt_words <= 9'd0;
             word_hold <= 32'd0;
-            flush_pend <= 1'b0; settle_cnt <= 5'd0;
-            seq <= 16'd0;
+            flush_pend <= 1'b0; flush2_pend <= 1'b0;
+            str_sel <= 1'b0; settle_cnt <= 5'd0;
+            seq <= 16'd0; seq2 <= 16'd0;
         end else begin
             // ---- 会话结束冲洗：end_pulse 记账 → 等 Gray 写指针沉降 → 攒尾包 ----
-            if (end_pulse) begin
-                flush_pend <= 1'b1;
+            // 写侧/读回两路独立记账；settle 计数共用（会话互斥，不会同时结束）
+            if (end_pulse || end2_pulse)
                 settle_cnt <= 5'd0;
-            end else if (flush_pend && !settle_done)
+            else if ((flush_pend || flush2_pend) && !settle_done)
                 settle_cnt <= settle_cnt + 5'd1;
-            // 冲洗排空（读侧 avail==0 且无包在攒）→ 会话收口：seq 归零
+            if (end_pulse)  flush_pend  <= 1'b1;
+            if (end2_pulse) flush2_pend <= 1'b1;
+            // 冲洗排空（读侧 avail==0 且无包在攒）→ 该源会话收口：对应 seq 归零
             if (flush_pend && settle_done && (st == TX_WAIT) &&
                 (fifo_avail == 10'd0)) begin
                 flush_pend <= 1'b0;
                 seq        <= 16'd0;
+            end
+            if (flush2_pend && settle_done && (st == TX_WAIT) &&
+                (fifo2_avail == 10'd0)) begin
+                flush2_pend <= 1'b0;
+                seq2        <= 16'd0;
             end
 
             // 总线空闲期到达的 tx_pulse 记账（正在发包时不丢）
@@ -316,8 +364,12 @@ module eth_front(
                             st <= TX_RDY;
                     end
                     else if (str_go) begin
-                        pkt_words <= (fifo_avail >= {7'd0, STR_PKT_WORDS})
-                                     ? STR_PKT_WORDS : fifo_avail[8:0];
+                        str_sel   <= goB && !goA;    // 源选择（A 优先）
+                        pkt_words <= (goB && !goA)
+                                     ? ((fifo2_avail >= {7'd0, STR_PKT_WORDS})
+                                        ? STR_PKT_WORDS : fifo2_avail[8:0])
+                                     : ((fifo_avail >= {7'd0, STR_PKT_WORDS})
+                                        ? STR_PKT_WORDS : fifo_avail[8:0]);
                         tx_sel <= 1'b1;
                         bi     <= 11'd0;
                         st <= S_BUILD;
@@ -346,7 +398,9 @@ module eth_front(
                         if (tx_i == pkt_len_w - 16'd1) begin
                             out_valid <= 1'b0;
                             tx_i <= 11'd0;
-                            seq  <= seq + 16'd1;      // 每流包 +1（PC 缺口检测）
+                            // 每流包 +1（PC 缺口检测），按源独立计数
+                            if (str_sel) seq2 <= seq2 + 16'd1;
+                            else         seq  <= seq  + 16'd1;
                             st <= TX_WAIT;
                         end else
                             tx_i <= tx_i + 11'd1;
@@ -368,7 +422,7 @@ module eth_front(
                 // 末写拍 4N+10（地址 4N+9）。
                 S_BUILD: begin
                     if ((bi[1:0] == 2'b10) && (bi >= 11'd10) && (bi <= bi_latch_end))
-                        word_hold <= fifo_rd_data;
+                        word_hold <= str_sel ? fifo2_rd_data : fifo_rd_data;
                     if (bi >= bi_build_end) begin
                         if (udp_tx_ready) begin
                             app_tx_data_request <= 1'b1;

@@ -439,12 +439,13 @@ class EthTransport:
         self.board = self.BOARD_DEFAULT
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
-        # ---- 流会话重组状态（写侧分叉，仅读线程访问，无需加锁）----
-        self.str_buf = bytearray()     # 会话字流（线序小端）
-        self.str_next_seq = 0          # 期望的下一包 seq
-        self.str_gaps = 0              # seq 缺口（包数 → 字数 = ×255 近似）
-        self.str_last = 0.0            # 最近流包时刻
-        self.str_active = False        # 会话进行中
+        # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
+        self.str = {"wr": self._new_sess(), "rb": self._new_sess()}
+
+    @staticmethod
+    def _new_sess():
+        return {"buf": bytearray(), "next_seq": 0, "gaps": 0,
+                "last": 0.0, "active": False}
 
     # ---- 订阅（SSE） ----
     def subscribe(self):
@@ -518,35 +519,38 @@ class EthTransport:
     STR_TIMEOUT = 0.4                  # 流包静默判会话结束（整帧空口时间 ~20ms）
 
     def _on_stream(self, data: bytes):
+        typ = "rb" if data[4:6] == bytes([0x04, 0x00]) else "wr"   # 0x0004=读回
+        st = self.str[typ]
         seq = data[8] | (data[9] << 8)
         if seq == 0:                   # RTL 冲洗收口后 seq 归零 = 新会话
-            self.str_buf = bytearray()
-            self.str_next_seq = 0
-            self.str_gaps = 0
-            self.str_active = True
-        elif self.str_active and seq != self.str_next_seq:
-            self.str_gaps += (seq - self.str_next_seq) & 0xFFFF
-        self.str_next_seq = (seq + 1) & 0xFFFF
-        self.str_buf += data[10:]      # 尾包 len 对齐 4 字节，余数忽略
-        self.str_last = time.time()
+            st.update(self._new_sess(), active=True)
+        elif st["active"] and seq != st["next_seq"]:
+            st["gaps"] += (seq - st["next_seq"]) & 0xFFFF
+        st["next_seq"] = (seq + 1) & 0xFFFF
+        st["buf"] += data[10:]         # 尾包 len 对齐 4 字节，余数忽略
+        st["last"] = time.time()
 
     def _stream_poll(self):
         """读线程每次循环调用：会话静默超时 → 收口整帧入库 + 通知前端。"""
-        if not self.str_active or (time.time() - self.str_last) <= self.STR_TIMEOUT:
-            return
-        self.str_active = False
-        words = len(self.str_buf) // 4
-        h = words // 640               # 整行才收（发射行恒 1280 宽 = 640 字）
-        ts = time.strftime("%H:%M:%S")
-        with ETH_FRAME_LOCK:
-            ETH_FRAME["id"] += 1
-            ETH_FRAME["data"] = bytes(self.str_buf[: h * 640 * 4])
-            ETH_FRAME["gaps"] = self.str_gaps
-            ETH_FRAME["words"] = words
-            ETH_FRAME["ts"] = ts
-            fid = ETH_FRAME["id"]
-        self.broadcast({"type": "frame", "id": fid, "words": words,
-                        "h": h, "gaps": self.str_gaps, "ts": ts})
+        for typ in ("wr", "rb"):
+            st = self.str[typ]
+            if not st["active"] or (time.time() - st["last"]) <= self.STR_TIMEOUT:
+                continue
+            st["active"] = False
+            words = len(st["buf"]) // 4
+            h = words // 640           # 整行才收（发射行恒 1280 宽 = 640 字）
+            ts = time.strftime("%H:%M:%S")
+            slot = ETH_FRAME if typ == "wr" else ETH_FRAME_RB
+            with ETH_FRAME_LOCK:
+                slot["id"] += 1
+                slot["data"] = bytes(st["buf"][: h * 640 * 4])
+                slot["gaps"] = st["gaps"]
+                slot["words"] = words
+                slot["ts"] = ts
+                fid = slot["id"]
+            self.broadcast({"type": "frame", "kind": typ, "id": fid,
+                            "words": words, "h": h,
+                            "gaps": st["gaps"], "ts": ts})
 
     # ---- 读线程：UDP 报文 → 剥 8 字节头 → 解码包 → 广播 ----
     def _reader(self):
@@ -557,8 +561,12 @@ class EthTransport:
                 self._stream_poll()            # 超时窗口顺带查会话收口
                 continue                       # 超时/关闭 → 回到 while 判据
             if (len(data) >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
-                    and data[4:6] == b"\x03\x00"):
+                    and data[4] == 0x03 and data[5] == 0x00):
                 self._on_stream(data)          # 流包：重组，不进文本日志
+                continue
+            if (len(data) >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
+                    and data[4] == 0x04 and data[5] == 0x00):
+                self._on_stream(data)          # 读回流包（type 0x0004）
                 continue
             if len(data) >= 16 and data[:4] == b"\xAA\xBB\xCC\xDD":
                 pkt = bytes(data[8:16])           # 应用头 + 8 字节包
@@ -594,6 +602,7 @@ eth_link = EthTransport(SUBS)
 # 字序与 RTL 线序一致：每字 4 字节 LSB 先（=小端），字低 16bit=左像素 RGB565。
 # ---------------------------------------------------------------------------
 ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
+ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
 ETH_FRAME_LOCK = threading.Lock()
 
 
@@ -715,10 +724,12 @@ def api_stream():
 
 @app.route("/api/frame")
 def api_frame():
-    """最新重组帧：原始字流（每字 4 字节小端，RGB565×2/字）+ 元数据头。"""
+    """最新重组帧：原始字流（每字 4 字节小端，RGB565×2/字）+ 元数据头。
+    ?slot=wr（写侧发射流，默认）/ rb（显存读回）。"""
+    slot = ETH_FRAME_RB if request.args.get("slot") == "rb" else ETH_FRAME
     with ETH_FRAME_LOCK:
-        data = ETH_FRAME["data"]
-        gaps, words, ts = ETH_FRAME["gaps"], ETH_FRAME["words"], ETH_FRAME["ts"]
+        data = slot["data"]
+        gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
     resp = Response(data, mimetype="application/octet-stream")
     resp.headers["X-Frame-Words"] = str(words)
     resp.headers["X-Frame-Gaps"] = str(gaps)

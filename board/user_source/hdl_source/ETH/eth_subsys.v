@@ -46,7 +46,11 @@ module eth_subsys(
     input  wire        tap_clk,
     input  wire        tap_val,
     input  wire [31:0] tap_word,
-    input  wire        tap_end
+    input  wire        tap_end,
+    // 读侧 dump：显存读回流（同构第二源，type=0x0004）
+    input  wire        tap2_val,
+    input  wire [31:0] tap2_word,
+    input  wire        tap2_end
 );
     parameter DEVICE           = "EG4";
     parameter LOCAL_UDP_PORT   = 16'h0001;
@@ -146,7 +150,10 @@ module eth_subsys(
         .tap_clk           (tap_clk),
         .tap_val           (tap_val),
         .tap_word          (tap_word),
-        .tap_end           (tap_end)
+        .tap_end           (tap_end),
+        .tap2_val          (tap2_val),
+        .tap2_word         (tap2_word),
+        .tap2_end          (tap2_end)
     );
 
     // ================= UDP/IP 协议栈（官方 IP）=================

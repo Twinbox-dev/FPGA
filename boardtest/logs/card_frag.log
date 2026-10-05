@@ -555,4 +555,4 @@
   PASS: S11 光标=环遍历起点
   PASS: S11 项类型与 golden 一致
   PASS: S11 跳表与 golden 建表一致
-===== 37 passed, 0 failed | 1132.8 Mcyc, 508.2s, 2.2 Mcyc/s =====
+===== 37 passed, 0 failed | 1132.8 Mcyc, 455.1s, 2.5 Mcyc/s =====
