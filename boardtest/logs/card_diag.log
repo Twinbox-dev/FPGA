@@ -1060,4 +1060,4 @@
   PASS: S11 项类型与 golden 一致
   PASS: S11 项类型与 golden 一致
   PASS: S11 项类型与 golden 一致
-===== 77 passed, 0 failed | 2234.4 Mcyc, 738.0s, 3.0 Mcyc/s =====
+===== 77 passed, 0 failed | 2234.4 Mcyc, 909.9s, 2.5 Mcyc/s =====

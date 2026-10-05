@@ -1257,7 +1257,11 @@ module sd_card_bmp #(
             case (plst_st)
                 3'd0: if (pl_dump_start) begin
                     plst_idx <= 6'd0;
-                    plst_st  <= 3'd1;
+                    // 先隔 400µs 再发首包：命令 ACK 脉冲与首包只差几十 ns 时，
+                    // 以太网侧 toggle 跨域同步窗内两次翻转粘连出假边沿（串口
+                    // 无此问题——同域逐包取用）
+                    plst_pace <= 16'd40000;
+                    plst_st   <= 3'd2;
                 end
                 3'd1: begin
                     pl_pkt_val <= 1'b1;

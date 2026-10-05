@@ -371,7 +371,7 @@ eth_subsys u_eth_subsys(
     .cmd_pending         (eth_cmd_pending),
     .cmd_ack_t           (eth_cmd_ack_t),
     .tx_tog              (eth_tx_tog),
-    .tx_pkt              (tx_pkt_w),
+    .tx_pkt              (eth_tx_pkt_r),
     .sys_rst             (rst_all),
     .tap_clk             (sd_card_clk),
     .tap_val             (tap_val_w),
@@ -394,9 +394,16 @@ cmd_arb u_cmd_arb (
     .cmd_byte     (cmd_byte)
 );
 
-// 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）
+// 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）。
+// 发送数据与 toggle 同拍锁存并**保持**：tx_req/tx_pkt 是 1 拍脉冲，eth_front 的
+// toggle 跨域同步晚 ~3 拍才锁存——直接给 tx_pkt_w 会在脉冲回落后锁到 ACK 兜底
+// 包（'L' 转储 11 条全变 ACK 的根因；串口同域立即取用从未暴露）。
+reg  [63:0] eth_tx_pkt_r;
 always @(posedge sd_card_clk)
-    if (tx_req_w) eth_tx_tog <= ~eth_tx_tog;
+    if (tx_req_w) begin
+        eth_tx_tog   <= ~eth_tx_tog;
+        eth_tx_pkt_r <= tx_pkt_w;    // tx_req_w=1 时 tx_pkt_w 恰好有效，同域无竞争
+    end
 
 // 音量增益（ctrl_core 的 vol_gain：0..8，8=原始，0=静音）：24bit 有符号 ×gain>>3。
 // gain=8 时 ≡ 原值（现有字节级音频比对用例不受影响）
