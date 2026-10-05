@@ -17,4 +17,5 @@ img/golden/
 *.fst
 __pycache__/
 *.pyc
+boardtest/logs/*.log
 .lock.f

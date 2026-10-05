@@ -7,6 +7,7 @@
 
 VERILATOR ?= verilator
 CARD      ?= ../img/card.img
+CARDS     ?= card card_mbr card_empty card_frag card_diag card_user card_user_2wav
 
 VSRCS := vsrc/board_top.v vsrc/sd_card_bmp.v vsrc/sd_adapter.v \
          vsrc/fat32_ro.v vsrc/bmp_dec.v vsrc/wav_reader.v \
@@ -23,9 +24,13 @@ $(SIM): $(VSRCS) $(CSRCS)
 # 全量回归：7 张卡各起一个进程并行跑（16 核机器墙钟≈最慢单卡）。
 # 用法：make regress（或 ../scripts/run_all_sims.sh）；日志在 logs/
 regress: $(SIM)
-	../scripts/run_all_sims.sh
+	CARDS="$(CARDS)" ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
+# Checks mount, first BMP and WAV scan only; run regress before merging.
+smoke: $(SIM)
+	SIM_SMOKE=1 CARDS=card_diag ../scripts/run_all_sims.sh
+
+.PHONY: run clean regress smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 

@@ -7,10 +7,20 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 SIM=boardtest/build_board/sim_board
-CARDS="card card_mbr card_empty card_frag card_diag card_user card_user_2wav"
+DEFAULT_CARDS="card card_mbr card_empty card_frag card_diag card_user card_user_2wav"
+CARDS=${CARDS:-$DEFAULT_CARDS}
 mkdir -p boardtest/logs
 
 [ -x "$SIM" ] || { echo "先 make -C boardtest"; exit 1; }
+
+# Accept a selected subset for fast local iteration; the default remains all cards.
+for c in $CARDS; do
+    case "$c" in
+        card|card_mbr|card_empty|card_frag|card_diag|card_user|card_user_2wav) ;;
+        *) echo "Unknown card case: $c" >&2; exit 2 ;;
+    esac
+    [ -f "img/$c.img" ] || { echo "Missing img/$c.img" >&2; exit 2; }
+done
 
 pids=()
 for c in $CARDS; do
@@ -32,4 +42,13 @@ for c in $CARDS; do
     fails=$(grep -c "FAIL" "boardtest/logs/$c.log")
     printf "%-16s FAIL=%s  %s\n" "$c" "$fails" "$line"
 done
-[ "$rc" = 0 ] && echo "全量回归通过" || { echo "存在失败，看 boardtest/logs/"; exit 1; }
+if [ "$rc" = 0 ]; then
+    if [ "$CARDS" = "$DEFAULT_CARDS" ]; then
+        echo "七卡全量回归通过"
+    else
+        echo "所选卡用例通过（$CARDS）"
+    fi
+else
+    echo "存在失败，看 boardtest/logs/"
+    exit 1
+fi

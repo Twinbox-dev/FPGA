@@ -731,6 +731,14 @@ int main(int argc, char **argv) {
         }
     }
 
+    // Fast integration boundary: mount + first BMP pixels + every scanned WAV
+    // and its SDRAM packing are checked above. Playback and navigation stay in
+    // the default full regression.
+    if (std::getenv("SIM_SMOKE")) {
+        std::printf("===== %d passed, %d failed (SIM_SMOKE) =====\n", pass, fail);
+        return fail ? 1 : 0;
+    }
+
     // ---- 配对表（golden 独立计算：同 8 字节主名 + WAV 解析合法 ⇔ RTL pair_valid）----
     std::vector<int> pair_of(g.bmps.size(), -1);
     for (size_t b = 0; b < g.bmps.size(); b++) {

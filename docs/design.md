@@ -1,5 +1,10 @@
 # 设计文档 — HDMI 多媒体播放系统（安路选题一）
 
+> **历史初版规格。** 本文的 640×480 时钟、独立仓库与流式音频计划已被
+> 当前 720p + SDRAM WAV 设计替代。FAT32/BMP 的早期接口约定仍可供追溯，
+> 但修改当前板级 RTL 时请先读 [README](../README.md)、
+> [验证入口](verification.md) 和现行源码。
+
 平台：HX4S20C / EG4S20BG256（19,600 LUT / 19,600 DFF，片内 SDRAM 2M×32bit，
 64×9Kb + 16×32Kb ERAM，4×PLL，193 用户 IO，50MHz 晶振，双 HDMI、TF 卡槽、
 8 数码管、16 双色 LED、4 按键、4 拨码、USB 转 UART、千兆网口、蜂鸣器）

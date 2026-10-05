@@ -1,5 +1,11 @@
 # 架构总览
 
+> **历史 3a 方案说明。** 本文描述早期 `vsrc/` 独立仿真仓与流式音频方案，
+> 不代表当前单仓的 SDRAM 配对 WAV、720p、多分辨率或以太网实现。
+> 当前入口以 [README](../README.md) 和
+> [多分辨率修复复盘](multires_fix_postmortem.md) 为准。保留本文供旧模块的
+> 接口契约与架构决策追溯。
+
 > 读这一份就能看懂 `vsrc/` 里任何一块代码。规格决策见 `docs/design.md`，
 > 验证方法见 `docs/verification.md`，下一步计划见 `docs/TODO.md`。
 
