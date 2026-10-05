@@ -182,8 +182,8 @@ module eth_front(
     wire end_pulse  = (end_s1  != end_loc);    // 写侧会话结束
     wire end2_pulse = (end2_s1 != end2_loc);   // 读回会话结束
 
-    // 两条独立流 FIFO：写侧(type 0x0003)/读回(type 0x0004)。会话互斥
-    //（dump 与装载不同时），各自 seq 独立归零——PC 按包 type 分流重组。
+    // 两条独立流 FIFO：A(type 0x0003)/B(type 0x0004)。写口诊断时两源
+    // 可同时输入，共用 TX FSM（A 优先）；各自 seq 独立归零，PC 按 type 重组。
     wire        fifo_rd_en, fifo2_rd_en, fifo_rd_empty, fifo2_rd_empty;
     wire        fifo_full, fifo2_full;
     wire [31:0] fifo_rd_data, fifo2_rd_data;
@@ -201,10 +201,19 @@ module eth_front(
         .rd_empty (fifo_rd_empty),
         .rd_avail (fifo_avail)
     );
+    // 读回通道 3:1 抽字：显示读满帧 27.6M 字/s 的原速突发会以 94MB/s 砸向 PC，
+    // 而 Windows UDP 内核接收缓冲有 64KB 硬上限（SO_RCVBUF 钳制）必丢。抽走 1/3
+    // 后 9.2M 字/s ≈ 31MB/s，Python 稳接；位置确定——收到的第 j 字 = 显存第 3j 字。
+    reg [1:0] thin_cnt;
+    always @(posedge tap2_clk) begin
+        if (vrst_s1 || tap2_end) thin_cnt <= 2'd0;
+        else if (tap2_val) thin_cnt <= (thin_cnt == 2'd2) ? 2'd0 : thin_cnt + 2'd1;
+    end
+    wire tap2_take = (thin_cnt == 2'd0);
     tap_afifo #(.AW(9), .DW(32)) u_tap2_afifo (
         .wr_clk   (tap2_clk),
         .wr_rst   (vrst_s1),
-        .wr_en    (tap2_val && !fifo2_full),
+        .wr_en    (tap2_val && tap2_take && !fifo2_full),
         .wr_data  (tap2_word),
         .wr_full  (fifo2_full),
         .rd_clk   (app_tx_clk),
@@ -274,9 +283,10 @@ module eth_front(
     wire        str_we = (st == S_BUILD) && ((bi <= 11'd9) ||
                          ((bi >= 11'd11) && (bi <= bi_build_end)));
     wire [9:0]  str_wa = (bi <= 11'd9) ? bi[9:0] : (bi[9:0] - 10'd1);
+    wire [15:0] pkt_seq = str_sel ? seq2 : seq;
     wire [7:0]  str_wd = (bi <= 11'd9)
                          ? ((bi < 11'd8) ? hdr_b
-                           : (bi == 11'd8) ? seq[7:0] : seq[15:8])
+                           : (bi == 11'd8) ? pkt_seq[7:0] : pkt_seq[15:8])
                          : wb_byte;
     // 读口：TX_ACK 应答拍预取首字节；SEND 期预取下一字节（末拍不读）
     wire        str_rd = tx_sel && ((st == TX_ACK && app_tx_ack) ||

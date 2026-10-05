@@ -45,6 +45,7 @@ module frame_read_write
 	input                            read_en,                    // data read module read request for one data, read_data valid next clock
 	output[READ_DATA_BITS  - 1:0]    read_data,                  // read data
 	output                           o_vid_rd_empty,             // 视频 FIFO 空（读侧观测：720p 下溢诊断，板级调试面板用）
+    output                           o_mem_rd_audio,             // mem_clk 域：当前 SDRAM 返回字归音频 FIFO
     // ---- 音频读通道（S4 新增；消费侧时钟复用 write_clk = sd_card_clk）----
     input                            aud_read_req,               // 电平请求，保持到 ack
     output                           aud_read_req_ack,           // 电平响应
@@ -173,6 +174,7 @@ rfifo_32_32_512 read_buf
 
 // 视频 FIFO 读空标志：显示活动期间 read_en 有效而 FIFO 空 = 下溢（720p 带宽诊断）
 assign o_vid_rd_empty = (vid_rdusedw == {BURST_BITS{1'b0}});
+assign o_mem_rd_audio = aud_ch_active;
 
 //instantiate an asynchronous FIFO（音频通道：S4 新增，消费侧 = sd_card_clk）
 rfifo_32_32_512 aud_read_buf

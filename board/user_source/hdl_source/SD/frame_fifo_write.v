@@ -190,7 +190,11 @@ begin
 		else
 			App_wr_addr_r <= App_wr_addr_r;
 		//
-		if(App_wr_en_r && burst_cnt < BURST_SIZE && (write_cnt < write_len_latch))begin
+		// App_wr_en 是寄存输出，本拍若已弹出一字，下一拍的允许条件必须
+		// 预先把它计入；否则会话尾部会再多发一个 App_wr_en（真板写口
+		// 460801/460800，地址回卷进入音频 BUF3 尾部）。burst 边界同理。
+		if(App_wr_en_r && (burst_cnt + App_wr_en < BURST_SIZE) &&
+		   (write_cnt + App_wr_en < write_len_latch))begin
             App_wr_en_d0 <= 1'b1;
         end
 		else

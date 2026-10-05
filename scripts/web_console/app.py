@@ -27,12 +27,14 @@ web_console/app.py — 板卡控制 Web 控制台（串口 / 以太网双控）
 import json
 import os
 import queue
+import sys
 import threading
 import time
 
 from flask import Flask, Response, jsonify, render_template, request
 
 app = Flask(__name__)
+sys.setswitchinterval(0.0005)   # GIL 快速切换：流帧突发期读线程不容许毫秒级停顿（默认 5ms > 64KB 内核缓冲的 1.7ms 吸收窗）
 
 DEFAULT_BAUD = int(os.environ.get("WEB_BAUD", "1000000"))   # 默认波特率
 AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否自动连
@@ -43,11 +45,11 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
-        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C}
+        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
-        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)"}
+        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)"}
 
 
 def decode_dump(pkt: bytes) -> str:
@@ -479,6 +481,12 @@ class EthTransport:
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # 流帧突发 ~1.9MB/20ms：默认 64KB 内核缓冲必溢出（整帧只剩尾包
+                # 的根因），必须把接收缓冲扩到能整口吞下一次捕获
+                try:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)
+                except OSError:
+                    pass
                 s.bind(("", self.LOCAL_PORT))     # 收板卡回包（目的端口 2）
                 s.settimeout(0.3)                 # 让读线程能定期看到关闭
             except Exception as e:
@@ -524,10 +532,12 @@ class EthTransport:
         seq = data[8] | (data[9] << 8)
         if seq == 0:                   # RTL 冲洗收口后 seq 归零 = 新会话
             st.update(self._new_sess(), active=True)
-        elif st["active"] and seq != st["next_seq"]:
+        elif not st["active"]:
+            return                     # 残尾：会话主体一个包都没收到的孤儿尾包
+        elif seq != st["next_seq"]:
             st["gaps"] += (seq - st["next_seq"]) & 0xFFFF
         st["next_seq"] = (seq + 1) & 0xFFFF
-        st["buf"] += data[10:]         # 尾包 len 对齐 4 字节，余数忽略
+        st["buf"] += bytes(data[10:])  # 尾包 len 对齐 4 字节，余数忽略
         st["last"] = time.time()
 
     def _stream_poll(self):
@@ -543,7 +553,9 @@ class EthTransport:
             slot = ETH_FRAME if typ == "wr" else ETH_FRAME_RB
             with ETH_FRAME_LOCK:
                 slot["id"] += 1
-                slot["data"] = bytes(st["buf"][: h * 640 * 4])
+                # 写侧只展示完整行；读回是 3:1 稀疏字流，保留末行的抽样字。
+                slot["data"] = bytes(st["buf"] if typ == "rb"
+                                     else st["buf"][: h * 640 * 4])
                 slot["gaps"] = st["gaps"]
                 slot["words"] = words
                 slot["ts"] = ts
@@ -554,23 +566,22 @@ class EthTransport:
 
     # ---- 读线程：UDP 报文 → 剥 8 字节头 → 解码包 → 广播 ----
     def _reader(self):
+        buf = bytearray(2048)
+        view = memoryview(buf)
         while self.sock is not None:
             try:
-                data, _ = self.sock.recvfrom(2048)
+                n = self.sock.recv_into(buf)   # 热路径：零拷贝收包，解码按需
+                data = view[:n]
             except Exception:
                 self._stream_poll()            # 超时窗口顺带查会话收口
                 continue                       # 超时/关闭 → 回到 while 判据
-            if (len(data) >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
-                    and data[4] == 0x03 and data[5] == 0x00):
-                self._on_stream(data)          # 流包：重组，不进文本日志
+            if (n >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
+                    and data[4] in (0x03, 0x04) and data[5] == 0x00):
+                self._on_stream(data)          # 流包（03=写侧/04=读回）：重组不进日志
                 continue
-            if (len(data) >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
-                    and data[4] == 0x04 and data[5] == 0x00):
-                self._on_stream(data)          # 读回流包（type 0x0004）
-                continue
-            if len(data) >= 16 and data[:4] == b"\xAA\xBB\xCC\xDD":
+            if n >= 16 and data[:4] == b"\xAA\xBB\xCC\xDD":
                 pkt = bytes(data[8:16])           # 应用头 + 8 字节包
-            elif len(data) >= 8:
+            elif n >= 8:
                 pkt = bytes(data[:8])
             else:
                 continue
@@ -648,13 +659,13 @@ def api_ports():
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
     order = ["p", "n", "a", "s", "-", "+", "<", ">", "[", "]",
-             ";", "'", "q", "l"]
+             ";", "'", "q", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
               ("音频脉动", [";", "'", "q"]),
-              ("调试", ["l"])]
+              ("调试", ["l", "d"])]
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 
@@ -726,13 +737,15 @@ def api_stream():
 def api_frame():
     """最新重组帧：原始字流（每字 4 字节小端，RGB565×2/字）+ 元数据头。
     ?slot=wr（写侧发射流，默认）/ rb（显存读回）。"""
-    slot = ETH_FRAME_RB if request.args.get("slot") == "rb" else ETH_FRAME
+    is_rb = request.args.get("slot") == "rb"
+    slot = ETH_FRAME_RB if is_rb else ETH_FRAME
     with ETH_FRAME_LOCK:
         data = slot["data"]
         gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
     resp = Response(data, mimetype="application/octet-stream")
     resp.headers["X-Frame-Words"] = str(words)
     resp.headers["X-Frame-Gaps"] = str(gaps)
+    resp.headers["X-Frame-Stride"] = "3" if is_rb else "1"
     resp.headers["X-Frame-Ts"] = ts
     resp.headers["Cache-Control"] = "no-store"
     return resp

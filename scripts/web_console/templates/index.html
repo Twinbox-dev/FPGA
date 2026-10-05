@@ -457,6 +457,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
+window.__errs = [];
+window.addEventListener("error", e => window.__errs.push(e.message + " @" + e.lineno));
+window.addEventListener("unhandledrejection", e => window.__errs.push("rej:" + String((e.reason && e.reason.stack) || e.reason)));
 let mode = "serial";            // serial | eth
 let connected = false, count = 0, pollTimer = null;
 let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两个数
@@ -802,37 +805,55 @@ async function showFrame(m) {
     frameBuf[kind] = await r.arrayBuffer();
     const gaps  = +(r.headers.get("X-Frame-Gaps")  || 0);
     const words = +(r.headers.get("X-Frame-Words") || 0);
-    const h  = Math.floor(words / 640);
-    const y0 = (720 - h) >> 1;
-    frameMeta[kind] = {h, y0};
-    const vflip = (kind === "wr");
+    const step = +(r.headers.get("X-Frame-Stride") || (kind === "rb" ? 3 : 1));
+    const h  = kind === "rb" ? 720 : Math.floor(words / 640);
+    const y0 = kind === "rb" ? 0 : (720 - h) >> 1;
+    frameMeta[kind] = {h, y0, step, gaps};
     const dv  = new DataView(frameBuf[kind]);
     const ctx = document.getElementById(kind === "wr" ? "frameCv" : "frameCvRb").getContext("2d");
     const img = ctx.createImageData(1280, 720);
     const px  = img.data;
-    for (let row = 0; row < h; row++) {
-      const y = vflip ? (y0 + h - 1 - row) : (y0 + row);   // 写侧 vflip 补偿；读回正立
-      let off = row * 640 * 4;
-      for (let c = 0; c < 640; c++, off += 4) {
-        const w = dv.getUint32(off, true);
-        put565(px, (y * 1280 + 2 * c) * 4, w & 0xFFFF);
-        put565(px, (y * 1280 + 2 * c + 1) * 4, w >>> 16);
+    const nWords = Math.min(words, dv.byteLength >> 2);
+    if (gaps === 0) {
+      if (kind === "rb") {
+        // 第 j 个收到的字对应完整显存字 step*j；空位保持透明。
+        for (let j = 0; j < nWords && step * j < 460800; j++) {
+          const wi = step * j, y = Math.floor(wi / 640), c = wi % 640;
+          const w = dv.getUint32(j * 4, true);
+          put565(px, (y * 1280 + 2 * c) * 4, w & 0xFFFF);
+          put565(px, (y * 1280 + 2 * c + 1) * 4, w >>> 16);
+        }
+      } else {
+        for (let row = 0; row < h; row++) {
+          const y = y0 + h - 1 - row;   // BMP 文件自底向上，显存写入时 vflip
+          let off = row * 640 * 4;
+          for (let c = 0; c < 640; c++, off += 4) {
+            const w = dv.getUint32(off, true);
+            put565(px, (y * 1280 + 2 * c) * 4, w & 0xFFFF);
+            put565(px, (y * 1280 + 2 * c + 1) * 4, w >>> 16);
+          }
+        }
       }
     }
     ctx.putImageData(img, 0, 0);
     if (kind === "wr") {
       document.getElementById("frameCard").style.display = "";
       document.getElementById("frameHint").textContent =
-        `#${m.id} ${m.ts}：${words} 字（1280×${h}），seq 缺口 ${gaps}`;
+        `#${m.id} ${m.ts}：${words} 字（1280×${h}），seq 缺口 ${gaps}` +
+        (gaps ? "；包丢失，本帧不参与像素比较" : "");
       document.getElementById("diffHint").textContent = "";
     } else {
       document.getElementById("frameCvRb").style.display = "";
       document.getElementById("frameHintRb").textContent =
-        `#${m.id} ${m.ts}：${words} 字（1280×${h}），seq 缺口 ${gaps}`;
+        `#${m.id} ${m.ts}：${words} 抽样字（步长 ${step}，约 ${Math.round(nWords / 460800 * 100)}% 像素覆盖），seq 缺口 ${gaps}` +
+        (gaps ? "；包丢失，本帧不参与像素比较" : "");
       document.getElementById("diffHintRb").textContent = "";
     }
     diffAll();
-  } catch (e) { /* 拉帧失败不影响主控制台 */ }
+  } catch (e) {
+    const hint = document.getElementById(kind === "wr" ? "frameHint" : "frameHintRb");
+    hint.textContent = "帧渲染失败：" + e.message;
+  }
 }
 
 /* ---------- 对照原图（本机 BMP）：写侧帧/读回帧分别逐像素比对，差异标红 ----------
@@ -846,22 +867,26 @@ function bmpPixel(jtop, x) {                 // 返回该像素 RGB565 期望值
          ((bmpImg.dv.getUint8(bo + 1) >> 2) << 5) |
           (bmpImg.dv.getUint8(bo) >> 3);
 }
-async function diffAll() {
+function diffAll() {
   if (!bmpImg) return;
   // 写侧帧 diff
-  if (frameBuf.wr && frameMeta.wr) {
+  if (frameBuf.wr && frameMeta.wr && frameMeta.wr.gaps === 0) {
     const {h, y0} = frameMeta.wr;
     const dv = new DataView(frameBuf.wr);
+    const wMax = dv.byteLength >> 2;           // 实际收到的字数（可能不满帧）
     const ctx = document.getElementById("frameCv").getContext("2d");
     const img = ctx.getImageData(0, 0, 1280, 720);
     const px = img.data;
-    let bad = 0, total = 0;
+    let bad = 0, total = 0, covered = 0;
     for (let row = 0; row < h; row++) {
       const y = y0 + h - 1 - row;
       for (let x = 0; x < bmpImg.w; x++, total++) {
-        const got5 = ((x + ((1280 - bmpImg.w) >> 1)) & 1)
-          ? dv.getUint32((row * 640 + (((1280 - bmpImg.w) >> 1) + x) >> 1) * 4, true) >>> 16
-          : dv.getUint32((row * 640 + (((1280 - bmpImg.w) >> 1) + x) >> 1) * 4, true) & 0xFFFF;
+        const wi = row * 640 + ((((1280 - bmpImg.w) >> 1) + x) >> 1);
+        if (wi >= wMax) continue;                  // 缺字不计入比对
+        covered++;
+        const got5 = (((x + ((1280 - bmpImg.w) >> 1)) & 1)
+          ? dv.getUint32(wi * 4, true) >>> 16
+          : dv.getUint32(wi * 4, true) & 0xFFFF);
         if (got5 !== bmpPixel(bmpImg.h - 1 - (row), x)) {   // 发射行 r = BMP 底行起
           bad++;
           const o = (y * 1280 + ((1280 - bmpImg.w) >> 1) + x) * 4;
@@ -871,12 +896,16 @@ async function diffAll() {
     }
     ctx.putImageData(img, 0, 0);
     document.getElementById("diffHint").textContent =
-      bad ? `差异 ${bad}/${total}（标红）` : `一致（${total}）`;
+      `覆盖 ${total ? Math.round(covered / total * 100) : 0}%：` +
+      (bad ? `差异 ${bad}/${covered}（标红）` : `一致（${covered}）`);
   }
   // 读回帧 diff（线性显存：行 y0+j = 图像顶行起第 j 行）
-  if (frameBuf.rb && frameMeta.rb) {
+  if (frameBuf.rb && frameMeta.rb && frameMeta.rb.gaps === 0) {
     const x0 = (1280 - bmpImg.w) >> 1, y0 = (720 - bmpImg.h) >> 1;
     const dv = new DataView(frameBuf.rb);
+    const wMax = dv.byteLength >> 2;
+    const step = frameMeta.rb.step;
+    let covered = 0;
     const ctx = document.getElementById("frameCvRb").getContext("2d");
     const img = ctx.getImageData(0, 0, 1280, 720);
     const px = img.data;
@@ -885,9 +914,12 @@ async function diffAll() {
       const y = y0 + j;
       for (let x = 0; x < bmpImg.w; x++, total++) {
         const col = x0 + x;
+        const wi = y * 640 + (col >> 1);
+        if (wi % step !== 0 || wi / step >= wMax) continue;
+        covered++;
         const got5 = (col & 1)
-          ? dv.getUint32((y * 640 + (col >> 1)) * 4, true) >>> 16
-          : dv.getUint32((y * 640 + (col >> 1)) * 4, true) & 0xFFFF;
+          ? dv.getUint32((wi / step) * 4, true) >>> 16
+          : dv.getUint32((wi / step) * 4, true) & 0xFFFF;
         if (got5 !== bmpPixel(j, x)) {
           bad++;
           const o = (y * 1280 + col) * 4;
@@ -897,7 +929,8 @@ async function diffAll() {
     }
     ctx.putImageData(img, 0, 0);
     document.getElementById("diffHintRb").textContent =
-      bad ? `差异 ${bad}/${total}（标红）` : `一致（${total}）`;
+      `覆盖 ${total ? Math.round(covered / total * 100) : 0}%：` +
+      (bad ? `差异 ${bad}/${covered}（标红）` : `一致（${covered}）`);
   }
 }
 document.getElementById("bmpFile").addEventListener("change", async e => {
@@ -918,6 +951,21 @@ document.getElementById("bmpFile").addEventListener("change", async e => {
   } catch (err) { document.getElementById("diffHint").textContent = "解析失败: " + err.message; }
 });
 
+/* ---------- 启动 ---------- */
+(async function init(){
+  await buildPad();
+  const st = await (await fetch("/api/status")).json().catch(()=>({}));
+  if (st.baud) document.getElementById("baud").value = st.baud;
+  if (st.eth_board) document.getElementById("ethIp").value = st.eth_board;
+  document.getElementById("autoConn").checked = st.auto_connect !== false;
+  connState.serial = !!st.serial_open;
+  connState.eth = !!st.eth_open;
+  setBadge(connState.serial, connState.serial ? `串口已连接 ${st.serial_port || ""}` : "串口未连接");
+  setLink(connState.serial, st.serial_port);
+  listen();
+  slide();
+  await loadPorts(!st.serial_open);
+})();
 </script>
 </body>
 </html>

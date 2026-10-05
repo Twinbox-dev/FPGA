@@ -27,6 +27,8 @@ module tb_ethfront;
 
     reg clk = 0;
     always #5 clk = ~clk;              // 100MHz（eth 域真实是 125M，测试无关）
+    reg tap2_clk = 0;
+    always #6.666 tap2_clk = ~tap2_clk; // 独立 75MHz：读回 FIFO 跨时钟
     reg rst = 1;
     reg sys_rst = 1;                   // 流通道复位（与 rst 同步释放）
 
@@ -79,7 +81,7 @@ module tb_ethfront;
         .tap_val           (tap_val),
         .tap_word          (tap_word),
         .tap_end           (tap_end),
-        .tap2_clk          (clk),
+        .tap2_clk          (tap2_clk),
         .tap2_val          (tap2_val),
         .tap2_word         (tap2_word),
         .tap2_end          (tap2_end)
@@ -185,21 +187,21 @@ module tb_ethfront;
         integer j;
         begin
             for (j = 0; j < n; j = j + 1) begin
-                @(posedge clk);
-                tap2_val  <= 1'b1;
-                tap2_word <= {j[15:0], ~j[15:0]};
+                @(negedge tap2_clk);
+                tap2_val  = 1'b1;
+                tap2_word = {j[15:0], ~j[15:0]};
             end
-            @(posedge clk);
-            tap2_val <= 1'b0;
-            @(posedge clk);
+            @(negedge tap2_clk);
+            tap2_val = 1'b0;
+            @(posedge tap2_clk);
         end
     endtask
 
     task tap2_session_end;
         begin
-            @(posedge clk); tap2_end <= 1'b1;
-            @(posedge clk); tap2_end <= 1'b0;
-            @(posedge clk);
+            @(negedge tap2_clk); tap2_end = 1'b1;
+            @(negedge tap2_clk); tap2_end = 1'b0;
+            @(posedge tap2_clk);
         end
     endtask
 
@@ -214,7 +216,8 @@ module tb_ethfront;
         end
     endtask
 
-    integer i, g;
+    integer i, g, sample_idx, stream_errs;
+    reg [31:0] exp_stream_word;
     reg [7:0] exp_hdr [0:7];
     initial begin
         exp_hdr[0]=8'hAA; exp_hdr[1]=8'hBB; exp_hdr[2]=8'hCC; exp_hdr[3]=8'hDD;
@@ -399,16 +402,19 @@ module tb_ethfront;
         if (cap[8] !== 8'h01 || cap[9] !== 8'h00) fail_msg("T15 ACK 后尾包 seq 应仍为 1");
         if (errors == 0) $display("T15 ACK/流包仲裁与记账（ACK 先行、不吃 seq）: PASS");
 
-        // ---- T16：读回源（tap2/type 0x0004）：独立 FIFO、独立 seq ----
+        // ---- T16：读回源（tap2/type 0x0004）：独立 FIFO、独立 seq、3:1 抽字 ----
+        // 灌 10 字 → thin_cnt==0 保留 j=0,3,6,9 共 4 字；包 = 10 + 4*4 = 26 字节
         tap2_feed(10);
         tap2_session_end();
-        tx_collect(50);
-        if (cap_n !== 50) fail_msg("T16 读回尾包长度应为 50 字节");
+        tx_collect(26);
+        if (cap_n !== 26) fail_msg("T16 读回尾包长度应为 26 字节（3:1 抽字后 4 字）");
         if (cap[4] !== 8'h04 || cap[5] !== 8'h00) fail_msg("T16 读回包 type 应为 0x0004");
         if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T16 读回包 seq 应为 0");
-        if (cap[6] !== 8'h2A || cap[7] !== 8'h00) fail_msg("T16 读回尾包 length 域错（42）");
-        if (cap[10] !== 8'hFF || cap[13] !== 8'h00) fail_msg("T16 读回字 0 内容错");
-        if (errors == 0) $display("T16 读回源 type 0x0004（独立 FIFO/seq）: PASS");
+        if (cap[6] !== 8'h12 || cap[7] !== 8'h00) fail_msg("T16 读回尾包 length 域错（18）");
+        if (cap[10] !== 8'hFF || cap[13] !== 8'h00) fail_msg("T16 读回字 0（j=0）内容错");
+        // 第 2 个保留字 = 灌入的 j=3 = {0x0003,0xFFFC} → 线序 FC FF 03 00
+        if (cap[14] !== 8'hFC || cap[17] !== 8'h00) fail_msg("T16 读回字 1（j=3，抽字位置错？）");
+        if (errors == 0) $display("T16 读回源 type 0x0004（独立 FIFO/seq/3:1 抽字）: PASS");
 
         // ---- T17：读回会话之后写侧 seq 仍归零且 type 回 0x0003 ----
         tap_feed(10);
@@ -417,6 +423,68 @@ module tb_ethfront;
         if (cap[4] !== 8'h03) fail_msg("T17 写侧包 type 应回 0x0003");
         if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T17 写侧 seq 应归零");
         if (errors == 0) $display("T17 写侧/读回会话互不串扰: PASS");
+
+        // ---- T18：读回跨两个满包后冲洗尾包，序号必须取 seq2 而非写侧 seq ----
+        // 1520 个原始字抽成 507 字 = 253 + 253 + 1。
+        tap2_feed(1520);
+        stream_errs = 0;
+        tx_collect(10 + 4*253);
+        if (cap_n !== 10 + 4*253 || cap[4] !== 8'h04 ||
+            cap[8] !== 8'h00 || cap[9] !== 8'h00)
+            fail_msg("T18 读回首满包 type/seq/长度错误");
+        for (i = 0; i < 253; i = i + 1) begin
+            sample_idx = 3*i;
+            exp_stream_word = {sample_idx[15:0], ~sample_idx[15:0]};
+            if ({cap[13+4*i], cap[12+4*i], cap[11+4*i], cap[10+4*i]} !== exp_stream_word)
+                stream_errs = stream_errs + 1;
+        end
+        tx_collect(10 + 4*253);
+        if (cap_n !== 10 + 4*253 || cap[4] !== 8'h04 ||
+            cap[8] !== 8'h01 || cap[9] !== 8'h00)
+            fail_msg("T18 读回第二满包 seq 应为 1");
+        for (i = 0; i < 253; i = i + 1) begin
+            sample_idx = 3*(253+i);
+            exp_stream_word = {sample_idx[15:0], ~sample_idx[15:0]};
+            if ({cap[13+4*i], cap[12+4*i], cap[11+4*i], cap[10+4*i]} !== exp_stream_word)
+                stream_errs = stream_errs + 1;
+        end
+        if (stream_errs != 0) fail_msg("T18 读回满包内字序或数据错误");
+        tap2_session_end();
+        tx_collect(14);
+        if (cap_n !== 14 || cap[4] !== 8'h04 ||
+            cap[8] !== 8'h02 || cap[9] !== 8'h00 ||
+            cap[10] !== 8'h11 || cap[11] !== 8'hFA ||
+            cap[12] !== 8'hEE || cap[13] !== 8'h05)
+            fail_msg("T18 读回尾包 seq=2 / 抽样末字 j=1518 错误");
+        if (errors == 0) $display("T18 读回多包独立序号与尾包: PASS");
+
+        // ---- T19：读回新会话的抽样相位和序号一起归零 ----
+        tap2_feed(10);
+        tap2_session_end();
+        tx_collect(26);
+        if (cap_n !== 26 || cap[8] !== 8'h00 || cap[9] !== 8'h00 ||
+            cap[10] !== 8'hFF || cap[13] !== 8'h00)
+            fail_msg("T19 读回新会话相位/序号未归零");
+        if (errors == 0) $display("T19 读回会话复位: PASS");
+
+        // ---- T20：写口诊断模式同时使用 A 数据流与 B 抽样地址流 ----
+        // 两源分别灌 300/900 字，B 3:1 后也为 300 字；A/B 各满包+47 字尾包。
+        fork
+            begin tap_feed(300); tap_session_end(); end
+            begin tap2_feed(900); tap2_session_end(); end
+        join
+        tx_collect(10 + 4*253);
+        if (cap[4] !== 8'h03 || cap[8] !== 8'h00) fail_msg("T20 A 首包 type/seq 错");
+        tx_collect(10 + 4*47);
+        if (cap[4] !== 8'h03 || cap[8] !== 8'h01) fail_msg("T20 A 尾包 type/seq 错");
+        tx_collect(10 + 4*253);
+        if (cap[4] !== 8'h04 || cap[8] !== 8'h00 ||
+            cap[10] !== 8'hFF || cap[13] !== 8'h00)
+            fail_msg("T20 B 首包 type/seq/首字错");
+        tx_collect(10 + 4*47);
+        if (cap[4] !== 8'h04 || cap[8] !== 8'h01)
+            fail_msg("T20 B 尾包 type/seq 错");
+        if (errors == 0) $display("T20 双写口诊断流并发与独立收口: PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILED ====", errors);
