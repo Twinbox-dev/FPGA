@@ -764,3 +764,11 @@ boardtest/logs/*.log）待清理。
 **提交状态**：fix/multires-engine-timing，待回归全绿后提交；综合上板后合并 main。
 **上板顺序**：综合 → 查时序报告（into_burst 路径应消失；千兆 eth −3.6/官方 SDRAM
 −6.7 为已知接受）→ 烧录 → 连以太网 → 装载任意图 → Web 前端看流帧与 diff。
+
+**第二十轮补丁（资源爆掉修复，同日）**：首版 str_mem 攒包缓冲（1030×8）写进
+带复位的 FSM 大 always 且深度超 1024 → TD BRAM 推断失败，落成 8240 FF + 千位
+读 mux：LUT 23623/19600（120%）、mslice 6870>4900 综合报错。修复=三要素齐上
+（`/* fehdl force_ram=1, ram_style="bram" */` + 无复位独立 always 读写口 +
+深度 1024），满包字数 255→253（10+4×253=1022≤1024）；tap_afifo 的 mem 同样
+搬进独立无复位 always + pragma。tb_ethfront 15/15 复验全绿。**教训：本项目
+新增任何存储阵列，TD 推断三要素是硬约束（见 docs/board_status.md）。**

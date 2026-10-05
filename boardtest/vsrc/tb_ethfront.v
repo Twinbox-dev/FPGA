@@ -18,8 +18,8 @@
 //   T10 跨包拆分的命令对不得误配（包尾必须清配对状态）
 //   T11 栈未就绪（udp_tx_ready=0）时等住、就绪后原样发出（不丢帧）
 // 写侧分叉（第二十轮）：
-//   T12 tap 灌 300 字 → 满包 seq=0、255 字、头 len=0x03FE、字 LSB 字节先发
-//   T13 tap_end → 冲洗尾包 seq=1、N=45、len=0x0BB6；冲洗完 seq 归零
+//   T12 tap 灌 300 字 → 满包 seq=0、253 字、头 len=0x03F6、字 LSB 字节先发
+//   T13 tap_end → 冲洗尾包 seq=1、N=47、len=0x00BE；冲洗完 seq 归零
 //   T14 新会话：尾包 seq 重新从 0 起
 //   T15 仲裁：ACK 与流包同时待发 → ACK 先行，且 ACK 不吃 seq
 `timescale 1ns/1ps
@@ -306,37 +306,37 @@ module tb_ethfront;
             $write("DBG12 cap[0..31]:");
             for (d = 0; d < 32; d = d + 1) $write(" %02x", cap[d]);
             $write("\n");
-            $write("DBG12 cap[1020..1029]:");
-            for (d = 1020; d < 1030; d = d + 1) $write(" %02x", cap[d]);
+            $write("DBG12 cap[1012..1021]:");
+            for (d = 1012; d < 1022; d = d + 1) $write(" %02x", cap[d]);
             $write("\n");
         end
-        if (cap_n !== 10 + 4*255) fail_msg("T12 满包长度应为 1030 字节");
+        if (cap_n !== 10 + 4*253) fail_msg("T12 满包长度应为 1022 字节");
         if (cap[0] !== 8'hAA || cap[1] !== 8'hBB || cap[2] !== 8'hCC || cap[3] !== 8'hDD)
             fail_msg("T12 流包应用头错");
         if (cap[4] !== 8'h03 || cap[5] !== 8'h00) fail_msg("T12 流包 type 应为 0x0003");
-        // 头 length 域 = 2 + 4*255 = 1022 = 0x03FE
-        if (cap[6] !== 8'hFE || cap[7] !== 8'h03) fail_msg("T12 流包头 length 域错");
+        // 头 length 域 = 2 + 4*253 = 1014 = 0x03F6
+        if (cap[6] !== 8'hF6 || cap[7] !== 8'h03) fail_msg("T12 流包头 length 域错");
         if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T12 首包 seq 应为 0");
         // 字 0 = {0x0000,0xFFFF} → FF FF 00 00；字 1 = {0x0001,0xFFFE} → FE FF 01 00
         if (cap[10] !== 8'hFF || cap[11] !== 8'hFF || cap[12] !== 8'h00 || cap[13] !== 8'h00)
             fail_msg("T12 字 0 字节序错（应 LSB 先）");
         if (cap[14] !== 8'hFE || cap[15] !== 8'hFF || cap[16] !== 8'h01 || cap[17] !== 8'h00)
             fail_msg("T12 字 1 内容错");
-        // 末字（j=254 = {0x00FE,0xFF01}）→ 01 FF FE 00
-        if (cap[1026] !== 8'h01 || cap[1027] !== 8'hFF ||
-            cap[1028] !== 8'hFE || cap[1029] !== 8'h00) fail_msg("T12 末字内容/序错");
-        if (errors == 0) $display("T12 tap 满包 255 字（头/seq/字节序）: PASS");
+        // 末字（j=252 = {0x00FC,0xFF03}）→ 03 FF FC 00
+        if (cap[1018] !== 8'h03 || cap[1019] !== 8'hFF ||
+            cap[1020] !== 8'hFC || cap[1021] !== 8'h00) fail_msg("T12 末字内容/序错");
+        if (errors == 0) $display("T12 tap 满包 253 字（头/seq/字节序）: PASS");
 
-        // ---- T13：tap_end → 冲洗尾包（seq=1，45 字）----
+        // ---- T13：tap_end → 冲洗尾包（seq=1，47 字）----
         tap_session_end();
-        tx_collect(10 + 4*45);
-        if (cap_n !== 10 + 4*45) fail_msg("T13 尾包长度应为 190 字节");
-        // 头 length 域 = 2 + 180 = 182 = 0x00B6
-        if (cap[6] !== 8'hB6 || cap[7] !== 8'h00) fail_msg("T13 尾包 length 域错");
+        tx_collect(10 + 4*47);
+        if (cap_n !== 10 + 4*47) fail_msg("T13 尾包长度应为 198 字节");
+        // 头 length 域 = 2 + 188 = 190 = 0x00BE
+        if (cap[6] !== 8'hBE || cap[7] !== 8'h00) fail_msg("T13 尾包 length 域错");
         if (cap[8] !== 8'h01 || cap[9] !== 8'h00) fail_msg("T13 尾包 seq 应为 1");
-        // 末字 j=299=0x012B：线序 D4 FE 2B 01
-        if (cap[186] !== 8'hD4 || cap[189] !== 8'h01) fail_msg("T13 尾包末字内容错");
-        if (errors == 0) $display("T13 tap_end 冲洗尾包（seq=1，45 字）: PASS");
+        // 末字 j=299=0x012B：线序 D4 FE 2B 01（地址 10+4*46=194 起）
+        if (cap[194] !== 8'hD4 || cap[197] !== 8'h01) fail_msg("T13 尾包末字内容错");
+        if (errors == 0) $display("T13 tap_end 冲洗尾包（seq=1，47 字）: PASS");
 
         // ---- T14：新会话尾包 seq 重新从 0 起 ----
         tap_feed(10);
@@ -357,14 +357,14 @@ module tb_ethfront;
         repeat (20) @(posedge clk);
         if (tx_request !== 1'b0) fail_msg("T15 栈未就绪却已拉 request");
         tx_ready = 1'b1;
-        tx_collect(10 + 4*255);                    // 流包先走
+        tx_collect(10 + 4*253);                    // 流包先走
         if (cap[8] !== 8'h00 || cap[9] !== 8'h00) fail_msg("T15 流包 seq 应为 0");
         tx_collect(16);                            // 随后 ACK 补发
         if (cap_n !== 16) fail_msg("T15 ACK 帧长应为 16");
         if (cap[4] !== 8'h00 || cap[5] !== 8'h02) fail_msg("T15 ACK type 错");
         if (cap[8] !== 8'hA5) fail_msg("T15 ACK 载荷首字节错（记账丢失？）");
         tap_session_end();
-        tx_collect(10 + 4*45);                     // 尾包 seq=1：ACK 未吃 seq
+        tx_collect(10 + 4*47);                     // 尾包 seq=1：ACK 未吃 seq
         if (cap[8] !== 8'h01 || cap[9] !== 8'h00) fail_msg("T15 ACK 后尾包 seq 应仍为 1");
         if (errors == 0) $display("T15 ACK/流包仲裁与记账（ACK 先行、不吃 seq）: PASS");
 

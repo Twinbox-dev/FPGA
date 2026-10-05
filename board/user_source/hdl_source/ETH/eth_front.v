@@ -13,7 +13,8 @@
 //   板→PC 流包  ：type=0x0003, length=2+4N（写侧分叉，第二十轮）：
 //                seq[15:0]（LSB 先，每会话从 0 起）+ N×32bit 发射字
 //                （LSB 字节先；字低 16bit=左像素 RGB565，高 16bit=右像素）。
-//                UDP payload = 8 + 2 + 4N（N=255 满包，会话尾短包）。
+//                UDP payload = 8 + 2 + 4N（N=253 满包，会话尾短包；253 上限
+//                来自攒包 BRAM 深度 1024 = TD 推断上限）。
 //                tap 数据路径：tap_clk(sd_card_clk) 域 Gray 异步 FIFO →
 //                udp_clk 域攒包 BRAM → 与 ACK 包共用 TX FSM（ACK 优先）。
 //
@@ -197,8 +198,13 @@ module eth_front(
     reg [10:0] tx_i;                     // 当前输出字节序号（流包最大 1029）
     reg        valid_r;                  // ACK 路径 valid
     reg        out_valid;                // 流包路径 valid（str_q 打一拍配套）
-    // ---- 流包攒包区：1030 字节 = 8 头 + 2 seq + 255×4 字 ----
-    reg [7:0]  str_mem [0:1029];
+    // ---- 流包攒包区：1022 字节 = 8 头 + 2 seq + 253×4 字 ----
+    // ⚠ TD BRAM 推断三要素缺一不可（force_ram pragma / 无复位独立 always /
+    //   深度 ≤1024）：首版把存储写进带复位的 FSM 大 always 且深度 1030 →
+    //   推断失败落成 8240 个 FF + 千位读 mux，mslice 6870 超限综合报错。
+    //   深度 1024 封顶 → 满包字数 = (1024-10)/4 = 253。
+    localparam [8:0] STR_PKT_WORDS = 9'd253;
+    reg [7:0]  str_mem [0:1023]; /* fehdl force_ram=1, ram_style="bram" */
     reg [7:0]  str_q;
     reg [10:0] bi;                       // 攒包字节计数
     reg [8:0]  pkt_words;                // 本包字数 N（≤255）
@@ -213,7 +219,7 @@ module eth_front(
     wire [10:0] bi_latch_end= {2'b00, pkt_words, 2'b00} + 11'd6;  // 末字锁存拍 4N+6
     wire [10:0] bi_build_end= {2'b00, pkt_words, 2'b00} + 11'd10; // 末字节写拍 4N+10
     wire        settle_done = (settle_cnt == 5'd31);
-    wire        str_go = (fifo_avail >= 10'd255) ||
+    wire        str_go = (fifo_avail >= {7'd0, STR_PKT_WORDS}) ||
                          (flush_pend && settle_done && (fifo_avail != 10'd0));
 
     // 攒包读口：bi≡1 (mod 4) 拍弹字（1 拍延迟后 bi≡2 拍进 word_hold，
@@ -222,6 +228,25 @@ module eth_front(
                         (bi <= bi_pop_end) && (bi[1:0] == 2'b01);
     wire [10:0] boff = bi - 11'd11;      // 当前写地址 = bi-1 的字内偏移 = bi-11
     wire [7:0]  wb_byte = word_hold[{boff[1:0], 3'b000} +: 8];
+
+    // ---- str_mem 写/读口（无复位独立 always，BRAM 推断要素之二）----
+    // bi 0..9 直写头+seq（地址=bi）；bi 11..4N+10 写字数据（地址=bi-1）；bi=10 空拍
+    wire        str_we = (st == S_BUILD) && ((bi <= 11'd9) ||
+                         ((bi >= 11'd11) && (bi <= bi_build_end)));
+    wire [9:0]  str_wa = (bi <= 11'd9) ? bi[9:0] : (bi[9:0] - 10'd1);
+    wire [7:0]  str_wd = (bi <= 11'd9)
+                         ? ((bi < 11'd8) ? hdr_b
+                           : (bi == 11'd8) ? seq[7:0] : seq[15:8])
+                         : wb_byte;
+    // 读口：TX_ACK 应答拍预取首字节；SEND 期预取下一字节（末拍不读）
+    wire        str_rd = tx_sel && ((st == TX_ACK && app_tx_ack) ||
+                         (st == TX_SEND && (tx_i < pkt_len_w - 16'd1)));
+    wire [9:0]  str_ra = (st == TX_ACK) ? 10'd0 : (tx_i[9:0] + 10'd1);
+
+    always @(posedge app_tx_clk)
+        if (str_we) str_mem[str_wa] <= str_wd;
+    always @(posedge app_tx_clk)
+        if (str_rd) str_q <= str_mem[str_ra];
 
     // 应用头常量（流包，字节 0..7）：AA BB CC DD 03 00 len_lo len_hi
     reg [7:0] hdr_b;
@@ -254,7 +279,7 @@ module eth_front(
             tx_i <= 11'd0; tx_buf <= 128'd0;
             tx_sel <= 1'b0; ack_pend <= 1'b0;
             bi <= 11'd0; pkt_words <= 9'd0;
-            word_hold <= 32'd0; str_q <= 8'd0;
+            word_hold <= 32'd0;
             flush_pend <= 1'b0; settle_cnt <= 5'd0;
             seq <= 16'd0;
         end else begin
@@ -291,8 +316,8 @@ module eth_front(
                             st <= TX_RDY;
                     end
                     else if (str_go) begin
-                        pkt_words <= (fifo_avail >= 10'd255) ? 9'd255
-                                                             : fifo_avail[8:0];
+                        pkt_words <= (fifo_avail >= {7'd0, STR_PKT_WORDS})
+                                     ? STR_PKT_WORDS : fifo_avail[8:0];
                         tx_sel <= 1'b1;
                         bi     <= 11'd0;
                         st <= S_BUILD;
@@ -308,19 +333,16 @@ module eth_front(
                         app_tx_data_request <= 1'b0;
                         udp_data_length     <= tx_sel ? pkt_len_w : PKT_BYTES;
                         tx_i <= 11'd0;
-                        if (tx_sel) begin
-                            str_q    <= str_mem[0];   // 首字节预取
-                            out_valid <= 1'b1;
-                        end else
-                            valid_r <= 1'b1;          // 首字节本拍起有效
+                        if (tx_sel)
+                            out_valid <= 1'b1;    // 首字节由 str_rd 口预取
+                        else
+                            valid_r <= 1'b1;      // 首字节本拍起有效
                         st <= TX_SEND;
                     end else
                         app_tx_data_request <= 1'b1;
                 TX_SEND:
                     if (tx_sel) begin
-                        // 线序字节 k = str_mem[k]（str_q 前拍预取）
-                        if (tx_i < pkt_len_w - 16'd1)
-                            str_q <= str_mem[tx_i + 11'd1];
+                        // 线序字节 k = str_mem[k]（str_q 前拍预取，str_rd 口负责）
                         if (tx_i == pkt_len_w - 16'd1) begin
                             out_valid <= 1'b0;
                             tx_i <= 11'd0;
@@ -341,16 +363,10 @@ module eth_front(
                             tx_i <= tx_i + 11'd1;
                         end
                     end
-                // 攒包：bi=0..9 直写（头+seq）；bi≥11 写 bi-1 号字节（字数据
-                // 滞后一拍）。弹字 bi≡1(mod4)、锁存 bi≡2、写字 bi≥11 —— 
-                // 弹出拍 4N+5、锁存拍 4N+6、末写拍 4N+10（地址 4N+9）。
+                // 攒包：字节落 BRAM 由独立 str_we 口完成（bi 0..9 头+seq、
+                // bi≥11 写字数据滞后一拍）。弹字 bi≡1(mod4)、锁存 bi≡2、
+                // 末写拍 4N+10（地址 4N+9）。
                 S_BUILD: begin
-                    if (bi <= 11'd9)
-                        str_mem[bi[10:0]] <= (bi < 11'd8) ? hdr_b
-                                           : (bi == 11'd8) ? seq[7:0]
-                                                           : seq[15:8];
-                    else if ((bi >= 11'd11) && (bi <= bi_build_end))
-                        str_mem[bi - 11'd1] <= wb_byte;
                     if ((bi[1:0] == 2'b10) && (bi >= 11'd10) && (bi <= bi_latch_end))
                         word_hold <= fifo_rd_data;
                     if (bi >= bi_build_end) begin
@@ -397,7 +413,7 @@ module tap_afifo #(
     reg [AW:0] rbin, rgray;
     reg [AW:0] rgray_w1, rgray_w2;       // 读指针 → 写域
     reg [AW:0] wgray_r1, wgray_r2;       // 写指针 → 读域
-    reg [DW-1:0] mem [0:(1<<AW)-1];
+    reg [DW-1:0] mem [0:(1<<AW)-1]; /* fehdl force_ram=1, ram_style="bram" */
 
     // ⚠ full/empty 必须**寄存**：组合式 `next == 对侧同步指针` 判据与指针推进
     //   互为组合环（"恰好剩一个字且使能有效"时振荡——Verilator 直接拒绝收敛）。
@@ -407,6 +423,13 @@ module tap_afifo #(
     wire [AW:0] wgray_next  = (wbin_next >> 1) ^ wbin_next;
     wire        wr_full_next = (wgray_next == {~rgray_w2[AW:AW-1], rgray_w2[AW-2:0]});
 
+    // 存储阵列读写独立无复位 always（BRAM 推断要素之二；寄存器本体 full/empty
+    // /指针的复位在下方各自 always 内，互不混写）
+    always @(posedge wr_clk)
+        if (push_go) mem[wbin[AW-1:0]] <= wr_data;
+    always @(posedge rd_clk)
+        if (pop_go) rd_data <= mem[rbin[AW-1:0]];   // 弹的是当前队头（rbin 非 rbin_next）
+
     always @(posedge wr_clk) begin
         if (wr_rst) begin
             wbin <= {(AW+1){1'b0}}; wgray <= {(AW+1){1'b0}};
@@ -415,7 +438,6 @@ module tap_afifo #(
         end else begin
             wbin <= wbin_next; wgray <= wgray_next;
             wr_full <= wr_full_next;
-            if (push_go) mem[wbin[AW-1:0]] <= wr_data;
             rgray_w1 <= rgray; rgray_w2 <= rgray_w1;
         end
     end
@@ -437,14 +459,12 @@ module tap_afifo #(
     always @(posedge rd_clk) begin
         if (rd_rst) begin
             rbin <= {(AW+1){1'b0}}; rgray <= {(AW+1){1'b0}};
-            rd_data <= {DW{1'b0}};
             rd_empty <= 1'b1;            // 复位期视为空：不许读
             wgray_r1 <= {(AW+1){1'b0}}; wgray_r2 <= {(AW+1){1'b0}};
             rd_avail <= {(AW+1){1'b0}};
         end else begin
             rbin <= rbin_next; rgray <= rgray_next;
             rd_empty <= rd_empty_next;
-            if (pop_go) rd_data <= mem[rbin[AW-1:0]];   // 弹的是当前队头（rbin 非 rbin_next）
             wgray_r1 <= wgray; wgray_r2 <= wgray_r1;
             rd_avail <= wbin_rd - rbin;
         end
