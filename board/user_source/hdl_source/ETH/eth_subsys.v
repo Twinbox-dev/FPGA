@@ -47,7 +47,8 @@ module eth_subsys(
     input  wire        tap_val,
     input  wire [31:0] tap_word,
     input  wire        tap_end,
-    // 读侧 dump：显存读回流（同构第二源，type=0x0004）
+    // 读侧 dump：显示读数据捕获流（独立源时钟 video_clk，type=0x0004）
+    input  wire        tap2_clk,
     input  wire        tap2_val,
     input  wire [31:0] tap2_word,
     input  wire        tap2_end
@@ -151,6 +152,7 @@ module eth_subsys(
         .tap_val           (tap_val),
         .tap_word          (tap_word),
         .tap_end           (tap_end),
+        .tap2_clk          (tap2_clk),
         .tap2_val          (tap2_val),
         .tap2_word         (tap2_word),
         .tap2_end          (tap2_end)
