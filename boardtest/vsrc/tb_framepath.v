@@ -3,7 +3,7 @@ module tb_framepath;
     localparam N = 1024;
     reg sd_clk = 0, mem_clk = 0, video_clk = 0;
     always #5     sd_clk = ~sd_clk;       // 100 MHz
-    always #4     mem_clk = ~mem_clk;     // 125 MHz
+    always #5     mem_clk = ~mem_clk;     // 当前板上 SDRAM 为 100 MHz
     always #6.666 video_clk = ~video_clk; // 75 MHz
     reg rst = 1;
 
@@ -84,7 +84,11 @@ module tb_framepath;
         wait(write_ack);
         stage = 2;
         @(negedge sd_clk); write_req = 0;
-        repeat (10) @(negedge sd_clk); // 等 S_ACK 撤销 FIFO 异步清零
+        // 与 sd_card_bmp 的 LD_IMG_SETTLE=16 拍一致：源端首字进入前，
+        // 存储侧的 fifo_aclr 和写域内部复位都必须已释放。
+        repeat (16) @(negedge sd_clk);
+        if (dut.write_fifo_aclr || dut.write_buf.wr_rst)
+            $fatal(1, "write FIFO reset still asserted after image settle window");
         for (i = 0; i < N + 1; i = i + 1) begin
             @(negedge sd_clk);
             write_en = 1;
@@ -126,7 +130,7 @@ module tb_framepath;
         end
         $display("read path: bad=%0d / %0d", bad_read, N);
         if (bad_read != 0) $fatal(1, "read FIFO data order corrupted");
-        $display("Frame path 100/125/75MHz: PASS");
+        $display("Frame path 100/100/75MHz: PASS");
         $finish;
     end
 

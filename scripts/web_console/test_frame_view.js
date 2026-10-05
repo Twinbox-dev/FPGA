@@ -60,7 +60,9 @@ vm.runInContext(html.slice(begin, end), env);
   env.__bmp = bmpView;
   await vm.runInContext(
     'bmpImg={dv:__bmp, off:54, w:6, h:1, bottomUp:true, stride:20}; diffAll()', env);
-  assert(elements.diffHintRb.textContent.includes('一致（2）'),
+  assert(elements.diffHintRb.textContent.includes('图像差异 0/2'),
     elements.diffHintRb.textContent);
-  console.log('Readback render and sampled BMP diff: PASS');
+  assert(elements.diffHintRb.textContent.includes('黑边差异 2/307198'),
+    elements.diffHintRb.textContent);
+  console.log('Readback render and full-frame BMP diff: PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });

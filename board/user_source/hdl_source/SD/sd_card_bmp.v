@@ -175,7 +175,8 @@ module sd_card_bmp #(
     // ---- 装载序列 FSM ----
     // 2026-10-03 多分辨率信箱适配：装载序列重排
     //   LD_FILL_*（全帧涂黑会话，垫掉非图像区）→ LD_FILE（请求文件，等头）
-    //   → LD_IMG_ACK（按 img_h*640 开图像写会话）→ LD_STREAM（信箱发射）。
+    //   → LD_IMG_ACK（按 img_h*640 开图像写会话）→ LD_IMG_SETTLE（等 FIFO 清零释放）
+    //   → LD_STREAM（信箱发射）。
     //   720p 图像在此路径下行为与旧版一致（x0=y0=0、len=460800）。
     localparam [2:0] LD_IDLE     = 3'd0,
                      LD_FILL_REQ = 3'd1,   // 涂黑会话握手
@@ -183,8 +184,10 @@ module sd_card_bmp #(
                      LD_FILE     = 3'd3,   // 文件请求（图像等 hdr，音频发完即回）
                      LD_IMG_WAIT = 3'd4,   // 等 BMP 头校验（拿 img_w/h 定 len）
                      LD_IMG_ACK  = 3'd5,   // 图像写会话握手（len = img_h*640）
-                     LD_STREAM   = 3'd6;   // 信箱发射（等 finish → write_done_seen）
+                     LD_STREAM   = 3'd6,   // 信箱发射（等 finish → write_done_seen）
+                     LD_IMG_SETTLE = 3'd7; // ACK 后等写 FIFO 异步清零跨域释放
     reg [2:0] ld_state;
+    reg [3:0] img_settle_cnt;
     reg       file_req;
     reg [4:0] file_idx;
     reg       aud_item_done_pulse;
@@ -404,7 +407,7 @@ module sd_card_bmp #(
                                                       // 兜底防地址回卷）
     wire        in_h       = (emit_col >= x0_l) && (emit_col < x0_l + img_w_l);
     // 发射决策：图像窗口内弹缓冲（空则等——源一定会来）；窗口外补黑（无条件）
-    wire        emit_go    = img_emit_en && (in_h ? !ibuf_empty : 1'b1);
+    wire        emit_go    = img_emit_en && (in_h ? !ibuf_empty : (pad_pace_cnt == 2'd0));
     wire        pop_en     = img_emit_en && in_h && !ibuf_empty;   // 缓冲弹出（发射块给出，缓冲块消费）
     wire [23:0] px_src     = in_h ? ibuf[ibuf_rptr] : 24'd0;
 
@@ -465,7 +468,7 @@ module sd_card_bmp #(
             img_word_val <= 1'b0;
             if (img_emit_en)
                 emit_seen <= 1'b1;
-            // 填充字只许在「发射已开过且已收」时补：LD_IMG_ACK 拉起 emit_start_pulse
+            // 填充字只许在「发射已开过且已收」时补：LD_IMG_SETTLE 拉起 emit_start_pulse
             // 后 img_emit_en 晚一拍才升起，这一拍里 !img_emit_en && LD_STREAM 同样
             // 成立——没有 emit_seen 前置会话开头就错发一个黑字（占掉第 0 字预算，
             // 整帧右移一字、末字不落 SDRAM = 板上撕裂的直接根因，2026-10-05 实锤）
@@ -529,7 +532,7 @@ module sd_card_bmp #(
     wire aud_wr_phase = aud_scan_active | ald_active;
     // 720p 帧缓冲 = 1280*720/2 = 460800 字（RGB565，2 像素/字）
     assign write_req      = write_req_r | aud_wr_req;
-    assign write_en       = fill_active   ? 1'b1
+    assign write_en       = fill_active   ? (fill_pace_cnt == 4'd0)
                           : aud_wr_phase  ? aud_word_val
                           :                 img_word_val;
     assign write_data     = fill_active   ? 32'd0
@@ -714,9 +717,25 @@ module sd_card_bmp #(
     wire signed [29:0] vrow_words = ($signed(row_off) <<< 9) + ($signed(row_off) <<< 7);
                                                      // *640（512+128），<=0
     reg        fill_active;                  // 全帧涂黑会话进行中
+    reg  [3:0] fill_pace_cnt;                // 每 16 拍送一黑字，降低共享写通路的瞬时压力
     reg        img_emit_en;                  // 信箱发射使能（唯一写方=发射块）
+    reg  [1:0] pad_pace_cnt;                 // 图像左右黑色 padding 每 4 拍发一像素
     reg        emit_start_pulse;             // 装载 FSM → 发射块：会话开跑脉冲
     reg  [10:0] emit_col, emit_row;          // 发射坐标（列 0..1279 / 流行号）
+
+    always @(posedge clk or posedge rst) begin
+        if (rst || load_start_pulse || !img_emit_en)
+            pad_pace_cnt <= 2'd0;
+        else
+            pad_pace_cnt <= pad_pace_cnt + 2'd1;
+    end
+
+    always @(posedge clk or posedge rst) begin
+        if (rst || !fill_active)
+            fill_pace_cnt <= 4'd0;
+        else
+            fill_pace_cnt <= fill_pace_cnt + 4'd1;
+    end
 
     // BMP 解码（行翻转归属存储侧 WRITE_V_FLIP=1）
     bmp_dec u_bmp (
@@ -769,6 +788,7 @@ module sd_card_bmp #(
             file_idx    <= 5'd0;
             emit_start_pulse <= 1'b0;
             scan_req_active  <= 1'b0;
+            img_settle_cnt <= 4'd0;
         end
         else begin
             file_req <= 1'b0;
@@ -841,8 +861,19 @@ module sd_card_bmp #(
                 LD_IMG_ACK: begin
                     if (write_req_ack) begin
                         write_req_r    <= 1'b0;
-                        emit_start_pulse <= 1'b1;  // 单写方脉冲 → 发射块拉起 img_emit_en
-                        ld_state       <= LD_STREAM;
+                        img_settle_cnt <= 4'd0;
+                        ld_state       <= LD_IMG_SETTLE;
+                    end
+                end
+                LD_IMG_SETTLE: begin
+                    // ACK 所在拍存储域的 fifo_aclr 仍为 1；请求撤销还要经过
+                    // 3 级同步，再等 FIFO 两域同步释放。窄图行首黑边可每拍
+                    // 发一个像素，必须等清零完全结束才允许首字进入 FIFO。
+                    if (img_settle_cnt == 4'd15) begin
+                        emit_start_pulse <= 1'b1;
+                        ld_state <= LD_STREAM;
+                    end else begin
+                        img_settle_cnt <= img_settle_cnt + 4'd1;
                     end
                 end
                 LD_STREAM: begin

@@ -12,6 +12,7 @@ uses display-memory addresses; it never treats the sparse stream as contiguous
 image rows. A selected BMP must be the image shown by the captured frame.
 """
 import argparse
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -139,8 +140,12 @@ def compare(bmp: Path, wr_data: bytes, rb_data: bytes, stride: int,
             'write_sha256': hashlib.sha256(wr_data).hexdigest(),
             'address_sha256': hashlib.sha256(rb_data).hexdigest(),
         }
-    active = [(j, stride * j) for j in range(len(rb))
-              if stride * j < FRAME_WORDS and in_image(stride * j, box)]
+    sampled = [(j, stride * j) for j in range(len(rb))
+               if stride * j < FRAME_WORDS]
+    active = [(j, i) for j, i in sampled if in_image(i, box)]
+    border = [(j, i) for j, i in sampled if not in_image(i, box)]
+    full_bad = [(j, i) for j, i in sampled if rb[j] != display[i]]
+    bad_rows = Counter(i // WORDS_PER_ROW for _, i in full_bad)
     offsets = {}
     for offset in range(-8, 9):
         offsets[offset] = sum(
@@ -164,8 +169,14 @@ def compare(bmp: Path, wr_data: bytes, rb_data: bytes, stride: int,
         'write_exact': wr_exact,
         'write_matches_bmp': len(wr) == len(written) and wr_exact == len(written),
         'read_words': len(rb), 'read_stride': stride,
+        'full_sample_words': len(sampled),
+        'full_exact_at_address': len(sampled) - len(full_bad),
         'image_sample_words': len(active),
         'read_exact_at_address': offsets[0],
+        'border_sample_words': len(border),
+        'border_exact_black': sum(rb[j] == display[i] for j, i in border),
+        'bad_rows_top': [{'row': row, 'bad_samples': count}
+                         for row, count in bad_rows.most_common(12)],
         'best_offsets': [{'words': d, 'matches': n} for d, n in top_offsets],
         'matches_at_best_two_offsets': match_top_two,
         'changed_words_vs_previous': changed,
@@ -217,6 +228,9 @@ def main():
             for slot, h in headers.items()}
         result['same_frame_timestamp'] = (
             headers['wr'].get('X-Frame-Ts') == headers['rb'].get('X-Frame-Ts'))
+        result['read_capture_complete'] = (
+            result['read_words'] == (FRAME_WORDS + stride - 1) // stride and
+            int(headers['rb'].get('X-Frame-Gaps', '-1')) == 0)
     if not result['write_matches_bmp']:
         result['warning'] = 'write stream differs from selected BMP; verify image identity before interpreting read offsets'
     print(json.dumps(result, ensure_ascii=False, indent=2))

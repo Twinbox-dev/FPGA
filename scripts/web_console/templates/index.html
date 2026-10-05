@@ -899,29 +899,28 @@ function diffAll() {
       `覆盖 ${total ? Math.round(covered / total * 100) : 0}%：` +
       (bad ? `差异 ${bad}/${covered}（标红）` : `一致（${covered}）`);
   }
-  // 读回帧 diff（线性显存：行 y0+j = 图像顶行起第 j 行）
+  // 读回帧 diff：对整幅 1280×720 显存采样比较，图像外也必须为黑色。
   if (frameBuf.rb && frameMeta.rb && frameMeta.rb.gaps === 0) {
     const x0 = (1280 - bmpImg.w) >> 1, y0 = (720 - bmpImg.h) >> 1;
     const dv = new DataView(frameBuf.rb);
     const wMax = dv.byteLength >> 2;
     const step = frameMeta.rb.step;
-    let covered = 0;
     const ctx = document.getElementById("frameCvRb").getContext("2d");
     const img = ctx.getImageData(0, 0, 1280, 720);
     const px = img.data;
-    let bad = 0, total = 0;
-    for (let j = 0; j < bmpImg.h; j++) {
-      const y = y0 + j;
-      for (let x = 0; x < bmpImg.w; x++, total++) {
-        const col = x0 + x;
-        const wi = y * 640 + (col >> 1);
-        if (wi % step !== 0 || wi / step >= wMax) continue;
-        covered++;
-        const got5 = (col & 1)
-          ? dv.getUint32((wi / step) * 4, true) >>> 16
-          : dv.getUint32((wi / step) * 4, true) & 0xFFFF;
-        if (got5 !== bmpPixel(j, x)) {
-          bad++;
+    let imageBad = 0, imageCovered = 0, borderBad = 0, borderCovered = 0;
+    for (let sample = 0; sample < wMax && step * sample < 460800; sample++) {
+      const wi = step * sample, y = Math.floor(wi / 640), c = wi % 640;
+      const word = dv.getUint32(sample * 4, true);
+      for (let half = 0; half < 2; half++) {
+        const col = 2 * c + half;
+        const inside = y >= y0 && y < y0 + bmpImg.h &&
+                       col >= x0 && col < x0 + bmpImg.w;
+        const expected = inside ? bmpPixel(y - y0, col - x0) : 0;
+        const got = half ? word >>> 16 : word & 0xFFFF;
+        if (inside) imageCovered++; else borderCovered++;
+        if (got !== expected) {
+          if (inside) imageBad++; else borderBad++;
           const o = (y * 1280 + col) * 4;
           px[o] = 255; px[o + 1] = 0; px[o + 2] = 0; px[o + 3] = 255;
         }
@@ -929,8 +928,8 @@ function diffAll() {
     }
     ctx.putImageData(img, 0, 0);
     document.getElementById("diffHintRb").textContent =
-      `覆盖 ${total ? Math.round(covered / total * 100) : 0}%：` +
-      (bad ? `差异 ${bad}/${covered}（标红）` : `一致（${covered}）`);
+      `全帧覆盖 ${Math.round((imageCovered + borderCovered) / (1280 * 720) * 100)}%：` +
+      `图像差异 ${imageBad}/${imageCovered}，黑边差异 ${borderBad}/${borderCovered}（标红）`;
   }
 }
 document.getElementById("bmpFile").addEventListener("change", async e => {

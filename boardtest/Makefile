@@ -25,7 +25,7 @@ $(SIM): $(VSRCS) $(CSRCS)
 regress: $(SIM)
 	../scripts/run_all_sims.sh
 
-.PHONY: run clean regress readeng framepath memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
+.PHONY: run clean regress readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -38,10 +38,15 @@ readeng:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_readeng vsrc/tb_readeng.v 		../board/user_source/hdl_source/SD/frame_fifo_read.v 		../board/user_source/hdl_source/SD/frame_fifo_write.v 		-o sim_readeng --Mdir build_readeng
 	./build_readeng/sim_readeng
 
-# 真实帧读写封装 + 工程异步 FIFO，跨 100/125/75MHz 验证字序（SDRAM 口为模型）。
+# 真实帧读写封装 + 工程异步 FIFO，跨 100/100/75MHz 验证字序（SDRAM 口为模型）。
 framepath:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_framepath vsrc/tb_framepath.v ../board/user_source/hdl_source/SD/frame_read_write.v ../board/user_source/hdl_source/SD/frame_fifo_read.v ../board/user_source/hdl_source/SD/frame_fifo_write.v ../board/user_source/hdl_source/IP/afifo_16_32_256.v ../board/user_source/hdl_source/IP/afifo_32_16_256.v -o sim_framepath --Mdir build_framepath
 	./build_framepath/sim_framepath
+
+# 写突发判决寄存后一拍重查读忙；旧代码在读忙升起时仍会启动写突发。
+arbrace:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_arbrace vsrc/tb_arbrace.v ../board/user_source/hdl_source/SD/frame_fifo_write.v -o sim_arbrace --Mdir build_arbrace
+	./build_arbrace/sim_arbrace
 
 # SDRAM 返回口被动抓取窗：视频会话同步、音频字过滤、满帧/异常收口。
 memdump:

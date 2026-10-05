@@ -103,7 +103,9 @@ reg into_burst_r;
 always @(posedge mem_clk or posedge rst)
     if (rst) into_burst_r <= 1'b0;
     else     into_burst_r <= into_burst_c;
-assign into_burst = into_burst_r;//当rd在突发时不会进入burst
+// 判决寄存后，启动拍必须重查当前读忙；否则读侧可在前一拍看到
+// O_wr_busy=0 并进入突发，写侧随后仍按旧判决启动，两个 App 口重叠。
+assign into_burst = into_burst_r && ~App_rd_busy;
 
 assign App_wr_addr = {App_wr_addr_r[ADDR_BITS - 1:0]};
 //assign O_wr_busy = (state != S_IDLE || (S_IDLE && write_req_d2));
