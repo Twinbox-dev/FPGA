@@ -62,6 +62,7 @@ module tb_readeng;
     wire        wr_ack, wr_fin;
     reg  [1:0]  wr_idx;
     reg  [ADDR_BITS-1:0] wr_len;
+    reg  signed [19:0]   vrow_off = 20'sd0;   // 信箱行偏移（T2b）
     wire [31:0] wr_data_tb;
     wire [9:0]  w_usedw;
     wire        w_aclr;
@@ -73,8 +74,8 @@ module tb_readeng;
         .write_req(wr_req), .write_req_ack(wr_ack), .write_finish(wr_fin),
         .write_addr_0(BUF0[ADDR_BITS-1:0]), .write_addr_1(BUF1[ADDR_BITS-1:0]),
         .write_addr_2(BUF2[ADDR_BITS-1:0]), .write_addr_3(BUF3[ADDR_BITS-1:0]),
-        .write_addr_index(wr_idx), .write_len(wr_len), .fifo_aclr(w_aclr),
-        .rdusedw(w_usedw)
+        .write_addr_index(wr_idx), .write_len(wr_len), .vrow_off(vrow_off),
+        .fifo_aclr(w_aclr), .rdusedw(w_usedw)
     );
 
     // ================= 行为级 FIFO =================
@@ -164,15 +165,27 @@ module tb_readeng;
     // ================= 写驱动 =================
     integer wr_sent = 0, wr_total = 0;
     reg wr_en_r = 0;
+    integer wr_gap = 0, wr_gap_cnt = 0;   // 0=密集（原行为）；>0=每 wr_gap 拍注 1 字（稀疏）
     assign wr_data_tb = wr_sent[31:0];
     assign wr_en_tb = wr_en_r;
     always @(posedge clk) begin
         if (rst) begin
-            wr_req <= 0; wr_en_r <= 0; wr_sent <= 0;
+            wr_req <= 0; wr_en_r <= 0; wr_sent <= 0; wr_gap_cnt <= 0;
         end else begin
             if (wr_go) begin wr_req <= 1; wr_go <= 0; end
             if (wr_req && wr_ack) wr_req <= 0;
-            wr_en_r <= wr_active && (wr_sent < wr_total);
+            if (wr_gap == 0) begin
+                wr_en_r <= wr_active && (wr_sent < wr_total);
+            end else begin
+                // 稀疏注入：模拟图像发射器的真实节奏（字间大空泡）
+                if (wr_gap_cnt == 0) begin
+                    wr_en_r    <= wr_active && (wr_sent < wr_total);
+                    wr_gap_cnt <= wr_gap;
+                end else begin
+                    wr_en_r    <= 0;
+                    wr_gap_cnt <= wr_gap_cnt - 1;
+                end
+            end
             if (wr_en_r) wr_sent <= wr_sent + 1;
         end
     end
@@ -282,6 +295,23 @@ module tb_readeng;
             if (sdram[BUF0 + 719*640 + i] !== i[31:0]) fail_msg("T2 image flip lost");
         $display("T2 image write vflip kept: PASS");
 
+        // ---- T2b: 信箱行偏移（多分辨率）：vrow_off=-120 字（480 行图像居中）----
+        // 64 字会话应落在 BUF0+(719-120)*640 = BUF0+599*640（首流行=图像底行）
+        vrow_off = -20'sd76800;   // -120 行 × 640 字/行（单位=字，与 sd_card_bmp 一致）
+        wr_idx = 0; wr_len = 64; wr_total = 64; wr_sent = 0; wr_active = 1; wr_go = 1;
+        t = 0;
+        while (!wr_fin && t < 100000) begin
+            @(posedge clk); t = t + 1;
+        end
+        wr_active = 0; vrow_off = 20'sd0;
+        if (!wr_fin) fail_msg("T2b write timeout");
+        repeat (20) @(posedge clk);
+        for (i = 0; i < 64; i = i + 1)
+            if (sdram[BUF0 + 599*640 + i] !== i[31:0]) fail_msg("T2b row offset misplaced");
+        if (sdram[BUF0 + 719*640] !== 32'h5a5a5a5a && sdram[BUF0 + 719*640] === 32'hxxxx_xxxx)
+            fail_msg("T2b sdram x");
+        $display("T2b mailbox row offset (vflip+off): PASS");
+
         // ---- T3: 音频整段读 + 视频频繁抢占（fix B 核心）----
         gen_en = 1; dbg = 1;
         a_idx = 2; a_len = 1024; a_len_cur = 1024; a_exp_base = BUF2; a_expect = BUF2; a_got = 0;
@@ -309,6 +339,37 @@ module tb_readeng;
         if (a_got != 1024) fail_msg("T4 audio length mismatch");
         else $display("T4 audio re-request fresh session: PASS");
 
+        // ---- T30-T33：稀疏流入尾军（2026-10-04 板级"字全发完引擎不收尾"复现）----
+        // 现象：图像会话（稀疏流）全部 3s 超时，已发射==会话长度；涂黑（密集）同长度成功。
+        // 组合扫 {len, vrow_off, gap}；超时即复现，并打印引擎内部状态定位。
+        begin : sparse_tail
+            integer g, ln, vo, t30;
+            integer lens[4]; integer vos[4]; integer gaps[4];
+            lens[0]=307200; vos[0]=0;        gaps[0]=8;
+            lens[1]=460800; vos[1]=0;        gaps[1]=8;
+            lens[2]=307200; vos[2]=-76800;   gaps[2]=8;
+            lens[3]=307200; vos[3]=-76800;   gaps[3]=192;
+            for (t30 = 0; t30 < 4; t30 = t30 + 1) begin
+                g = gaps[t30]; ln = lens[t30]; vo = vos[t30];
+                wr_gap = g; vrow_off = vo; wr_idx = 0;
+                wr_len = ln; wr_total = ln + 1; wr_sent = 0; wr_active = 1; wr_go = 1; // +1=发射器末尾填充字
+                t = 0;
+                while (!wr_fin && t < 80000000 + ln*g*2) begin @(posedge clk); t = t + 1; end
+                wr_active = 0;
+                if (!wr_fin) begin
+                    fail_msg("T3x sparse write timeout");
+                    $display("  [hang] len=%0d vrow_off=%0d gap=%0d: 引擎 state=%0d write_cnt=%0d burst_cnt=%0d len_latch=%0d FIFO=%0d sent=%0d",
+                             ln, vo, g, u_wr.state, u_wr.write_cnt, u_wr.burst_cnt,
+                             u_wr.write_len_latch, w_usedw, wr_sent);
+                end else begin
+                    $display("T3%d sparse (len=%0d vrow_off=%0d gap=%0d): PASS (%0d cyc, FIFO=%0d)",
+                             t30, ln, vo, g, t, w_usedw);
+                end
+                repeat (20) @(posedge clk);
+            end
+            wr_gap = 0; vrow_off = 20'sd0;
+        end
+
         gen_en = 0;
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);
@@ -316,7 +377,7 @@ module tb_readeng;
     end
 
     initial begin
-        #40000000;
+        #1200000000;
         $display("==== GLOBAL TIMEOUT ====");
         $finish;
     end

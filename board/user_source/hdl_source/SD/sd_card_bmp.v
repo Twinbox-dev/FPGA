@@ -70,7 +70,22 @@ module sd_card_bmp #(
     output      [7:0]           dbg_fat_state,
     output                      dbg_fat_err,
 
+    // ---- 播放列表转储（'L' 调试命令）：ctrl_core 发起，逐条目 64bit 包回吐 ----
+    input                       pl_dump_start,
+    output      [63:0]          pl_pkt,        // 线序：uart_link LSB 字节先行，此处已反转
+    output reg                  pl_pkt_val,
+    output      [7:0]           ld_diag,       // 装载诊断：{0,result[1:0],ld[2:0],busy,img_wav}
+
+    // ---- 写侧分叉探针：图像会话发射字同步馈以太网流（撕裂取证/上位机预览）----
+    output      [31:0]          tap_word,      // 发射字（2 像素 RGB565）
+    output                      tap_val,       // tap_word 有效（图像会话期间）
+    output                      tap_end,       // 会话结束脉冲（离开 LD_STREAM，含弃载）
+
     input                       write_finish_toggle,
+    // ---- 读侧 dump 触发（'D' 手动 / 装载提交自动）：捕获窗在 top 的 video 域
+    //      圈取显示读数据（video_read_data）——不碰读引擎、不借音频通道 ----
+    input                       rdump_start,       // 'D' 手动触发脉冲（ctrl_core）
+    output                      dmp_trig,          // 读回捕获触发（toggle 源，本域脉冲）（冲洗 FIFO）
     output reg  [1:0]           disp_buf_idx,
 
     output                      write_req,
@@ -78,7 +93,8 @@ module sd_card_bmp #(
     output                      write_en,
     output [31:0]               write_data,
     output [1:0]                write_buf_idx,   // 0/1=图像乒乓  2=音频 BUF2
-    output [20:0]               write_len,       // 本次写通道长度（字）：图像 307200 / 音频取整 256
+    output [20:0]               write_len,
+    output [19:0]               o_wr_vrow_off, // 信箱行偏移（字）：vflip 首行 = y0+h-1 行（居中）       // 本次写通道长度（字）：图像 img_h*640（信箱适配，720p 时 460800）/ 音频取整 256
     // ---- 音频扫描观测（S1：boot 后一次性遍历卡内 WAV，供 boardtest 比对）----
     output      [7:0]           aud_smp,
     output                      aud_sval,
@@ -157,11 +173,36 @@ module sd_card_bmp #(
     reg  [1:0]  write_buf_idx_r;      // 图像装载目标缓冲（音频扫描期输出被 mux 成 2/BUF2）
 
     // ---- 装载序列 FSM ----
-    localparam [1:0] LD_IDLE = 2'd0, LD_MEM_ACK = 2'd1, LD_FILE = 2'd2;
-    reg [1:0] ld_state;
+    // 2026-10-03 多分辨率信箱适配：装载序列重排
+    //   LD_FILL_*（全帧涂黑会话，垫掉非图像区）→ LD_FILE（请求文件，等头）
+    //   → LD_IMG_ACK（按 img_h*640 开图像写会话）→ LD_IMG_SETTLE（等 FIFO 清零释放）
+    //   → LD_STREAM（信箱发射）。
+    //   720p 图像在此路径下行为与旧版一致（x0=y0=0、len=460800）。
+    localparam [2:0] LD_IDLE     = 3'd0,
+                     LD_FILL_REQ = 3'd1,   // 涂黑会话握手
+                     LD_FILL_RUN = 3'd2,   // 涂黑数据推行（等 finish）
+                     LD_FILE     = 3'd3,   // 文件请求（图像等 hdr，音频发完即回）
+                     LD_IMG_WAIT = 3'd4,   // 等 BMP 头校验（拿 img_w/h 定 len）
+                     LD_IMG_ACK  = 3'd5,   // 图像写会话握手（len = img_h*640）
+                     LD_STREAM   = 3'd6,   // 信箱发射（等 finish → write_done_seen）
+                     LD_IMG_SETTLE = 3'd7; // ACK 后等写 FIFO 异步清零跨域释放
+    reg [2:0] ld_state;
+    reg [3:0] img_settle_cnt;
     reg       file_req;
     reg [4:0] file_idx;
     reg       aud_item_done_pulse;
+
+    // ---- 装载诊断快照（ACK 诊断位 + 'L' tag11 包）：2026-10-04 板级"多分辨率图
+    //      装载挂死"排查。每次装载尝试在发起/终止点留痕，任何一次按键的 ACK 都
+    //      能看到上一次尝试卡在哪个阶段。result：0 进行中/无 1 img_err 2 超时 3 提交
+    reg [1:0]  ld_result;
+    reg [20:0] snap_len;     // 终止时写口长度（字）
+    reg [11:0] snap_w, snap_h;   // 终止时锁存图像尺寸
+    reg [2:0]  snap_ld;      // 终止时 ld_state（7=音频装载段超时）
+    reg [20:0] emit_cnt;     // 本次装载已发射字数（发射块自证进度）
+    reg [20:0] snap_words;   // 终止时发射字数：0=发射器没跑/中途=断流/=len=引擎不收尾
+    reg [19:0] pix_cnt;      // 本次装载解码器已产出像素数（源自证进度）
+    reg [19:0] snap_pix;     // 终止时解码像素数：0=解码没跑/中途=断流/=w*h=解码完毕
 
     // ---- 外控 ----
     reg [2:0]  wrfin_tgl_sync;
@@ -187,7 +228,11 @@ module sd_card_bmp #(
     reg        aud_scan_done_r;
     reg [5:0]  aud_k;                 // 播放列表扫描游标
     reg        aud_item_active;       // 一个 WAV 项正在流
-    reg        aud_req_pulse;         // 请求发起一拍（同拍复位 wav_reader）
+    reg        aud_req_pulse;         // 扫描项踢脉冲：复位 wav_reader（文件请求
+                                      // 本体改由装载 FSM 发出，见 scan_kick）
+    reg        scan_kick;             // 扫描项 → 装载 FSM 的文件请求踢（⚠ 唯一写方=
+                                      // 外控/扫描块；本装载 FSM 只读——多驱动 TD 必炸）
+    reg        scan_req_active;       // 装载 FSM 正在替扫描发文件请求（idx 选择用）
     reg [4:0]  aud_req_idx;           // 请求索引锁存（pulse 下一拍可见，fat 采样此值）
 
     // ---- 音频打包器 / 写通道（S2：PCM 字节 → 32 位字 → BUF2）----
@@ -334,39 +379,149 @@ module sd_card_bmp #(
         end
     endfunction
 
-    // ==================== 图像 RGB565 打包器（720p，2 像素/字）====================
-    // bmp_dec 仍吐 24b {R,G,B} 像素流；此处两两打包进 1 个 32 位字：
-    //   word = {pix1[15:0], pix0[15:0]}，pix = {R[7:3], G[7:2], B[7:3]}（标准 RGB565）
-    // 低半字 = 先出的（偶数下标）像素，与读侧解包/串行化约定一致（video_delay）。
-    // 帧缓冲 1 字 = 2 像素：720p 双缓冲 460800 字，SDRAM 余量换音频容量（各 ~98s），
-    // 显示读带宽同步减半（720p 下 888 需 74.25M 字/s，565 仅 37.1M）。
-    wire [15:0] pix565 = {pix[23:19], pix[15:10], pix[7:3]};
+    // ============ 图像信箱适配打包器（多分辨率 → 720p 帧，2 像素/字）============
+    // bmp_dec 吐「图像自身分辨率」w*h（<=720p）的 24b {R,G,B} 像素流；发射 FSM
+    // 按流序（图像行序，自底向上）逐行输出 1280 像素：行内水平窗口 [x0, x0+w)
+    // 弹缓冲像素，窗口外补黑（24'd0 → 565 字 0）。垂直边距不在发射流里——写引擎
+    // 的 vrow_off 把 h 行落到帧的 [y0, y0+h-1]（居中），帧内其余行由先行**全帧
+    // 涂黑会话**（LD_FILL）垫黑。word = {pix1, pix0}（565），低半字 = 偶数下标
+    // 像素，与读侧解包/串行化约定一致（video_delay）。
+    //
+    // 弹性缓冲 64*24：源（SPI，~1px/96clk）远慢于汇（写口 1px/clk）——行边距注
+    // 入期间源最多积压 ~14 px，64 深 = 4 倍裕量。刻意用小触发器堆而非大 BRAM：
+    // audio_fifo 2048 深度被 TD 摊成 9k LUT、加 pragma 又因 >1024 级联失败的
+    // 教训（TODO 第七/八轮）；本深度不可能触发该病理。
+    function [15:0] px565_f;
+        input [23:0] p;
+        begin
+            px565_f = {p[23:19], p[15:10], p[7:3]};
+        end
+    endfunction
+
+    reg  [23:0] ibuf [0:63];
+    reg  [5:0]  ibuf_wptr, ibuf_rptr;
+    reg  [6:0]  ibuf_level;
+    wire        ibuf_full  = (ibuf_level >= 7'd64);
+    wire        ibuf_empty = (ibuf_level == 7'd0);
+    wire        ibuf_push  = pix_val && !ibuf_full;   // 满 = 丢像素（分析上不可达，
+                                                      // 兜底防地址回卷）
+    wire        in_h       = (emit_col >= x0_l) && (emit_col < x0_l + img_w_l);
+    // 发射决策：图像窗口内弹缓冲（空则等——源一定会来）；窗口外补黑（无条件）
+    wire        emit_go    = img_emit_en && (in_h ? !ibuf_empty : (pad_pace_cnt == 2'd0));
+    wire        pop_en     = img_emit_en && in_h && !ibuf_empty;   // 缓冲弹出（发射块给出，缓冲块消费）
+    wire [23:0] px_src     = in_h ? ibuf[ibuf_rptr] : 24'd0;
+
     reg  [15:0] img_pix0_hold;
     reg         img_have_pix0;
     reg         img_word_val;
+    reg         pad_done;                 // 会话末尾填充字已发（补偿 FIFO 输出寄存器在途字）
+    reg         emit_seen;                // 本次会话 img_emit_en 曾升起（pad 只许在收尾发）
     reg  [31:0] img_word;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
+            ibuf_wptr     <= 6'd0;
+            ibuf_rptr     <= 6'd0;
+            ibuf_level    <= 7'd0;
             img_pix0_hold <= 16'd0;
             img_have_pix0 <= 1'b0;
             img_word_val  <= 1'b0;
             img_word      <= 32'd0;
+            emit_cnt      <= 21'd0;
+            pix_cnt       <= 20'd0;
+            pad_done      <= 1'b0;
+            emit_seen     <= 1'b0;
+        end
+        else if (load_start_pulse) begin
+            ibuf_wptr     <= 6'd0;
+            ibuf_rptr     <= 6'd0;
+            ibuf_level    <= 7'd0;
+            img_have_pix0 <= 1'b0;
+            img_word_val  <= 1'b0;
+            emit_cnt      <= 21'd0;
+            pix_cnt       <= 20'd0;
+            pad_done      <= 1'b0;
+            emit_seen     <= 1'b0;
         end
         else begin
+            // 缓冲指针/水位（推=解码像素流；弹=发射窗口内取用）
+            case ({ibuf_push, pop_en})
+                2'b10: begin
+                    ibuf[ibuf_wptr] <= pix;
+                    ibuf_wptr  <= ibuf_wptr  + 1'b1;
+                    ibuf_level <= ibuf_level + 1'b1;
+                end
+                2'b01: begin
+                    ibuf_rptr  <= ibuf_rptr  + 1'b1;
+                    ibuf_level <= ibuf_level - 1'b1;
+                end
+                2'b11: begin
+                    ibuf[ibuf_wptr] <= pix;
+                    ibuf_wptr  <= ibuf_wptr  + 1'b1;
+                    ibuf_rptr  <= ibuf_rptr  + 1'b1;
+                end
+                default: ;
+            endcase
+            if (pix_val)
+                pix_cnt <= pix_cnt + 20'd1;
+
+            // 发射：两两组字
             img_word_val <= 1'b0;
-            if (load_start_pulse)
-                img_have_pix0 <= 1'b0;      // 新图从像素 0 对齐（防奇偶错位残留）
-            else if (pix_val) begin
+            if (img_emit_en)
+                emit_seen <= 1'b1;
+            // 填充字只许在「发射已开过且已收」时补：LD_IMG_SETTLE 拉起 emit_start_pulse
+            // 后 img_emit_en 晚一拍才升起，这一拍里 !img_emit_en && LD_STREAM 同样
+            // 成立——没有 emit_seen 前置会话开头就错发一个黑字（占掉第 0 字预算，
+            // 整帧右移一字、末字不落 SDRAM = 板上撕裂的直接根因，2026-10-05 实锤）
+            if (emit_seen && !img_emit_en && ld_state == LD_STREAM && !pad_done) begin
+                img_word_val <= 1'b1;        // 会话末尾填充字（不入 SDRAM，见上）
+                img_word     <= 32'd0;
+                pad_done     <= 1'b1;
+            end
+            else if (emit_go) begin
                 if (!img_have_pix0) begin
-                    img_pix0_hold <= pix565;
+                    img_pix0_hold <= px565_f(px_src);
                     img_have_pix0 <= 1'b1;
                 end
                 else begin
                     img_word_val  <= 1'b1;
-                    img_word      <= {pix565, img_pix0_hold};
+                    img_word      <= {px565_f(px_src), img_pix0_hold};
                     img_have_pix0 <= 1'b0;
+                    emit_cnt      <= emit_cnt + 21'd1;
                 end
             end
+        end
+    end
+
+    // 发射坐标推进（独立块：与组字块同拍不同寄存器，避免混驱）
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            emit_col    <= 11'd0;
+            emit_row    <= 11'd0;
+            img_emit_en <= 1'b0;
+        end
+        else if (load_start_pulse) begin
+            emit_col    <= 11'd0;
+            emit_row    <= 11'd0;
+            img_emit_en <= 1'b0;
+        end
+        else if (emit_start_pulse) begin
+            emit_col    <= 11'd0;
+            emit_row    <= 11'd0;
+            img_emit_en <= 1'b1;                  // 会话开跑（装载 FSM 发脉冲）
+        end
+        else if (img_emit_en && emit_go) begin
+            if (emit_col == 11'd1279) begin
+                emit_col <= 11'd0;
+                emit_row <= emit_row + 1'b1;
+            end
+            else begin
+                emit_col <= emit_col + 1'b1;
+            end
+            if ((emit_col == 11'd1279) && (emit_row == img_h_l - 12'd1))
+                img_emit_en <= 1'b0;              // 末图末行末像素：会话完成
+            // 装载异常弃载（超时/错文件）： FSM 回 IDLE，发射自行熄火
+            else if (load_timeout_cnt > 32'd300_000_000)
+                img_emit_en <= 1'b0;
         end
     end
 
@@ -375,14 +530,25 @@ module sd_card_bmp #(
     // 音频目标缓冲：扫描相位固定 BUF2；随图装载（ald）写入 aud_disp_buf 对侧 BUF2/3。
     // 三相位互斥（扫描/ald/图像装载两两不重叠），write_req/ack 握手天然无竞争。
     wire aud_wr_phase = aud_scan_active | ald_active;
+    // 720p 帧缓冲 = 1280*720/2 = 460800 字（RGB565，2 像素/字）
     assign write_req      = write_req_r | aud_wr_req;
-    assign write_en       = aud_wr_phase  ? aud_word_val : img_word_val;
-    assign write_data     = aud_wr_phase  ? aud_word     : img_word;
+    assign write_en       = fill_active   ? (fill_pace_cnt == 4'd0)
+                          : aud_wr_phase  ? aud_word_val
+                          :                 img_word_val;
+    assign write_data     = fill_active   ? 32'd0
+                          : aud_wr_phase  ? aud_word
+                          :                 img_word;
     assign write_buf_idx  = aud_scan_active ? 2'd2
                           : ald_active      ? ald_buf
                           :                   write_buf_idx_r;
-    // 720p 帧缓冲 = 1280*720/2 = 460800 字（RGB565，2 像素/字）
-    assign write_len      = aud_wr_phase  ? aud_wr_len   : 21'd460800;
+    assign write_len      = fill_active   ? 21'd460800
+                          : aud_wr_phase  ? aud_wr_len
+                          :                 {10'd0, img_h_l} * 11'd640;  // 640*h
+    // 信箱行偏移（字）：vflip 首行 = y0+h-1。涂黑会话必须满帧（偏移 0，否则
+    // 负偏移把首地址顶出缓冲底、回卷砸音频区）；音频通道 vflip_en=0 不消费。
+    assign o_wr_vrow_off = (fill_active | aud_wr_phase)
+                           ? 20'd0
+                           : vrow_words[19:0];
     assign write_finish_pulse = wrfin_tgl_sync[2] ^ wrfin_tgl_sync[1];
     // 轮播周期 = auto_period_s 秒（1..10），0 视作 1 兜底
     wire [31:0] auto_thr = ((auto_period_s == 4'd0) ? 32'd1 : {28'd0, auto_period_s})
@@ -392,6 +558,27 @@ module sd_card_bmp #(
     assign prev_idx   = bmp_prv_map[6*img_idx[4:0] +: 6];
     assign img_idx_out = img_idx[4:0];     // UART 遥测
     assign img_wav_out = pair_valid[img_idx[4:0]];
+    assign ld_diag     = {1'b0, ld_result, ld_state, load_busy, img_wav_out};
+    assign tap_word    = img_word;
+    assign tap_val     = img_word_val;
+    // 会话结束脉冲：检测「离开 LD_STREAM」而非 write_finish——超时/img_err 弃载
+    // 没有 finish，但以太网侧仍需冲洗 FIFO 残字，否则脏字污染下一帧。
+    // 拍序安全：pad 填充字在 LD_STREAM 内发出（早于 write_finish/弃载退出），
+    // 脉冲到达 eth_front 时所有字已进 Gray FIFO。
+    reg  ld_stream_q, tap_end_r;
+    reg  dmp_auto_r;                    // 装载提交自动触发读回捕获（video 域开窗，见提交处）
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            ld_stream_q <= 1'b0; tap_end_r <= 1'b0;
+        end
+        else begin
+            ld_stream_q <= (ld_state == LD_STREAM);
+            tap_end_r   <= ld_stream_q && (ld_state != LD_STREAM);
+        end
+    end
+    assign tap_end     = tap_end_r;
+
+    assign dmp_trig   = rdump_start | dmp_auto_r;
     assign auto_play_out = auto_play_en;   // 遥测：自动轮播开关（ctrl_core 打进 ACK/状态包）
     assign aud_playing   = (plstate == PL_RUN);   // 播放域真实出声（音频自愈看门狗用）
 
@@ -401,7 +588,7 @@ module sd_card_bmp #(
     // ---- 状态码（数码管）：1 空闲 2 挂载/扫描 3 FIFO 握手 4 写帧 ----
     assign state_code = !sd_init_done               ? 4'd0
                       : !fat_mounted                ? 4'd2
-                      : (ld_state == LD_MEM_ACK)    ? 4'd3
+                      : (ld_state == LD_IMG_ACK)    ? 4'd3
                       : load_busy                   ? 4'd4
                       :                               4'd1;
 
@@ -469,10 +656,14 @@ module sd_card_bmp #(
         .o_byte      (file_byte),
         .o_bval      (file_bval),
         .o_file_done (file_done),
-        .i_file_idx  (aud_req_pulse ? aud_req_idx
-                      : ald_active  ? ald_wav_idx[4:0]
-                      :               file_idx),
-        .i_file_req  (file_req | aud_req_pulse),
+        // 2026-10-03：文件请求单一主人=装载 FSM。此前扫描的 aud_req_pulse 与
+        // 图像 file_req 直接或在一起无仲裁——扫描窗口（boot 后 1-4s）内按下一张，
+        // 两请求同拍撞车，mux 优先给音频，图像请求被吞（FSM 却已前进）→ WAV 字节
+        // 流进 bmp_dec → img_err 弃载 = “按下一张没反应”。扫描项改道经装载 FSM。
+        .i_file_idx  (ald_active     ? ald_wav_idx[4:0]
+                      : scan_req_active ? aud_req_idx
+                      :                   file_idx),
+        .i_file_req  (file_req),
         .o_mounted   (fat_mounted),
         .o_file_cnt  (file_cnt),
         .o_bmp_cnt   (bmp_cnt),
@@ -513,6 +704,39 @@ module sd_card_bmp #(
     assign wav_fmt_err     = w_fmt_err;
     assign wav_data_bytes  = w_data_bytes;
 
+    // ---- 信箱适配：解码头导出 + 发射/偏移参数 ----
+    wire [11:0] img_w_dec, img_h_dec;      // bmp_dec 头部导出（byte53 后有效）
+    wire        img_hdr_ok_dec;            // 本文件头校验通过（i_restart 清零）
+    wire        img_hdr_ok = img_hdr_ok_dec;   // bmp_dec o_hdr_ok：本文件头校验通过
+                                               //（⚠ 不可用 img_w_dec!=0 代替——w 跨装载
+                                               //   保持旧值，新会话会拿旧尺寸提前开门）
+    reg  [11:0] img_w_l, img_h_l;        // 装载会话锁存
+    wire [11:0] x0_l = (12'd1280 - img_w_l) >> 1;   // 水平居中起点（像素）
+    wire [11:0] y0_l = (12'd720  - img_h_l) >> 1;   // 垂直居中起点（行）
+    wire signed [11:0] row_off  = $signed(y0_l) + $signed(img_h_l) - 12'sd720;
+    wire signed [29:0] vrow_words = ($signed(row_off) <<< 9) + ($signed(row_off) <<< 7);
+                                                     // *640（512+128），<=0
+    reg        fill_active;                  // 全帧涂黑会话进行中
+    reg  [3:0] fill_pace_cnt;                // 每 16 拍送一黑字，降低共享写通路的瞬时压力
+    reg        img_emit_en;                  // 信箱发射使能（唯一写方=发射块）
+    reg  [1:0] pad_pace_cnt;                 // 图像左右黑色 padding 每 4 拍发一像素
+    reg        emit_start_pulse;             // 装载 FSM → 发射块：会话开跑脉冲
+    reg  [10:0] emit_col, emit_row;          // 发射坐标（列 0..1279 / 流行号）
+
+    always @(posedge clk or posedge rst) begin
+        if (rst || load_start_pulse || !img_emit_en)
+            pad_pace_cnt <= 2'd0;
+        else
+            pad_pace_cnt <= pad_pace_cnt + 2'd1;
+    end
+
+    always @(posedge clk or posedge rst) begin
+        if (rst || !fill_active)
+            fill_pace_cnt <= 4'd0;
+        else
+            fill_pace_cnt <= fill_pace_cnt + 4'd1;
+    end
+
     // BMP 解码（行翻转归属存储侧 WRITE_V_FLIP=1）
     bmp_dec u_bmp (
         .clk        (clk),
@@ -524,6 +748,9 @@ module sd_card_bmp #(
         .o_pix      (pix),
         .o_img_ok   (img_ok),
         .o_img_err  (img_err),
+        .o_img_w    (img_w_dec),
+        .o_img_h    (img_h_dec),
+        .o_hdr_ok   (img_hdr_ok_dec),
         .o_dbg_state(bmp_dbg)
     );
 
@@ -559,32 +786,103 @@ module sd_card_bmp #(
             write_req_r <= 1'b0;
             file_req    <= 1'b0;
             file_idx    <= 5'd0;
+            emit_start_pulse <= 1'b0;
+            scan_req_active  <= 1'b0;
+            img_settle_cnt <= 4'd0;
         end
         else begin
             file_req <= 1'b0;
+            emit_start_pulse <= 1'b0;
             case (ld_state)
                 LD_IDLE: begin
                     if (load_start_pulse) begin
+                        fill_active <= 1'b1;          // 先全帧涂黑（垫非图像区）
                         write_req_r <= 1'b1;
-                        ld_state    <= LD_MEM_ACK;
+                        scan_req_active <= 1'b0;      // 兜底：图像装载绝不被劫持
+                        ld_state    <= LD_FILL_REQ;
                     end
                     else if (ld_kick) begin
-                        ld_state    <= LD_FILE;
+                        scan_req_active <= 1'b0;      // ald：无涂黑会话
+                        ld_state        <= LD_FILE;
+                    end
+                    else if (scan_kick) begin
+                        scan_req_active <= 1'b1;      // 扫描项：无涂黑会话
+                        ld_state        <= LD_FILE;
                     end
                 end
-                LD_MEM_ACK: begin
+                LD_FILL_REQ: begin
                     if (write_req_ack) begin
                         write_req_r <= 1'b0;
+                        ld_state    <= LD_FILL_RUN;
+                    end
+                end
+                LD_FILL_RUN: begin
+                    // 涂黑数据由写口 mux 常发（write_en=1、data=0、len=460800）
+                    if (write_finish_pulse) begin
+                        fill_active <= 1'b0;
                         ld_state    <= LD_FILE;
+                    end
+                    else if (load_timeout_cnt > 32'd300_000_000) begin
+                        fill_active <= 1'b0;
+                        ld_state    <= LD_IDLE;
                     end
                 end
                 LD_FILE: begin
                     // fat32 只在 MOUNTED 态收请求：忙时保持等待，一拍脉冲不被丢弃
                     if (fat_idle) begin
                         file_req <= 1'b1;
-                        file_idx <= ald_active ? ald_wav_idx[4:0] : load_idx[4:0];
+                        file_idx <= ald_active     ? ald_wav_idx[4:0]
+                                  : scan_req_active ? aud_req_idx
+                                  :                   load_idx[4:0];
+                        // 图像：留在本态等头校验（拿 img_w/h 才能定会话长度）；
+                        // 音频（ald/扫描项）：打包器自行开写口，直接回空闲
+                        ld_state <= (ald_active | scan_req_active) ? LD_IDLE
+                                                                    : LD_IMG_WAIT;
+                        // ⚠ 请求已发出即消费掉 scan_req_active——不清除的话它
+                        //   恒为 1，后续所有图像装载的 file_idx 都被劫持成滞留的
+                        //   aud_req_idx（指向某个 WAV）→ img_err → "按下一张没反应"
+                        scan_req_active <= 1'b0;
+                    end
+                end
+                LD_IMG_WAIT: begin
+                    if (img_hdr_ok) begin
+                        img_w_l     <= img_w_dec;
+                        img_h_l     <= img_h_dec;
+                        write_req_r <= 1'b1;      // 会话长度 = img_h*640（mux 给出）
+                        ld_state    <= LD_IMG_ACK;
+                    end
+                    else if (img_err) begin
+                        ld_state <= LD_IDLE;      // 外控 img_err 分支同步放弃装载
+                    end
+                    else if (load_timeout_cnt > 32'd300_000_000) begin
                         ld_state <= LD_IDLE;
                     end
+                end
+                LD_IMG_ACK: begin
+                    if (write_req_ack) begin
+                        write_req_r    <= 1'b0;
+                        img_settle_cnt <= 4'd0;
+                        ld_state       <= LD_IMG_SETTLE;
+                    end
+                end
+                LD_IMG_SETTLE: begin
+                    // ACK 所在拍存储域的 fifo_aclr 仍为 1；请求撤销还要经过
+                    // 3 级同步，再等 FIFO 两域同步释放。窄图行首黑边可每拍
+                    // 发一个像素，必须等清零完全结束才允许首字进入 FIFO。
+                    if (img_settle_cnt == 4'd15) begin
+                        emit_start_pulse <= 1'b1;
+                        ld_state <= LD_STREAM;
+                    end else begin
+                        img_settle_cnt <= img_settle_cnt + 4'd1;
+                    end
+                end
+                LD_STREAM: begin
+                    // 信箱发射推行；结束拍（写满 img_h*640 字）finish → 外控提交。
+                    // img_emit_en 由发射块负责（末像素/超时自熄），此处只管状态。
+                    if (write_finish_pulse)
+                        ld_state <= LD_IDLE;
+                    else if (load_timeout_cnt > 32'd300_000_000)
+                        ld_state <= LD_IDLE;
                 end
                 default: ld_state <= LD_IDLE;
             endcase
@@ -608,6 +906,13 @@ module sd_card_bmp #(
             img_idx               <= 6'd0;
             first_idx_r           <= 6'd0;
             first_idx_captured    <= 1'b0;
+            ld_result             <= 2'd0;
+            snap_len              <= 21'd0;
+            snap_w                <= 12'd0;
+            snap_h                <= 12'd0;
+            snap_ld               <= 3'd0;
+            snap_words            <= 21'd0;
+            snap_pix              <= 20'd0;
             load_idx              <= 6'd0;
             pending_buf_idx       <= 2'd0;
             write_buf_idx_r <= 2'd0;
@@ -633,6 +938,7 @@ module sd_card_bmp #(
         else begin
             wrfin_tgl_sync  <= {wrfin_tgl_sync[1:0], write_finish_toggle};
             load_start_pulse<= 1'b0;
+            dmp_auto_r      <= 1'b0;
             ld_kick         <= 1'b0;
             ald_start_pulse <= 1'b0;
             scan_start_pulse<= 1'b0;
@@ -685,8 +991,16 @@ module sd_card_bmp #(
                 // 装载发起的那一拍跳过（load_start_pulse=1），
                 // 等 bmp_dec 已被 i_restart 复位、img_ok/img_err 清零后再判。
                 if (load_busy && !load_start_pulse) begin
-                    if (write_finish_pulse)
+                    // 多分辨率后每次装载有两个写会话（涂黑+图像）：
+                    //   只有图像会话（LD_STREAM）的 finish 才算整帧落盘
+                    if (write_finish_pulse && (ld_state == LD_STREAM)) begin
                         write_done_seen <= 1'b1;
+                        // 图像会话收尾快照（提交/超时都用它）
+                        snap_len <= write_len;
+                        snap_w   <= img_w_l;
+                        snap_h   <= img_h_l;
+                        snap_ld  <= LD_STREAM;
+                    end
 
                     if (ald_active) begin
                         // ---- 音频装载子相位：等打包器关闭（eof + write_finish 双确认）----
@@ -696,6 +1010,7 @@ module sd_card_bmp #(
                             load_timeout_cnt <= 32'd0;
                             aud_disp_buf     <= ald_buf;
                             aud_cmt_valid    <= 1'b1;   // 与图同一拍握手：原子提交
+                            ld_result        <= 2'd3;
                             cmt_pair         <= 1'b1;
                             cmt_buf          <= ald_buf;
                             cmt_len          <= wav_len_rec[ald_wav_idx[4:0]];
@@ -706,6 +1021,7 @@ module sd_card_bmp #(
                                 img_idx         <= load_idx;
                                 display_valid   <= 1'b1;
                             end
+                            dmp_auto_r  <= 1'b1;   // 读回捕获触发（捕获窗在 video 域）
                             boot_ald <= 1'b0;
                             // 首图显示（含配对音频就绪）后启动音频扫描相位
                             if (!first_image_committed) begin
@@ -724,6 +1040,9 @@ module sd_card_bmp #(
                             load_busy        <= 1'b0;
                             boot_ald         <= 1'b0;
                             load_timeout_cnt <= 32'd0;
+                            ld_result        <= 2'd2;
+                            snap_ld          <= 3'd7;   // 7=音频装载段
+                            snap_len         <= write_len;
                         end
                         else begin
                             load_timeout_cnt <= load_timeout_cnt + 32'd1;
@@ -734,6 +1053,13 @@ module sd_card_bmp #(
                         load_busy        <= 1'b0;
                         load_timeout_cnt <= 32'd0;
                         write_done_seen  <= 1'b0;
+                        ld_result        <= 2'd1;
+                        snap_ld          <= ld_state;
+                        snap_len         <= write_len;
+                        snap_w           <= img_w_l;
+                        snap_h           <= img_h_l;
+                        snap_words       <= emit_cnt;
+                        snap_pix         <= pix_cnt;
                         if (!first_image_committed)
                             first_idx_r <= bmp_nxt_map[6*first_idx_r[4:0] +: 6];
                         else
@@ -756,10 +1082,12 @@ module sd_card_bmp #(
                             // 提交：无配对 → 播放域切静音
                             load_busy             <= 1'b0;
                             write_done_seen       <= 1'b0;
+                            ld_result             <= 2'd3;
                             disp_buf_idx          <= pending_buf_idx;
                             img_idx               <= load_idx;
                             display_valid         <= 1'b1;
                             first_image_committed <= 1'b1;
+                            dmp_auto_r            <= 1'b1;   // 自动读回 dump（无音频借道冲突）
                             aud_cmt_valid         <= 1'b1;
                             cmt_pair              <= 1'b0;
                             cmt_buf               <= aud_disp_buf;
@@ -773,10 +1101,20 @@ module sd_card_bmp #(
                         end
                     end
                     else if (load_timeout_cnt > 32'd300_000_000) begin // 3s @100MHz：720p 装载(SPI+SDRAM)约 1s+，留裕量
-                        // 超时（坏卡/坏文件卡住）：强制释放，恢复按键
+                        // 超时（坏卡/坏文件卡住）：强制释放，恢复按键。
+                        // 光标推进到本次尝试项（img_err 同语义）——挂死项按坏图跳过，
+                        // 环不因单个装载超时锁死（2026-10-04 板级多分辨率挂死的兜底）
                         load_busy        <= 1'b0;
                         load_timeout_cnt <= 32'd0;
                         write_done_seen  <= 1'b0;
+                        img_idx          <= load_idx;
+                        ld_result        <= 2'd2;
+                        snap_ld          <= ld_state;
+                        snap_len         <= write_len;
+                        snap_w           <= img_w_l;
+                        snap_h           <= img_h_l;
+                        snap_words       <= emit_cnt;
+                        snap_pix         <= pix_cnt;
                     end
                     else begin
                         load_timeout_cnt <= load_timeout_cnt + 32'd1;
@@ -798,6 +1136,7 @@ module sd_card_bmp #(
                         boot_ald        <= 1'b1;
                         ald_active      <= 1'b1;
                         load_busy       <= 1'b1;
+                        ld_result        <= 2'd0;
                         ald_buf         <= (aud_disp_buf == 2'd2) ? 2'd3 : 2'd2;
                         ald_wav_idx     <= pair_wav[img_idx[4:0]];
                         ld_kick         <= 1'b1;
@@ -858,14 +1197,20 @@ module sd_card_bmp #(
                 end
 
                 // ---- 发起装载：首图 / 手动 / 自动（扫描与 boot 音频安排期间不发起）----
+                // ⚠ first_idx_captured 门控：首图捕获（first_idx_r <= first_bmp_w）
+                //   与本块同一拍——若无门控，boot 装载采样到**旧值 0**（= 一个 WAV
+                //   条目），img_err 跳过又把 first_idx_r 推过真正的首图 → 开机图
+                //   错位 + 环缺一张（2026-10-03 板级实锤）
                 if (fat_mounted && fat_idle && !load_busy && !aud_scan_active &&
-                    (!aud_scan_done_r || ald_boot_done) && (bmp_cnt != 6'd0)) begin
+                    (!aud_scan_done_r || ald_boot_done) && (bmp_cnt != 6'd0) &&
+                    first_idx_captured) begin
                     if (!first_image_committed) begin
                         // 首图：写 buffer0（首图候选可能已被坏图推进）
                         load_idx         <= first_idx_r;
                         pending_buf_idx  <= 2'd0;
                         write_buf_idx_r <= 2'd0;
                         load_busy        <= 1'b1;
+                        ld_result        <= 2'd0;
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
@@ -878,6 +1223,7 @@ module sd_card_bmp #(
                         pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
                         write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
                         load_busy        <= 1'b1;
+                        ld_result        <= 2'd0;
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
@@ -890,6 +1236,7 @@ module sd_card_bmp #(
                         pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
                         write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
                         load_busy        <= 1'b1;
+                        ld_result        <= 2'd0;
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
@@ -901,6 +1248,7 @@ module sd_card_bmp #(
                         pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
                         write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
                         load_busy        <= 1'b1;
+                        ld_result        <= 2'd0;
                         load_start_pulse <= 1'b1;
                         write_done_seen  <= 1'b0;
                         next_req_pending <= 1'b0;
@@ -909,6 +1257,93 @@ module sd_card_bmp #(
                     end
                 end
             end
+        end
+    end
+
+    // ==================== 播放列表转储（'L' 调试命令，S3c）====================
+    // pl_dump_start 一拍 → 逐条目发 64bit 包，最后发收口包；包间 400µs（1Mbaud
+    // UART 发 8 字节 ≈80µs，留 5 倍裕量；以太网同理）。只读挂载后静止的表，
+    // 与装载/扫描互不干扰；条目 is_wav 用跳表重建（BMP 集 = first_bmp ∪
+    // {i≠0 : nxt_map[prv_map[i]]==i}；i==0 时 prv_map[0] 恒 0 无效，单独判
+    // first_bmp==0），不占用 fat32_ro 与音频扫描共享的 i_pl_idx 查找口。
+    //   条目包 {2'b01, idx[4:0], is_bmp, pair_valid, pair_wav[5:0], nxt[5:0],
+    //           prv[5:0], 37'b0}
+    //   收口包 {2'b10, file_cnt, bmp_cnt, wav_cnt, first_bmp, img_idx[4:0],
+    //           first_idx_r[4:0], load_busy, aud_scan_active, ld_state[2:0],
+    //           23'b0}——高 2 位 01/10 不与 ASCII（<0x80）冲突，PC 侧据此分帧。
+    reg [2:0]  plst_st;                      // 0 空闲 1 发包 2 间隔 3 收口后待快照 4 快照后收尾间隔 5 发快照
+    reg [63:0] pl_pkt_be;                    // MSB-first 组包（tag 在 [63:62]）
+    // uart_link 发送 LSB 字节先行（pkt[0]<=tx_pkt[7:0]，与 ctrl_core 的 ACK/状态包
+    // 同一约定）——转储包按 MSB-first 组好整包字节反转后再上线路，控制台按线序
+    // 大端解码无需任何偏移调整。
+    assign pl_pkt = {pl_pkt_be[7:0],   pl_pkt_be[15:8],  pl_pkt_be[23:16], pl_pkt_be[31:24],
+                     pl_pkt_be[39:32], pl_pkt_be[47:40], pl_pkt_be[55:48], pl_pkt_be[63:56]};
+    reg [5:0]  plst_idx;
+    reg [15:0] plst_pace;
+    wire [5:0] plst_prv_i     = bmp_prv_map[6*plst_idx[4:0] +: 6];
+    wire [5:0] plst_nxt_of_prv = bmp_nxt_map[6*plst_prv_i[4:0] +: 6];
+    wire       plst_is_bmp    = (bmp_cnt == 6'd0) ? 1'b0
+                                 : (plst_idx == 6'd0) ? (first_bmp_w == 6'd0)
+                                 : (plst_nxt_of_prv == plst_idx);
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            plst_st    <= 3'd0;
+            plst_idx   <= 6'd0;
+            plst_pace  <= 16'd0;
+            pl_pkt_be  <= 64'd0;
+            pl_pkt_val <= 1'b0;
+        end
+        else begin
+            pl_pkt_val <= 1'b0;
+            case (plst_st)
+                3'd0: if (pl_dump_start) begin
+                    plst_idx <= 6'd0;
+                    // 先隔 400µs 再发首包：命令 ACK 脉冲与首包只差几十 ns 时，
+                    // 以太网侧 toggle 跨域同步窗内两次翻转粘连出假边沿（串口
+                    // 无此问题——同域逐包取用）
+                    plst_pace <= 16'd40000;
+                    plst_st   <= 3'd2;
+                end
+                3'd1: begin
+                    pl_pkt_val <= 1'b1;
+                    plst_pace  <= 16'd40000;
+                    if (plst_idx == file_cnt) begin
+                        pl_pkt_be  <= {2'b10, file_cnt, bmp_cnt, wav_cnt, first_bmp_w,
+                                       img_idx[4:0], first_idx_r[4:0], load_busy,
+                                       aud_scan_active, ld_state, 23'b0};
+                        plst_st <= 3'd3;   // 收口后还有一条装载快照包
+                    end
+                    else begin
+                        pl_pkt_be  <= {2'b01, plst_idx[4:0], plst_is_bmp,
+                                       pair_valid[plst_idx[4:0]],
+                                       pair_wav[plst_idx[4:0]],
+                                       bmp_nxt_map[6*plst_idx[4:0] +: 6],
+                                       bmp_prv_map[6*plst_idx[4:0] +: 6], 37'b0};
+                        plst_idx <= plst_idx + 6'd1;
+                        plst_st  <= 3'd2;
+                    end
+                end
+                3'd2: if (plst_pace != 16'd0)
+                          plst_pace <= plst_pace - 16'd1;
+                      else
+                          plst_st <= 3'd1;
+                3'd3: if (plst_pace != 16'd0)
+                          plst_pace <= plst_pace - 16'd1;
+                      else
+                          plst_st <= 3'd5;
+                3'd5: begin
+                    pl_pkt_val <= 1'b1;
+                    pl_pkt_be  <= {2'b11, ld_result, snap_ld, snap_words,
+                                   snap_pix, snap_h, 4'b0};
+                    plst_pace  <= 16'd40000;
+                    plst_st    <= 3'd4;
+                end
+                3'd4: if (plst_pace != 16'd0)
+                          plst_pace <= plst_pace - 16'd1;
+                      else
+                          plst_st <= 3'd0;
+                default: plst_st <= 3'd0;
+            endcase
         end
     end
 
@@ -1235,6 +1670,7 @@ module sd_card_bmp #(
             aud_k               <= 6'd0;
             aud_item_active     <= 1'b0;
             aud_req_pulse       <= 1'b0;
+            scan_kick        <= 1'b0;
             aud_req_idx         <= 5'd0;
             aud_item_done_pulse <= 1'b0;
             npass_active        <= 1'b0;
@@ -1247,6 +1683,7 @@ module sd_card_bmp #(
         end
         else begin
             aud_req_pulse       <= 1'b0;
+            scan_kick           <= 1'b0;
             aud_item_done_pulse <= 1'b0;
 
             if (!sd_init_done) begin
@@ -1301,8 +1738,9 @@ module sd_card_bmp #(
                     end
                     else if (fat_idle) begin
                         if (pl_is_wav) begin
-                            aud_req_pulse   <= 1'b1;   // 请求文件 + 复位 wav_reader
-                            aud_req_idx     <= aud_k[4:0];
+                            aud_req_pulse <= 1'b1;  // 复位 wav_reader（文件请求经 FSM）
+                            scan_kick     <= 1'b1;  // → 装载 FSM 单主人仲裁发文件请求
+                            aud_req_idx   <= aud_k[4:0];
                             aud_cur_name    <= pl_name; // 锁存主名（pmatch 用）
                             aud_item_active <= 1'b1;
                         end

@@ -48,6 +48,12 @@ parameter BUF0_ADDR     = 24'd0;
 parameter BUF1_ADDR     = 24'd460800;
 parameter BUF2_ADDR     = 24'd921600;
 parameter BUF3_ADDR     = 24'd1509376;
+// D 的采样时钟：1=mem_clk 域（返回数据或请求地址），0=视频 FIFO 读出口。
+localparam DUMP_AT_SDRAM_OUTPUT = 1'b1;
+// 1=图像写口双流诊断（A 数据/B 地址）；0=正常写侧 A + D 触发的读侧 B。
+localparam DUMP_WRITE_PORT = 1'b0;
+// 在 mem_clk 域下，D 的 B 源：1=送进 SDRAM IP 的读地址，0=控制器返回数据。
+localparam DUMP_READ_REQUEST_ADDR = 1'b0;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -121,6 +127,7 @@ wire App_rd_en;
 wire [ADDR_BITS-1:0] App_rd_addr;
 wire Sdr_rd_en;
 wire [MEM_DATA_BITS-1:0] Sdr_rd_dout;
+wire mem_rd_audio;
 wire App_wr_en;
 wire [ADDR_BITS-1:0] App_wr_addr;
 wire [MEM_DATA_BITS-1:0] App_wr_din;
@@ -206,16 +213,16 @@ always @(posedge clk or posedge rst_n) begin
     end else if (wd_rst) begin
         // 复位脉冲保持 1ms（50_000 拍）后释放，系统整体重跑
         wd_cnt <= wd_cnt + 1'b1;
-        if (wd_cnt >= 27'd50_000) begin
+        if (wd_cnt >= 28'd50_000) begin
             wd_rst  <= 1'b0;
-            wd_cnt  <= 27'd0;
+            wd_cnt  <= 28'd0;
         end
     end else if (rst_all_reg && !wd_armed) begin
         wd_armed <= 1'b1;                  // rst_all（基线部分）释放 → 开始值守
-        wd_cnt   <= 27'd0;
+        wd_cnt   <= 28'd0;
     end else if (wd_armed && !display_valid_clk) begin
-        if (wd_cnt >= 27'd250_000_000) begin
-            wd_cnt <= 27'd0;
+        if (wd_cnt >= 28'd250_000_000) begin
+            wd_cnt <= 28'd0;
             if (wd_att < 2'd2) begin       // 最多 3 次尝试
                 wd_att  <= wd_att + 1'b1;
                 wd_rst  <= 1'b1;
@@ -289,7 +296,23 @@ wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
 wire [3:0]  ct_gray;         // 对比度档位（格雷码，跨时钟域到 video_clk）
 wire        bar_en;          // 音频脉动条开关（pulse_bar）
+wire [19:0] sd_card_vrow_off;// 信箱行偏移（sd_card_bmp → frame_read_write）
 wire [1:0]  bar_sens_gray;   // 脉动灵敏度 0..3（格雷码，跨时钟域）
+wire        pl_dump_start_w; // 'L' 播放列表转储：ctrl_core 发起 → sd_card_bmp 吐包
+wire [63:0] pl_pkt_w;
+wire        pl_pkt_val_w;
+wire [7:0]  ld_diag_w;       // 装载诊断快照 → ACK pkt[5]
+wire [31:0] tap_word_w;      // 写侧分叉：图像发射字 → 以太网流
+wire        tap_val_w;
+wire        tap_end_w;       // 图像会话结束脉冲（eth 侧冲洗 FIFO 触发）
+wire [31:0] tap2_word_w;     // 读侧 dump：显示读数据捕获 → 以太网流（type 0x0004）
+wire        tap2_val_w;
+wire        tap2_end_w;
+wire        tap2_clk_w;
+wire        tap_clk_eth, tap_val_eth, tap_end_eth;
+wire [31:0] tap_word_eth;
+wire        rdump_start_w;   // 'D' 手动读回触发（ctrl_core）
+wire        dmp_trig_w;      // 读回捕获触发（sd_card_clk 域脉冲，'D' 或装载自动）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
@@ -316,7 +339,12 @@ ctrl_core #(
     .dbg_underrun   (dbg_underrun),
     .img_idx        (img_idx_w),
     .img_wav        (img_wav_w),
-    .auto_on        (auto_play_w)
+    .auto_on        (auto_play_w),
+    .pl_pkt         (pl_pkt_w),
+    .pl_pkt_val     (pl_pkt_val_w),
+    .pl_dump_start  (pl_dump_start_w),
+    .rdump_start    (rdump_start_w),
+    .ld_diag        (ld_diag_w)
 );
 
 // UART 前端：只管 8N1 收发与 [CMD,~CMD] 成帧（命令表在 ctrl_core.v）
@@ -359,7 +387,16 @@ eth_subsys u_eth_subsys(
     .cmd_pending         (eth_cmd_pending),
     .cmd_ack_t           (eth_cmd_ack_t),
     .tx_tog              (eth_tx_tog),
-    .tx_pkt              (tx_pkt_w)
+    .tx_pkt              (eth_tx_pkt_r),
+    .sys_rst             (rst_all),
+    .tap_clk             (tap_clk_eth),
+    .tap_val             (tap_val_eth),
+    .tap_word            (tap_word_eth),
+    .tap_end             (tap_end_eth),
+    .tap2_clk            (tap2_clk_w),
+    .tap2_val            (tap2_val_w),
+    .tap2_word           (tap2_word_w),
+    .tap2_end            (tap2_end_w)
 );
 
 // 命令仲裁 + 以太网命令握手 → 抽成 cmd_arb 模块（在 ctrl_core.v 里）。
@@ -377,9 +414,16 @@ cmd_arb u_cmd_arb (
     .cmd_byte     (cmd_byte)
 );
 
-// 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）
+// 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）。
+// 发送数据与 toggle 同拍锁存并**保持**：tx_req/tx_pkt 是 1 拍脉冲，eth_front 的
+// toggle 跨域同步晚 ~3 拍才锁存——直接给 tx_pkt_w 会在脉冲回落后锁到 ACK 兜底
+// 包（'L' 转储 11 条全变 ACK 的根因；串口同域立即取用从未暴露）。
+reg  [63:0] eth_tx_pkt_r;
 always @(posedge sd_card_clk)
-    if (tx_req_w) eth_tx_tog <= ~eth_tx_tog;
+    if (tx_req_w) begin
+        eth_tx_tog   <= ~eth_tx_tog;
+        eth_tx_pkt_r <= tx_pkt_w;    // tx_req_w=1 时 tx_pkt_w 恰好有效，同域无竞争
+    end
 
 // 音量增益（ctrl_core 的 vol_gain：0..8，8=原始，0=静音）：24bit 有符号 ×gain>>3。
 // gain=8 时 ≡ 原值（现有字节级音频比对用例不受影响）
@@ -446,6 +490,7 @@ sd_card_bmp #(
     .write_en          (sd_card_write_en),
     .write_data        (sd_card_write_data),
     .write_len         (sd_card_write_len),
+    .o_wr_vrow_off     (sd_card_vrow_off),
     // 音频观测/播放口
     .aud_smp           (),
     .aud_sval          (),
@@ -474,7 +519,16 @@ sd_card_bmp #(
     .SD_MOSI           (sd_mosi),
     .SD_MISO           (sd_miso),
     .dbg_fat_state     (dbg_fat_state),
-    .dbg_fat_err       (dbg_fat_err)
+    .dbg_fat_err       (dbg_fat_err),
+    .pl_dump_start     (pl_dump_start_w),
+    .pl_pkt            (pl_pkt_w),
+    .pl_pkt_val        (pl_pkt_val_w),
+    .ld_diag           (ld_diag_w),
+    .tap_word          (tap_word_w),
+    .tap_val           (tap_val_w),
+    .tap_end           (tap_end_w),
+    .rdump_start       (rdump_start_w),
+    .dmp_trig          (dmp_trig_w)
 );
 
 // ===================== 七段数码管（预留）=====================
@@ -603,6 +657,90 @@ pulse_bar pulse_bar_m0(
 assign vout_data = bar_hit       ? bar_rgb :
                    display_valid ? vout_adj  : 24'd0;
 
+// ================== 读侧 dump 捕获窗（video_clk 域，第二十一轮）==================
+// 触发（'D' 或装载提交自动）后捕获一帧。保留 video FIFO 出口的旧探针；
+// DUMP_AT_SDRAM_OUTPUT=1 时取 mem_clk 域，具体选控制器返回或读请求地址
+// 由 DUMP_READ_REQUEST_ADDR 决定；上轮的 FIFO 出口探针仍保留。
+reg         cap_tog;                    // sd_card_clk 脉冲 → toggle
+// display_valid 门控：装载提交瞬间显示流水线尚未起帧（首图提交拍上还是旧值
+// 0），那时开窗只能抓到启动期零星几个字（105 字黑帧的根因）
+always @(posedge sd_card_clk or posedge rst_all)
+    if (rst_all) cap_tog <= 1'b0;
+    else if (dmp_trig_w && display_valid) cap_tog <= ~cap_tog;
+reg  cap_s0, cap_s1, cap_s2;            // video_clk 域同步 + 边沿
+always @(posedge video_clk or posedge rst_all) begin
+    if (rst_all) begin
+        cap_s0 <= 1'b0; cap_s1 <= 1'b0; cap_s2 <= 1'b0;
+    end else begin
+        cap_s0 <= cap_tog; cap_s1 <= cap_s0; cap_s2 <= cap_s1;
+    end
+end
+wire cap_req_v = (cap_s1 != cap_s2);
+reg  cap_win, cap_pend, cap_end_r;
+// vs_0/vs_0_d 在下方 video_clk 域诊断块维护，此处复用其值（同域读，无竞争）
+wire vs_rise_v = vs_0 && !vs_0_d;
+always @(posedge video_clk or posedge rst_all) begin
+    if (rst_all) begin
+        cap_win <= 1'b0; cap_pend <= 1'b0; cap_end_r <= 1'b0;
+    end else begin
+        if (cap_req_v)
+            cap_pend <= 1'b1;           // 窗已开期间的重复触发也记一笔
+        cap_end_r <= 1'b0;
+        if (vs_rise_v) begin
+            if (cap_pend) begin
+                cap_win  <= 1'b1;       // vsync 开窗：圈一帧
+                cap_pend <= 1'b0;
+            end
+            else if (cap_win) begin
+                cap_win   <= 1'b0;      // 下一 vsync 关窗
+                cap_end_r <= 1'b1;      // 通知 eth 侧冲洗 FIFO
+            end
+        end
+    end
+end
+// rfifo 的 dout 在 read_en 上升沿之后才更新；有效脉冲延后一拍，
+// 让以太网 FIFO 采到刚弹出的字，而非上一个字。
+reg tap2_val_r;
+always @(posedge video_clk or posedge rst_all)
+    if (rst_all) tap2_val_r <= 1'b0;
+    else         tap2_val_r <= cap_win && video_read_en;
+wire        mem_tap_val, mem_tap_end;
+wire [31:0] mem_tap_word;
+mem_return_dump #(.WORDS(FRAME_WORDS)) u_mem_return_dump (
+    .mem_clk      (ext_mem_clk),
+    .rst          (rst_all),
+    .start_tog    (cap_tog),
+    .video_ack    (video_read_req_ack),
+    .rd_valid     (DUMP_READ_REQUEST_ADDR ? App_rd_en : Sdr_rd_en),
+    .rd_word      (DUMP_READ_REQUEST_ADDR ? {11'd0, App_rd_addr} : Sdr_rd_dout),
+    .rd_audio     (mem_rd_audio),
+    .tap_val      (mem_tap_val),
+    .tap_word     (mem_tap_word),
+    .tap_end      (mem_tap_end)
+);
+wire app_img_val, app_img_end;
+wire [31:0] app_img_data, app_img_addr;
+write_port_probe u_write_port_probe (
+    .src_clk   (sd_card_clk), .mem_clk  (ext_mem_clk), .rst(rst_all),
+    .src_val   (tap_val_w),   .src_end  (tap_end_w),
+    .wr_en     (App_wr_en),   .wr_data  (App_wr_din),
+    .wr_addr   (App_wr_addr), .tap_val  (app_img_val),
+    .tap_data  (app_img_data), .tap_addr(app_img_addr),
+    .tap_end   (app_img_end)
+);
+assign tap_clk_eth  = DUMP_WRITE_PORT ? ext_mem_clk : sd_card_clk;
+assign tap_val_eth  = DUMP_WRITE_PORT ? app_img_val : tap_val_w;
+assign tap_word_eth = DUMP_WRITE_PORT ? app_img_data : tap_word_w;
+assign tap_end_eth  = DUMP_WRITE_PORT ? app_img_end : tap_end_w;
+assign tap2_clk_w  = DUMP_WRITE_PORT ? ext_mem_clk :
+                     (DUMP_AT_SDRAM_OUTPUT ? ext_mem_clk : video_clk);
+assign tap2_val_w  = DUMP_WRITE_PORT ? app_img_val :
+                     (DUMP_AT_SDRAM_OUTPUT ? mem_tap_val : tap2_val_r);
+assign tap2_word_w = DUMP_WRITE_PORT ? app_img_addr :
+                     (DUMP_AT_SDRAM_OUTPUT ? mem_tap_word : video_read_data);
+assign tap2_end_w  = DUMP_WRITE_PORT ? app_img_end :
+                     (DUMP_AT_SDRAM_OUTPUT ? mem_tap_end : cap_end_r);
+
 frame_read_write #(
     .WRITE_V_FLIP     (1),
     .FRAME_WIDTH      (640),   // 每行字数（RGB565 两像素/字：1280 像素/行 = 640 字）
@@ -632,6 +770,7 @@ frame_read_write #(
     .read_en           (video_read_en),
     .read_data         (video_read_data),
     .o_vid_rd_empty    (vid_rd_empty),
+    .o_mem_rd_audio    (mem_rd_audio),
 
     .App_wr_en         (App_wr_en),
     .App_wr_addr       (App_wr_addr),
@@ -648,6 +787,7 @@ frame_read_write #(
     .write_addr_3      (BUF3_ADDR),
     .write_addr_index  (write_buf_idx),
     .write_len         (sd_card_write_len),
+    .vrow_off          (sd_card_vrow_off),
     .write_en          (sd_card_write_en),
     .write_data        (sd_card_write_data),
 
@@ -678,8 +818,8 @@ sdram U3(
 );
 
 // ===================== RGB/DE 转 AXIS 视频 =====================
-// RGB/DE 转 AXIS（模块名带 640x480 仅为历史遗留，逻辑分辨率无关）
-video_rgb_to_axis_640x480 u_video_rgb_to_axis_640x480(
+// RGB/DE 转 AXIS（模块名为历史遗留；行结束位置按当前 1280 宽设置）
+video_rgb_to_axis_640x480 #(.H_ACTIVE(1280)) u_video_rgb_to_axis_640x480(
     .I_clk         (video_clk),
     .I_rst         (rst_all),
     .I_vs          (vs),
@@ -765,4 +905,99 @@ hdmi_phy_wrapper #(
     .O_tmds_clk_p       (HDMI_CLK_P)
 );
 
+endmodule
+
+// 图像写会话的被动端口探针。源侧首字武装（不依赖写端地址），随后在 mem_clk
+// 域采样与 SDRAM IP 完全同拍的 App_wr_en/addr/din；会话结束由源侧 tap_end
+// 跨域送达，确保最后一个写突发已结束。两个以太网流共享此 val/end：
+// type 3 发全量数据，type 4 经 eth_front 的 3:1 抽样发对应地址。
+module write_port_probe(
+    input  wire        src_clk,
+    input  wire        mem_clk,
+    input  wire        rst,
+    input  wire        src_val,
+    input  wire        src_end,
+    input  wire        wr_en,
+    input  wire [31:0] wr_data,
+    input  wire [20:0] wr_addr,
+    output wire        tap_val,
+    output wire [31:0] tap_data,
+    output wire [31:0] tap_addr,
+    output wire        tap_end
+);
+    reg active_src;
+    always @(posedge src_clk or posedge rst)
+        if (rst)          active_src <= 1'b0;
+        else if (src_end) active_src <= 1'b0;
+        else if (src_val) active_src <= 1'b1;
+    reg m0, m1, m2, prev;
+    always @(posedge mem_clk or posedge rst) begin
+        if (rst) begin
+            m0 <= 1'b0; m1 <= 1'b0; m2 <= 1'b0; prev <= 1'b0;
+        end else begin
+            m0 <= active_src; m1 <= m0; m2 <= m1; prev <= m2;
+        end
+    end
+    assign tap_val = m2 && wr_en;
+    assign tap_data = wr_data;
+    assign tap_addr = {11'd0, wr_addr};
+    assign tap_end = prev && !m2;
+endmodule
+
+// 被动 mem_clk 采样窗：上层可接 SDRAM 控制器返回，或接 App_rd 请求地址。
+// D 到达后等待下一次视频读会话 ack，收一帧有效视频字；音频字被排除。
+// 异常会话在下一次 ack 冲洗，避免残字污染下一帧。
+module mem_return_dump #(
+    parameter integer WORDS = 460800
+)(
+    input  wire        mem_clk,
+    input  wire        rst,
+    input  wire        start_tog,
+    input  wire        video_ack,
+    input  wire        rd_valid,
+    input  wire [31:0] rd_word,
+    input  wire        rd_audio,
+    output wire        tap_val,
+    output wire [31:0] tap_word,
+    output reg         tap_end
+);
+    reg start_s0, start_s1, start_s2;
+    reg ack_d, pending, active;
+    reg [18:0] word_count;
+    wire start_pulse = start_s1 != start_s2;
+    wire ack_rise = video_ack && !ack_d;
+    wire take_word = active && rd_valid && !rd_audio;
+    assign tap_val = take_word;
+    assign tap_word = rd_word;
+
+    always @(posedge mem_clk or posedge rst) begin
+        if (rst) begin
+            start_s0 <= 1'b0; start_s1 <= 1'b0; start_s2 <= 1'b0;
+            ack_d <= 1'b0; pending <= 1'b0; active <= 1'b0;
+            word_count <= 19'd0; tap_end <= 1'b0;
+        end else begin
+            start_s0 <= start_tog; start_s1 <= start_s0; start_s2 <= start_s1;
+            ack_d <= video_ack;
+            tap_end <= 1'b0;
+            if (start_pulse)
+                pending <= 1'b1;
+            if (active) begin
+                if (take_word) begin
+                    if (word_count == WORDS - 1) begin
+                        active <= 1'b0;
+                        tap_end <= 1'b1;
+                    end else
+                        word_count <= word_count + 19'd1;
+                end
+                if (ack_rise) begin
+                    active <= 1'b0;
+                    tap_end <= 1'b1;
+                end
+            end else if (pending && ack_rise) begin
+                active <= 1'b1;
+                pending <= 1'b0;
+                word_count <= 19'd0;
+            end
+        end
+    end
 endmodule

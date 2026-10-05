@@ -37,6 +37,10 @@ module frame_fifo_write
 	input[ADDR_BITS - 1:0]           write_addr_3,               // data write module write request base address 1, used when write_addr_index = 3
 	input[1:0]                       write_addr_index,           // select valid base address from write_addr_0 write_addr_1 write_addr_2 write_addr_3
 	input[ADDR_BITS - 1:0]           write_len,                  // data write module write request data length
+	input signed[19:0]               vrow_off,                   // 2026-10-03 多分辨率信箱适配：
+	                                                             // vflip 首行行号修正量（字） =
+	                                                             // y0 + img_h - FRAME_HEIGHT（≤0）。
+	                                                             // 仅 vflip_en 通道参与寻址；0 = 原行为。
 	output reg                       fifo_aclr,                  // to fifo asynchronous clear
 	input[9:0]                      rdusedw                     // from fifo read used words
 );
@@ -71,26 +75,42 @@ reg                                 write_req_d2;                //third,Why do 
 reg[ADDR_BITS - 1:0]                write_len_d0;                //asynchronous write_len(write data length), synchronize to 'mem_clk' clock domain first
 reg[ADDR_BITS - 1:0]                write_len_d1;                //second
 reg[ADDR_BITS - 1:0]                write_len_latch;             //lock write data length
-reg[ADDR_BITS - 1:0]                write_cnt;                   //write data counter
+reg[ADDR_BITS - 1:0]                write_cnt /*verilator public_flat_rd*/;  //write data counter
+reg[ADDR_BITS - 1:0]                rem_words /*verilator public_flat_rd*/;   // 未弹出字数（len−pops，收尾清空判据用）
 reg[1:0]                            write_addr_index_d0;
 reg[1:0]                            write_addr_index_d1;
 reg[3:0]                            state;                       //state machine
 reg [ADDR_BITS - 1:0]	 App_wr_addr_r;
 reg [15:0]                            wr_x;                       // current x position in one input row
 
-reg [BURST_BITS - 1:0]				burst_cnt;
+reg [BURST_BITS - 1:0]				burst_cnt /*verilator public_flat_rd*/;
 wire								wr_burst_finish;
 
 reg App_wr_en_r;
 reg App_wr_en_d0;
 
 wire into_burst;
-assign into_burst = (((write_len_latch <= (rdusedw + write_cnt))||rdusedw > BURST_SIZE) && ~App_rd_busy);//当rd在突发时不会进入burst
+// 尾部清空判据：rem_words <= rdusedw+1。窗口形式拆解：高 11 位为零（NOR，快）
+// + 低 10 位比较——避免 21 位加法器+比较器级联进组合路径（时序违例 -7.5/-7.9 根因，
+// 4a8362f 时代本路径即 -6.7ns 接受违例，多分辨率挂死疑与其边际误触发相关）
+wire into_burst_c = ((rem_words[ADDR_BITS-1:10] == 0
+                      && rem_words[9:0] <= (rdusedw + 1'b1))
+                     || (rdusedw > BURST_SIZE)) && (~App_rd_busy);
+// 判决寄存一拍：把 21 位比较+长布线从 S_CHECK_FIFO/O_wr_busy 的组合路径上切走
+// （2026-10-04 时序违例 -6.7→-8.2 布线主导，逻辑重构无效）。晚一拍仅使 burst
+// 启动/O_wr_busy 延迟一拍，FIFO 512 深缓冲吸收，无功能影响。
+reg into_burst_r;
+always @(posedge mem_clk or posedge rst)
+    if (rst) into_burst_r <= 1'b0;
+    else     into_burst_r <= into_burst_c;
+// 判决寄存后，启动拍必须重查当前读忙；否则读侧可在前一拍看到
+// O_wr_busy=0 并进入突发，写侧随后仍按旧判决启动，两个 App 口重叠。
+assign into_burst = into_burst_r && ~App_rd_busy;
 
 assign App_wr_addr = {App_wr_addr_r[ADDR_BITS - 1:0]};
 //assign O_wr_busy = (state != S_IDLE || (S_IDLE && write_req_d2));
 assign O_wr_busy = (state == S_WRITE_BURST || (state == S_CHECK_FIFO && into_burst));//在突发，或者将要突发，则显示busy
-assign wr_burst_finish = (burst_cnt >= BURST_SIZE);
+assign wr_burst_finish = (burst_cnt >= BURST_SIZE) || (write_cnt >= write_len_latch);
 assign write_finish = (state == S_END) ? 1'b1 : 1'b0;            //write finish at state 'S_END'
 assign App_wr_en = App_wr_en_d0;
 
@@ -139,14 +159,17 @@ begin
 		if(state == S_ACK)
 			begin
 				wr_x <= 16'd0;
+				// 多分辨率信箱：部分高度会话的首行不再钉在 FRAME_HEIGHT-1，
+				// 而是落在 y0+h-1 行（居中）。vrow_off = y0+h-FRAME_HEIGHT（≤0），
+				// 以二补码字偏移加进首地址；全帧会话 vrow_off=0 行为不变。
 				if(write_addr_index_d1 == 2'd0)
-					App_wr_addr_r <= vflip_en ? (write_addr_0 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_0;
+					App_wr_addr_r <= vflip_en ? (write_addr_0 + VFLIP_FIRST_ADDR_OFFSET + {{(ADDR_BITS-20){vrow_off[19]}}, vrow_off}) : write_addr_0;
 				else if(write_addr_index_d1 == 2'd1)
-					App_wr_addr_r <= vflip_en ? (write_addr_1 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_1;
+					App_wr_addr_r <= vflip_en ? (write_addr_1 + VFLIP_FIRST_ADDR_OFFSET + {{(ADDR_BITS-20){vrow_off[19]}}, vrow_off}) : write_addr_1;
 				else if(write_addr_index_d1 == 2'd2)
-					App_wr_addr_r <= vflip_en ? (write_addr_2 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_2;
+					App_wr_addr_r <= vflip_en ? (write_addr_2 + VFLIP_FIRST_ADDR_OFFSET + {{(ADDR_BITS-20){vrow_off[19]}}, vrow_off}) : write_addr_2;
 				else if(write_addr_index_d1 == 2'd3)
-					App_wr_addr_r <= vflip_en ? (write_addr_3 + VFLIP_FIRST_ADDR_OFFSET) : write_addr_3;
+					App_wr_addr_r <= vflip_en ? (write_addr_3 + VFLIP_FIRST_ADDR_OFFSET + {{(ADDR_BITS-20){vrow_off[19]}}, vrow_off}) : write_addr_3;
 			end
 		else if(App_wr_en)
 			begin
@@ -169,7 +192,11 @@ begin
 		else
 			App_wr_addr_r <= App_wr_addr_r;
 		//
-		if(App_wr_en_r && burst_cnt + App_wr_en < BURST_SIZE && (burst_cnt + write_cnt + App_wr_en < write_len_latch))begin
+		// App_wr_en 是寄存输出，本拍若已弹出一字，下一拍的允许条件必须
+		// 预先把它计入；否则会话尾部会再多发一个 App_wr_en（真板写口
+		// 460801/460800，地址回卷进入音频 BUF3 尾部）。burst 边界同理。
+		if(App_wr_en_r && (burst_cnt + App_wr_en < BURST_SIZE) &&
+		   (write_cnt + App_wr_en < write_len_latch))begin
             App_wr_en_d0 <= 1'b1;
         end
 		else
@@ -183,12 +210,14 @@ begin
 	begin
 		state <= S_IDLE;
 		write_len_latch <= ZERO[ADDR_BITS - 1:0];
+		rem_words <= ZERO[ADDR_BITS - 1:0];
 		
 		//wr_burst_addr <= ZERO[ADDR_BITS - 1:0];
 		//wr_burst_req <= 1'b0;
 		App_wr_en_r <= 1'b0;
 		
 		write_cnt <= ZERO[ADDR_BITS - 1:0];
+		rem_words <= ZERO[ADDR_BITS - 1:0];
 		fifo_aclr <= 1'b0;
 		write_req_ack <= 1'b0;
 		//wr_burst_len <= ZERO[BURST_BITS - 1:0];
@@ -196,6 +225,12 @@ begin
 		
 	end
 	else 
+		begin
+		// write_cnt 逐字精确计数（2026-10-04 尾部收尾修复）：尾部不满一个 burst
+		// 的弹出也入账，收尾清空条件 (write_len_latch <= rdusedw + write_cnt)
+		// 才能在最后一个字到达时成立（原按 burst 结算永远差一个字的账）
+		write_cnt <= write_cnt + App_wr_en;
+		rem_words <= rem_words - App_wr_en;
 		case(state)
 			//idle state,waiting for write write_req_d2 == '1' goto the 'S_ACK'
 			S_IDLE:
@@ -235,6 +270,7 @@ begin
 					*/
 					//latch data length
 					write_len_latch <= write_len_d1;                    
+					rem_words <= write_len_d1;                    // 剩余字数登记
 				end
 				//write data counter reset, write_cnt <= 0;
 				write_cnt <= ZERO[ADDR_BITS - 1:0];
@@ -263,8 +299,7 @@ begin
 				begin
 					App_wr_en_r <= 1'b0;
 					state <= S_WRITE_BURST_END;
-					//write counter + burst length
-					write_cnt <= write_cnt + BURST_SIZE[ADDR_BITS - 1:0];
+					//write_cnt 逐字计数（见 FSM 头部），不再按 burst 结算
 					//the next burst write address is generated
 					//wr_burst_addr <= wr_burst_addr + BURST_SIZE[ADDR_BITS - 1:0];
 				end     
@@ -294,5 +329,6 @@ begin
 			default:
 				state <= S_IDLE;
 		endcase
+		end
 end
 endmodule

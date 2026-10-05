@@ -57,6 +57,11 @@ module ctrl_core #(
     output [3:0]        ct_gray,             // 对比度档位（格雷码，跨时钟域用）
     output              bar_en,              // 音频脉动条开关
     output [1:0]        bar_sens_gray,       // 脉动灵敏度 0..3（格雷码，跨时钟域用）
+    // 播放列表转储（'L' 调试命令）：sd_card_bmp 的转储 FSM 逐包送来
+    input  [63:0]       pl_pkt,
+    input               pl_pkt_val,
+    output reg          pl_dump_start,
+    output reg          rdump_start,       // 'D' 显存读回启动脉冲（sd_card_bmp）
     // 状态回读源（与 top 遥测同源）
     input  [3:0]        state_code,
     input  [7:0]        dbg_fat_state,
@@ -65,6 +70,7 @@ module ctrl_core #(
     input  [3:0]        dbg_underrun,        // clk 域粘滞位，内部 2FF 同步
     input  [4:0]        img_idx,
     input               img_wav,
+    input  [7:0]        ld_diag,            // 装载诊断：{0,result[1:0],ld[2:0],busy,img_wav}
     input               auto_on             // 自动轮播开关当前状态（sd_card_bmp 遥测）
 );
     // ================= 命令语义 =================
@@ -73,12 +79,14 @@ module ctrl_core #(
                CMD_PERUP = 8'h3E, CMD_PERDN = 8'h3C,
                CMD_BRIUP = 8'h5D, CMD_BRIDN = 8'h5B,
                CMD_CTUP  = 8'h2E, CMD_CTDN  = 8'h2C,   // '.'/',' 对比度（无需 Shift）
+               CMD_PLDMP = 8'h4C,                      // 'L' 播放列表转储（调试）
+               CMD_RDUMP = 8'h44,                      // 'D' 显存读回转储（撕裂三分法取证）
                CMD_BARQ  = 8'h51,                      // 'Q' 脉动条开关
                CMD_SENUP = 8'h27, CMD_SENDN = 8'h3B;   // ''';' 灵敏度（' 加 ; 减）
 
-    reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn;
+    reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn, cmd_pdm;
     reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn, cmd_cup, cmd_cdn;
-    reg cmd_barq, cmd_sup, cmd_sdn;
+    reg cmd_barq, cmd_sup, cmd_sdn, cmd_rdm;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -86,15 +94,15 @@ module ctrl_core #(
             cmd_stat <= 0; cmd_vup <= 0; cmd_vdn <= 0;
             cmd_pup  <= 0; cmd_pdn  <= 0;
             cmd_bup  <= 0; cmd_bdn  <= 0;
-            cmd_cup  <= 0; cmd_cdn  <= 0;
-            cmd_barq <= 0; cmd_sup <= 0; cmd_sdn <= 0;
+            cmd_cup  <= 0; cmd_cdn  <= 0; cmd_pdm <= 0;
+            cmd_barq <= 0; cmd_sup <= 0; cmd_sdn <= 0; cmd_rdm <= 0;
         end else begin
             cmd_next <= 1'b0; cmd_auto <= 1'b0; cmd_prev <= 1'b0;
             cmd_stat <= 1'b0; cmd_vup <= 1'b0; cmd_vdn <= 1'b0;
             cmd_pup  <= 1'b0; cmd_pdn <= 1'b0;
             cmd_bup  <= 1'b0; cmd_bdn <= 1'b0;
-            cmd_cup  <= 1'b0; cmd_cdn <= 1'b0;
-            cmd_barq <= 1'b0; cmd_sup <= 1'b0; cmd_sdn <= 1'b0;
+            cmd_cup  <= 1'b0; cmd_cdn <= 1'b0; cmd_pdm <= 1'b0;
+            cmd_barq <= 1'b0; cmd_sup <= 1'b0; cmd_sdn <= 1'b0; cmd_rdm <= 1'b0;
             if (cmd_val) begin
                 case (cmd)
                     CMD_NEXT: cmd_next <= 1'b1;
@@ -109,6 +117,8 @@ module ctrl_core #(
                     CMD_BRIDN: cmd_bdn <= 1'b1;
                     CMD_CTUP:  cmd_cup <= 1'b1;
                     CMD_CTDN:  cmd_cdn <= 1'b1;
+                    CMD_PLDMP: cmd_pdm <= 1'b1;
+                    CMD_RDUMP: cmd_rdm <= 1'b1;
                     CMD_BARQ:  cmd_barq <= 1'b1;
                     CMD_SENUP: cmd_sup  <= 1'b1;
                     CMD_SENDN: cmd_sdn  <= 1'b1;
@@ -185,21 +195,34 @@ module ctrl_core #(
         end
     end
     wire d2_stat = v2 && (echo2 == CMD_STAT);
+    wire d2_pdm  = v2 && (echo2 == CMD_PLDMP);
+    wire d2_rdm  = v2 && (echo2 == CMD_RDUMP);
 
     // 'S' 的应答内容：A5 | state | fat | flagA | flagB | underrun | img | wav
     wire [63:0] status_pkt;
-    assign tx_req = v2;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            pl_dump_start <= 1'b0;
+            rdump_start   <= 1'b0;
+        end
+        else begin
+            pl_dump_start <= d2_pdm;
+            rdump_start   <= d2_rdm;
+        end
+    end
+    assign tx_req = v2 | pl_pkt_val;
     // ⚠ 每个字段都必须是**整字节**。曾把 pkt[6] 写成 {3'b0, bri_level}（7 位），
     //   整条拼接到不了 64 位 → 赋值给 tx_pkt[63:0] 时高位补零，**所有字段错位半个
     //   字节**；只因原来 pkt[7] 恒 0 才没暴露（新加的 auto 标志位一比就露馅，
     //   tb_uart T12 抓住）。判据：拼接总位宽必须正好 64。
-    assign tx_pkt = d2_stat ? status_pkt :
+    assign tx_pkt = pl_pkt_val ? pl_pkt :
+                    d2_stat ? status_pkt :
                     {{1'b0, bar_sens, bar_en_r, ct_level[2:0], auto_on},
                                                   // pkt[7] 标志位：bit0=自动轮播开关
                                                   //   bit[3:1]=对比度档位 bit4=脉动条
                                                   //   bit[6:5]=脉动灵敏度 bit7=0
                      {4'b0, bri_level},           // pkt[6] 亮度档位
-                     {7'b0, img_wav},             // pkt[5] 该图配 WAV
+                     ld_diag,                     // pkt[5] {0,result,ld,busy,该图配WAV}
                      {3'b0, img_idx},             // pkt[4] 当前图索引
                      {4'b0, auto_period_s},       // pkt[3] 轮播周期（秒）
                      {4'b0, vol_gain},            // pkt[2] 音量档位

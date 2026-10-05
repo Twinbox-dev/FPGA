@@ -25,7 +25,7 @@ $(SIM): $(VSRCS) $(CSRCS)
 regress: $(SIM)
 	../scripts/run_all_sims.sh
 
-.PHONY: run clean regress readeng vdelay uart ethfront cmdarb pulsebar
+.PHONY: run clean regress readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -38,11 +38,36 @@ readeng:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_readeng vsrc/tb_readeng.v 		../board/user_source/hdl_source/SD/frame_fifo_read.v 		../board/user_source/hdl_source/SD/frame_fifo_write.v 		-o sim_readeng --Mdir build_readeng
 	./build_readeng/sim_readeng
 
+# 真实帧读写封装 + 工程异步 FIFO，跨 100/100/75MHz 验证字序（SDRAM 口为模型）。
+framepath:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_framepath vsrc/tb_framepath.v ../board/user_source/hdl_source/SD/frame_read_write.v ../board/user_source/hdl_source/SD/frame_fifo_read.v ../board/user_source/hdl_source/SD/frame_fifo_write.v ../board/user_source/hdl_source/IP/afifo_16_32_256.v ../board/user_source/hdl_source/IP/afifo_32_16_256.v -o sim_framepath --Mdir build_framepath
+	./build_framepath/sim_framepath
+
+# 写突发判决寄存后一拍重查读忙；旧代码在读忙升起时仍会启动写突发。
+arbrace:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_arbrace vsrc/tb_arbrace.v ../board/user_source/hdl_source/SD/frame_fifo_write.v -o sim_arbrace --Mdir build_arbrace
+	./build_arbrace/sim_arbrace
+
+# SDRAM 返回口被动抓取窗：视频会话同步、音频字过滤、满帧/异常收口。
+memdump:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_memdump vsrc/tb_memdump.v ../board/user_source/hdl_source/top_tf_hdmi_audio.v -o sim_memdump --Mdir build_memdump
+	./build_memdump/sim_memdump
+
+# 写口双流窗口：跳过涂黑会话，输出与 App_wr_en 同拍的数据/地址和收口。
+writeprobe:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_writeprobe vsrc/tb_writeprobe.v ../board/user_source/hdl_source/top_tf_hdmi_audio.v -o sim_writeprobe --Mdir build_writeprobe
+	./build_writeprobe/sim_writeprobe
+
 # video_delay 565 解包/2:1 串行化自检（视频读通道不在主仿真内，
 # 相邻像素互换 bug 漏网于此——2026-09-27 补）
 vdelay:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_vdelay vsrc/tb_vdelay.v 		../board/user_source/hdl_source/SD/video_delay.v 		-o sim_vdelay --Mdir build_vdelay
 	./build_vdelay/sim_vdelay
+
+# 720p AXI 行结束：TLAST 必须落在第 1280 个有效像素，而不是旧 640 宽的位置。
+axis:
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_axis vsrc/tb_axis.v ../board/user_source/hdl_source/video_rgb_to_axis_640x480.v -o sim_axis --Mdir build_axis
+	./build_axis/sim_axis
 
 # UART 前端 + 控制核心自检（成对校验/虚拟按键/状态包/音量——2026-09-29 拆分后）
 uart:

@@ -4,7 +4,8 @@
 # 设计立场（2026-09-23 决定）：**不在 FPGA 里做兼容，在入卡前把格式收窄**。
 #   现实素材格式极杂（JPG/PNG/HEIC、MP3/AAC/44.1k/单声道…），硬件侧全兼容
 #   等于把解码器和重采样器搬进控制路径——开发地狱且占资源。图片早已走这条
-#   路（必须是 1280x720x24bit 非压缩 BMP，SDRAM 内以 RGB565 双像素/字存放），
+#   路（24bit 非压缩 BMP，尺寸 1..1280 x 1..720 任意——FPGA 信箱适配居中+黑边；
+#   SDRAM 内以 RGB565 双像素/字存放），
 #   音频照抄：统一转 24kHz/8bit/单声道
 #   （板载 ×2 上采样到 HDMI 核 48k；u8→s16 = (u8−128)<<8）。
 #   硬件侧只负责：格式不对时**响亮地拒绝**（fmt_err/头校验），不负责将就。
@@ -59,18 +60,22 @@ fi
 
 mkdir -p img/bmp img/wav
 
-# ---- 图片: 任意格式 → 1280x720 24bit 非压缩 BMP ----
-# 缩放策略: 等比缩放后 letterbox 补黑边（不裁剪，保持完整构图）
+# ---- 图片: 任意格式 → 24bit 非压缩 BMP（分辨率保持原样）----
+# 契约（2026-10-03）：PC 只解压/转容器，不改分辨率——居中+黑边由 FPGA 信箱
+# 适配完成（bmp_dec 接受 1..1280 x 1..720 任意尺寸）。仅超大源等比缩小到 <=720p。
 if [ -n "$IMG_SRC" ]; then
     [ -f "$IMG_SRC" ] || { echo "找不到图片: $IMG_SRC"; exit 1; }
     ffmpeg -y -loglevel error -i "$IMG_SRC" \
-        -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black" \
+        -vf "scale='min(iw,1280)':'min(ih,720)':force_original_aspect_ratio=decrease" \
         -pix_fmt bgr24 -f image2 -vcodec bmp \
         "img/bmp/$NAME.BMP"
     sz=$(stat -c%s "img/bmp/$NAME.BMP")
-    echo "图片 → img/bmp/$NAME.BMP ($sz B)"
-    if [ "$sz" -ne 2764854 ]; then
-        echo "  ⚠ 大小非 2764854（标准 1280x720x24bit），bmp_dec 可能拒绝——检查 ffmpeg 输出格式"
+    # 从 BMP 头读实际尺寸（带宽告警）
+    w=$(od -An -tu4 -j18 -N4 "img/bmp/$NAME.BMP" | tr -d ' ')
+    h=$(od -An -tu4 -j22 -N4 "img/bmp/$NAME.BMP" | tr -d ' ')
+    echo "图片 → img/bmp/$NAME.BMP ($sz B, ${w}x${h})"
+    if [ "$w" -lt 1 ] || [ "$w" -gt 1280 ] || [ "$h" -lt 1 ] || [ "$h" -gt 720 ]; then
+        echo "  ⚠ 尺寸 ${w}x${h} 超 1280x720 范围，bmp_dec 会拒绝——检查 ffmpeg"
     fi
 fi
 

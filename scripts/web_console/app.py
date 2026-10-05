@@ -27,12 +27,14 @@ web_console/app.py — 板卡控制 Web 控制台（串口 / 以太网双控）
 import json
 import os
 import queue
+import sys
 import threading
 import time
 
 from flask import Flask, Response, jsonify, render_template, request
 
 app = Flask(__name__)
+sys.setswitchinterval(0.0005)   # GIL 快速切换：流帧突发期读线程不容许毫秒级停顿（默认 5ms > 64KB 内核缓冲的 1.7ms 吸收窗）
 
 DEFAULT_BAUD = int(os.environ.get("WEB_BAUD", "1000000"))   # 默认波特率
 AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否自动连
@@ -43,11 +45,43 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
-        "q": 0x51, ";": 0x3B, "'": 0x27}
+        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
-        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-"}
+        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)"}
+
+
+def decode_dump(pkt: bytes) -> str:
+    """转储包（'L'）：高 2 位 01=条目 / 10=收口 / 11=装载快照，见 docs/uart_link.md。"""
+    v = int.from_bytes(pkt, "big")
+    tag = v >> 62
+    if tag == 0b01:
+        idx, bmp = (v >> 57) & 0x1F, (v >> 56) & 1
+        pv, pw = (v >> 55) & 1, (v >> 49) & 0x3F
+        nx, pr = (v >> 43) & 0x3F, (v >> 37) & 0x3F
+        line = f"列表[{idx:2d}] {'BMP' if bmp else 'WAV'}"
+        if bmp:
+            line += f" 配对={'WAV'+str(pw) if pv else '无'} nxt={nx} prv={pr}"
+        elif pv:
+            line += f" 配对WAV={pw}"
+        return line
+    if tag == 0b10:
+        fc, bc, wc = (v >> 56) & 0x3F, (v >> 50) & 0x3F, (v >> 44) & 0x3F
+        fb, ii = (v >> 38) & 0x3F, (v >> 33) & 0x1F
+        lb, sa, ld = (v >> 27) & 1, (v >> 26) & 1, (v >> 23) & 0x7
+        return (f"转储收口: 文件{fc} BMP{bc} WAV{wc} 首图{fb} | "
+                f"光标={ii} 装载中={lb} 扫描中={sa} ld={ld}")
+    if tag == 0b11:
+        res = (v >> 60) & 3
+        ld = (v >> 57) & 0x7
+        wc = (v >> 36) & 0x1FFFFF
+        pc = (v >> 16) & 0xFFFFF
+        h = (v >> 4) & 0xFFF
+        rn = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}.get(res, res)
+        return (f"装载快照: 结果={rn} 终态ld={ld} 已发射={wc}字 "
+                f"解码像素={pc} 锁存高度={h}")
+    return f"转储未知包 {pkt.hex()}"
 
 
 def send_bytes(key: str) -> bytes:
@@ -98,6 +132,11 @@ def decode_ack(pkt: bytes) -> str:
             0x2E: "对比度+", 0x2C: "对比度-",
             0x51: "脉动条", 0x3B: "灵敏度+", 0x27: "灵敏度-"}.get(cmd, f"0x{cmd:02X}")
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
+    RESULT = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}
+    LDNAME = {0: 'IDLE', 1: 'FILL_REQ', 2: 'FILL_RUN', 3: 'FILE',
+              4: 'IMG_WAIT', 5: 'IMG_ACK', 6: 'STREAM', 7: '音频段'}
+    diag = (f"上次装载={RESULT.get((wav >> 5) & 3)}/{LDNAME.get((wav >> 2) & 7)}"
+            f"{' 装载中' if (wav >> 1) & 1 else ''}")
     ct    = (flags >> 1) & 0x7           # flags bit[3:1] = 对比度档位
     bar   = (flags >> 4) & 1             # flags bit4 = 脉动条开关
     sens  = (flags >> 5) & 0x3           # flags bit[6:5] = 脉动灵敏度
@@ -109,10 +148,11 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd == 0x51:         detail = bar_s
     elif cmd in (0x3B, 0x27): detail = bar_s
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
-    elif cmd in (0x4E, 0x50): detail = img_s
+    elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
+    elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
                                         f"对比度={ct}/6 {bar_s} {img_s} "
-                                        f"自动轮播={'开' if flags & 1 else '关'}")
+                                        f"自动轮播={'开' if flags & 1 else '关'} | {diag}")
     return f"ACK {name} | {detail}"
 
 
@@ -227,11 +267,17 @@ class SerialLink:
         except Exception as e:
             self.close()
             return f"串口写入失败: {e}"
+        if key == "l":
+            # 'L' 后板卡回 N+2 个 8 字节包：读线程切换到定长分帧
+            self.dump_left = 64
+            self.dump_anchored = False
+            self.dump_swap = None
         return ""
 
     # ---- 读线程：字节流 → 解码包 → 广播 ----
     def _reader(self):
         buf = bytearray()
+        self.dump_left, self.dump_anchored, self.dump_swap = 0, False, None
         while self.ser is not None:
             try:
                 chunk = self.ser.read(64)
@@ -241,6 +287,39 @@ class SerialLink:
                 continue
             buf.extend(chunk)
             while True:
+                if self.dump_left > 0:           # 转储流：先锚定 L 的 ACK(5A 4C)，再 8 字节定长分帧
+                    if not self.dump_anchored:
+                        if len(buf) < 2:
+                            break
+                        if buf[0] == 0x5A and buf[1] == 0x4C:
+                            self.dump_anchored = True
+                        else:
+                            del buf[:1]          # 丢掉 pre-L 残留（被吞的 ACK 等）
+                            continue
+                    if len(buf) < 8:
+                        break
+                    pkt = bytes(buf[:8])
+                    del buf[:8]
+                    if pkt[0] in (0xA5, 0x5A):   # ACK/状态：原序（ctrl_core 本就 LSB 组包）
+                        text = decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt)
+                        kind = "status" if pkt[0] == 0xA5 else "ack"
+                    else:
+                        # 字节序自适应：首条目组 byte0=0x00 → 旧 bit 流（MSB-first 组包
+                        # 被 LSB 先行线上整包颠倒）；tag 01 开头 → 新 bit 流（已 RTL 修正）
+                        if self.dump_swap is None:
+                            self.dump_swap = (pkt[0] == 0x00)
+                        if self.dump_swap:
+                            pkt = pkt[::-1]
+                        tag = pkt[0] >> 6
+                        if tag == 0b11:
+                            self.dump_left = 0   # 装载快照（最后一包）→ 回常规分帧
+                        else:
+                            self.dump_left -= 1
+                        text, kind = decode_dump(pkt), "dump"
+                    self.broadcast({"type": "pkt", "kind": kind,
+                                    "text": text,
+                                    "ts": time.strftime("%H:%M:%S")})
+                    continue
                 ia, ib = buf.find(b"\xA5"), buf.find(b"\x5A")
                 cand = [x for x in (ia, ib) if x >= 0]
                 if not cand:
@@ -362,6 +441,13 @@ class EthTransport:
         self.board = self.BOARD_DEFAULT
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
+        # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
+        self.str = {"wr": self._new_sess(), "rb": self._new_sess()}
+
+    @staticmethod
+    def _new_sess():
+        return {"buf": bytearray(), "next_seq": 0, "gaps": 0,
+                "last": 0.0, "active": False}
 
     # ---- 订阅（SSE） ----
     def subscribe(self):
@@ -395,6 +481,12 @@ class EthTransport:
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # 流帧突发 ~1.9MB/20ms：默认 64KB 内核缓冲必溢出（整帧只剩尾包
+                # 的根因），必须把接收缓冲扩到能整口吞下一次捕获
+                try:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)
+                except OSError:
+                    pass
                 s.bind(("", self.LOCAL_PORT))     # 收板卡回包（目的端口 2）
                 s.settimeout(0.3)                 # 让读线程能定期看到关闭
             except Exception as e:
@@ -431,26 +523,80 @@ class EthTransport:
             return f"UDP 发送到 {self.board}:{self.BOARD_PORT} 失败: {e}"
         return ""
 
+    # ---- 流包（type=0x0003）：seq 重组 + 静默收口 ----
+    STR_TIMEOUT = 0.4                  # 流包静默判会话结束（整帧空口时间 ~20ms）
+
+    def _on_stream(self, data: bytes):
+        typ = "rb" if data[4:6] == bytes([0x04, 0x00]) else "wr"   # 0x0004=读回
+        st = self.str[typ]
+        seq = data[8] | (data[9] << 8)
+        if seq == 0:                   # RTL 冲洗收口后 seq 归零 = 新会话
+            st.update(self._new_sess(), active=True)
+        elif not st["active"]:
+            return                     # 残尾：会话主体一个包都没收到的孤儿尾包
+        elif seq != st["next_seq"]:
+            st["gaps"] += (seq - st["next_seq"]) & 0xFFFF
+        st["next_seq"] = (seq + 1) & 0xFFFF
+        st["buf"] += bytes(data[10:])  # 尾包 len 对齐 4 字节，余数忽略
+        st["last"] = time.time()
+
+    def _stream_poll(self):
+        """读线程每次循环调用：会话静默超时 → 收口整帧入库 + 通知前端。"""
+        for typ in ("wr", "rb"):
+            st = self.str[typ]
+            if not st["active"] or (time.time() - st["last"]) <= self.STR_TIMEOUT:
+                continue
+            st["active"] = False
+            words = len(st["buf"]) // 4
+            h = words // 640           # 整行才收（发射行恒 1280 宽 = 640 字）
+            ts = time.strftime("%H:%M:%S")
+            slot = ETH_FRAME if typ == "wr" else ETH_FRAME_RB
+            with ETH_FRAME_LOCK:
+                slot["id"] += 1
+                # 写侧只展示完整行；读回是 3:1 稀疏字流，保留末行的抽样字。
+                slot["data"] = bytes(st["buf"] if typ == "rb"
+                                     else st["buf"][: h * 640 * 4])
+                slot["gaps"] = st["gaps"]
+                slot["words"] = words
+                slot["ts"] = ts
+                fid = slot["id"]
+            self.broadcast({"type": "frame", "kind": typ, "id": fid,
+                            "words": words, "h": h,
+                            "gaps": st["gaps"], "ts": ts})
+
     # ---- 读线程：UDP 报文 → 剥 8 字节头 → 解码包 → 广播 ----
     def _reader(self):
+        buf = bytearray(2048)
+        view = memoryview(buf)
         while self.sock is not None:
             try:
-                data, _ = self.sock.recvfrom(2048)
+                n = self.sock.recv_into(buf)   # 热路径：零拷贝收包，解码按需
+                data = view[:n]
             except Exception:
-                continue                          # 超时/关闭 → 回到 while 判据
-            if len(data) >= 16 and data[:4] == b"\xAA\xBB\xCC\xDD":
+                self._stream_poll()            # 超时窗口顺带查会话收口
+                continue                       # 超时/关闭 → 回到 while 判据
+            if (n >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
+                    and data[4] in (0x03, 0x04) and data[5] == 0x00):
+                self._on_stream(data)          # 流包（03=写侧/04=读回）：重组不进日志
+                continue
+            if n >= 16 and data[:4] == b"\xAA\xBB\xCC\xDD":
                 pkt = bytes(data[8:16])           # 应用头 + 8 字节包
-            elif len(data) >= 8:
+            elif n >= 8:
                 pkt = bytes(data[:8])
             else:
                 continue
             if pkt[0] not in (0xA5, 0x5A):
+                if (pkt[0] >> 6) in (0b01, 0b10, 0b11):   # 转储包
+                    self.broadcast({"type": "pkt", "kind": "dump",
+                                    "text": decode_dump(pkt),
+                                    "ts": time.strftime("%H:%M:%S")})
                 continue
             msg = {"type": "pkt",
                    "kind": "status" if pkt[0] == 0xA5 else "ack",
                    "text": decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt),
                    "ts": time.strftime("%H:%M:%S")}
             self.broadcast(msg)
+            self._stream_poll()
         self.broadcast(self.link_msg(False))
 
 
@@ -459,6 +605,16 @@ class EthTransport:
 SUBS = []
 link = (LoopbackLink(SUBS) if os.environ.get("WEB_LOOPBACK") else SerialLink(SUBS))
 eth_link = EthTransport(SUBS)
+
+# ---------------------------------------------------------------------------
+# 以太网流帧（写侧分叉，type=0x0003）：EthTransport 在读线程里就地重组整帧，
+# 完整帧存在这里，SSE 只推「有新帧」的通知；前端经 /api/frame 拉原始字节渲染
+#（一帧 ~1.8MB，不适合塞 SSE 文本流）。
+# 字序与 RTL 线序一致：每字 4 字节 LSB 先（=小端），字低 16bit=左像素 RGB565。
+# ---------------------------------------------------------------------------
+ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
+ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
+ETH_FRAME_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -503,12 +659,13 @@ def api_ports():
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
     order = ["p", "n", "a", "s", "-", "+", "<", ">", "[", "]",
-             ";", "'", "q"]
+             ";", "'", "q", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
-              ("音频脉动", [";", "'", "q"])]
+              ("音频脉动", [";", "'", "q"]),
+              ("调试", ["l", "d"])]
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 
@@ -574,6 +731,24 @@ def api_stream():
 
     return Response(gen(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache"})
+
+
+@app.route("/api/frame")
+def api_frame():
+    """最新重组帧：原始字流（每字 4 字节小端，RGB565×2/字）+ 元数据头。
+    ?slot=wr（写侧发射流，默认）/ rb（显存读回）。"""
+    is_rb = request.args.get("slot") == "rb"
+    slot = ETH_FRAME_RB if is_rb else ETH_FRAME
+    with ETH_FRAME_LOCK:
+        data = slot["data"]
+        gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
+    resp = Response(data, mimetype="application/octet-stream")
+    resp.headers["X-Frame-Words"] = str(words)
+    resp.headers["X-Frame-Gaps"] = str(gaps)
+    resp.headers["X-Frame-Stride"] = "3" if is_rb else "1"
+    resp.headers["X-Frame-Ts"] = ts
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 def main():

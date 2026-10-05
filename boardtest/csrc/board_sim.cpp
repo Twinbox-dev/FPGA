@@ -86,7 +86,8 @@ static bool loadable_bmp(const std::vector<uint8_t> &d) {
     uint16_t bpp = (uint16_t)d[28] | ((uint16_t)d[29] << 8);
     uint32_t comp = (uint32_t)d[30] | ((uint32_t)d[31] << 8)
                   | ((uint32_t)d[32] << 16) | ((uint32_t)d[33] << 24);
-    return (w == 1280 && h == 720 && bpp == 24 && comp == 0);
+    // 2026-10-03 多分辨率：与 bmp_dec 逐条一致（24bit/不压缩/1<=尺寸<=720p）
+    return (w >= 1 && h >= 1 && w <= 1280 && h <= 720 && bpp == 24 && comp == 0);
 }
 
 // ---- 写口模型（近似 frame_read_write）：图像 buf 0/1、音频 BUF2/BUF3 分缓冲重建 ----
@@ -104,9 +105,42 @@ static std::vector<uint32_t> *aud_buf_for(int idx) {
 
 static uint64_t cycles = 0;
 static const bool g_verbose = getenv("SD_VERBOSE") != nullptr;
+
+// ---- 写会话历史环（像素比对失败时打印，定位"模型丢会话/串会话"类问题）----
+struct WrOpenEv { uint64_t cyc; int buf, ld, scanA, fillA, req_r, aud_req, len;
+                  int hdr_ok, h_dec, w_dec, fidx, aldA; };
+static WrOpenEv wr_hist[8];
+static int wr_hist_n = 0, wr_hist_i = 0;
+#define D(name) dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__##name
+static void wr_hist_push(uint64_t cyc, int buf, int ld, int scanA, int fillA,
+                         int req_r, int aud_req, int len) {
+    wr_hist[wr_hist_i] = {cyc, buf, ld, scanA, fillA, req_r, aud_req, len,
+                          (int)D(img_hdr_ok_dec), (int)D(img_h_dec), (int)D(img_w_dec),
+                          (int)D(file_idx), (int)D(ald_active)};
+    wr_hist_i = (wr_hist_i + 1) % 8;
+    if (wr_hist_n < 8) wr_hist_n++;
+}
+static void wr_hist_dump() {
+    std::printf("      写会话历史(最近%d条)：\n", wr_hist_n);
+    for (int k = 0; k < wr_hist_n; k++) {
+        WrOpenEv &e = wr_hist[(wr_hist_i + 8 - wr_hist_n + k) % 8];
+        std::printf("      [cyc=%lld] buf=%d ld=%d scanA=%d fillA=%d req_r=%d aud_req=%d len=%u "
+                    "hdr_ok=%d h_dec=%d w_dec=%d fidx=%d aldA=%d\n",
+                    (long long)e.cyc, e.buf, e.ld, e.scanA, e.fillA, e.req_r, e.aud_req, e.len,
+                    e.hdr_ok, e.h_dec, e.w_dec, e.fidx, e.aldA);
+    }
+}
+
 static void sample_write() {
     int wr = dut->write_req;
     if (wr && !prev_wr) {              // 新写通道：按目标缓冲清场
+        wr_hist_push(cycles, (int)dut->write_buf_idx,
+                     (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__ld_state,
+                     (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__aud_scan_active,
+                     (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__fill_active,
+                     (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__write_req_r,
+                     (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__aud_wr_req,
+                     (unsigned)dut->write_len);
         if (g_verbose)
             std::printf("    [cyc=%lld] WR_OPEN buf=%d ald_active=%d ald_wav=%d aud_req_idx=%d load_idx=%d sz2=%zu sz3=%zu\n",
                         (long long)cycles, (int)dut->write_buf_idx,
@@ -121,14 +155,52 @@ static void sample_write() {
             pixbuf.clear();
         wft_set = false;
     }
+    static int last_fst = -1;
+    int fst = dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__state;
+    if (g_verbose && fst != last_fst) {
+        std::printf("    [fat=%d cyc=%lld] lba=%u ferr=%d\n", fst,
+                    (long long)cycles, (unsigned)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__rd_lba,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__fat_err);
+        last_fst = fst;
+    }
+    if (g_verbose && wr != prev_wr)
+        std::printf("    [wr%c cyc=%lld] idx=%d fillA=%d ld=%d wen=%d psz=%zu wlen=%u ferr=%d retry=%d kind=%d lba=%u\n", wr ? '+' : '-',
+                    (long long)cycles, (int)dut->write_buf_idx,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__fill_active,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__ld_state,
+                    (int)dut->write_en, pixbuf.size(), (unsigned)dut->write_len,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__fat_err,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__retry,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__rd_kind,
+                    (unsigned)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__rd_lba);
     prev_wr = wr;
+    // hdr_ok / img_err 上升沿监视：抓"假头/陈旧尺寸"现行（每装载至多 1 次）
+    static int prev_hdr = 0, prev_ierr = 0;
+    int hdr = (int)D(img_hdr_ok_dec), ierr = (int)D(img_err);
+    if (hdr && !prev_hdr)
+        std::printf("    [HDROK cyc=%lld] h_dec=%d w_dec=%d fidx=%d ld=%d lidx=%d scanA=%d aldA=%d\n",
+                    (long long)cycles, (int)D(img_h_dec), (int)D(img_w_dec),
+                    (int)D(file_idx),
+                    (int)D(ld_state), (int)D(load_idx),
+                    (int)D(aud_scan_active), (int)D(ald_active));
+    if (ierr && !prev_ierr)
+        std::printf("    [IMGERR cyc=%lld] fidx=%d ld=%d lidx=%d scanA=%d\n",
+                    (long long)cycles, (int)D(file_idx), (int)D(ld_state),
+                    (int)D(load_idx), (int)D(aud_scan_active));
+    prev_hdr = hdr; prev_ierr = ierr;
     int idx = dut->write_buf_idx;
     if (dut->write_en) {
         if (idx == 2 || idx == 3) aud_buf_for(idx)->push_back((uint32_t)dut->write_data);
-        else if (pixbuf.size() < N_WORDS) pixbuf.push_back((uint32_t)dut->write_data);
+        // 图像/涂黑会话：镜像 RTL 弹出门槛（write_cnt < write_len 封顶）——
+        // 发射器会话末尾的填充字不入 SDRAM（2026-10-04 尾部收尾修复）
+        else if (pixbuf.size() < N_WORDS && (uint32_t)dut->write_len > 0 &&
+                 pixbuf.size() < (uint32_t)dut->write_len)
+            pixbuf.push_back((uint32_t)dut->write_data);
     }
     // 整帧/整音频落盘 → 翻转 write_finish_toggle（长度以 RTL 声明的 write_len 为准）
-    uint32_t exp_len = (idx == 2 || idx == 3) ? (uint32_t)dut->write_len : (uint32_t)N_WORDS;
+    // ⚠ 图像会话长度不可硬编码 N_WORDS：多分辨率信箱会话 = img_h×640（可小于
+    //   460800），硬编码会让模型永远等不到 finish → 装载 3s 超时（S5-S8 连锁假失败）
+    uint32_t exp_len = (uint32_t)dut->write_len;
     size_t   cur_sz  = (idx == 2 || idx == 3) ? aud_buf_for(idx)->size() : pixbuf.size();
     if (dut->write_en && cur_sz >= exp_len && !wft_set) {
         wft ^= 1;
@@ -263,11 +335,37 @@ static void watch_commit() {
 static int last_state = -1;
 static void diag() {
     int sc = dut->state_code;
+    static uint64_t last_dump = 0;
+    if (cycles - last_dump >= 2000000 && last_state == sc) {
+        last_dump = cycles;
+        std::printf("      [p%llu] st=%d dv=%d lidx=%d fat=%d scanA=%d scanD=%d abd=%d nrp=%d prp=%d lb=%d ld=%d\n",
+                    (unsigned long long)cycles, sc, (int)dut->display_valid,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__load_idx,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__state,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__aud_scan_active,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__aud_scan_done_r,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__ald_boot_done,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__next_req_pending,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__prev_req_pending,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__load_busy,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__ld_state);
+        return;
+    }
     if (sc != last_state) {
-        std::printf("      [t=%llu] state=%d disp=%d dv=%d pixbuf=%zu wft=%d\n",
+        std::printf("      [t=%llu] st=%d dv=%d first=%d lidx=%d fat=%d scanA=%d scanD=%d abd=%d fic=%d nrp=%d prp=%d lb=%d ld=%d\n",
                     (unsigned long long)cycles,
-                    sc, (int)dut->disp_buf_idx, (int)dut->display_valid,
-                    pixbuf.size(), wft);
+                    sc, (int)dut->display_valid,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__first_bmp_w,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__load_idx,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__u_fat__DOT__state,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__aud_scan_active,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__aud_scan_done_r,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__ald_boot_done,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__first_idx_captured,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__next_req_pending,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__prev_req_pending,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__load_busy,
+                    (int)dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__ld_state);
         last_state = sc;
     }
 }
@@ -279,28 +377,55 @@ static inline uint16_t pack565(uint32_t R, uint32_t G, uint32_t B) {
 
 // pixbuf（RGB565 双像素字，低半字 = 偶数下标像素）与 golden BMP（文件序，BGR）比对
 static bool compare_pixbuf(const std::vector<uint8_t> &bm) {
-    if (pixbuf.size() != N_WORDS) {
-        std::printf("      pixbuf=%zu 需 %zu\n", pixbuf.size(), N_WORDS);
+    // 多分辨率信箱模型（2026-10-03，与 sd_card_bmp 发射 FSM 逐条一致）：
+    // 发射序列 = 流序 h 行 x 1280 px/行；行内 [x0, x0+w) 为图像像素（BMP 行序
+    // 自底向上 = 流序），窗口外黑；写会话长度 = 640*h 字。
+    if (bm.size() < 54 || bm[0] != 0x42 || bm[1] != 0x4D) {
+        std::printf("      非 BMP\n");
         return false;
     }
-    auto px = [&](size_t i) {   // golden 像素 i 的 24b {R,G,B}
-        return ((uint32_t)bm[54 + 3 * i + 2] << 16)
-             | ((uint32_t)bm[54 + 3 * i + 1] << 8)
-             |  (uint32_t)bm[54 + 3 * i];
+    uint32_t w = (uint32_t)bm[18] | ((uint32_t)bm[19] << 8)
+               | ((uint32_t)bm[20] << 16) | ((uint32_t)bm[21] << 24);
+    uint32_t h = (uint32_t)bm[22] | ((uint32_t)bm[23] << 8)
+               | ((uint32_t)bm[24] << 16) | ((uint32_t)bm[25] << 24);
+    if (w < 1 || h < 1 || w > 1280 || h > 720) {
+        std::printf("      尺寸 %ux%u 超界\n", w, h);
+        return false;
+    }
+    uint32_t x0 = (1280 - w) / 2, x1 = 1280 - w - x0;
+    size_t   words = (size_t)640 * h;
+    if (pixbuf.size() != words) {
+        std::printf("      pixbuf=%zu 需 %zu\n", pixbuf.size(), words);
+        return false;
+    }
+    uint32_t stride = w * 3 + ((4 - (w * 3) % 4) % 4);   // BMP 行 4 字节对齐
+    auto px = [&](uint32_t row, uint32_t col) {          // 流行 row = BMP 文件行
+        // 解码器按文件序发射（文件行 0 = 显示最底行，BMP 自底向上），vflip 由
+        // 真实写引擎补偿；本比对是发射序比对，行号即文件行号，不可再翻转。
+        size_t   off = 54 + (size_t)row * stride + (size_t)col * 3;
+        return ((uint32_t)bm[off + 2] << 16) | ((uint32_t)bm[off + 1] << 8)
+             | (uint32_t)bm[off];
     };
-    for (size_t j = 0; j < N_WORDS; j++) {
-        uint32_t p0 = px(2 * j), p1 = px(2 * j + 1);
-        uint32_t exp = ((uint32_t)pack565(p1 >> 16, (p1 >> 8) & 0xFF, p1 & 0xFF) << 16)
-                     |  (uint32_t)pack565(p0 >> 16, (p0 >> 8) & 0xFF, p0 & 0xFF);
-        if (pixbuf[j] != exp) {
-            std::printf("      首个失配 字#%zu: got=%08x exp=%08x (pix %zu/%zu)\n",
-                        j, pixbuf[j], exp, 2 * j, 2 * j + 1);
-            return false;
+    size_t j = 0;
+    for (uint32_t r = 0; r < h; r++) {
+        for (uint32_t cc = 0; cc < 1280; cc += 2) {
+            uint32_t p0v = (cc >= x0 && cc < x0 + w) ? px(r, cc - x0) : 0;
+            uint32_t p1v = (cc + 1 >= x0 && cc + 1 < x0 + w) ? px(r, cc + 1 - x0) : 0;
+            uint32_t exp = ((uint32_t)pack565(p1v >> 16, (p1v >> 8) & 0xFF, p1v & 0xFF) << 16)
+                         |  (uint32_t)pack565(p0v >> 16, (p0v >> 8) & 0xFF, p0v & 0xFF);
+            if (pixbuf[j] != exp) {
+                std::printf("      首个失配 字#%zu (行%u 列%u): got=%08x exp=%08x\n",
+                            j, r, cc, pixbuf[j], exp);
+                for (size_t k2 = j; k2 < j + 8 && k2 < words; k2++)
+                    std::printf("      [%zu] got=%08x\n", k2, pixbuf[k2]);
+                wr_hist_dump();
+                return false;
+            }
+            j++;
         }
     }
     return true;
 }
-
 // ---- WAV golden 解析（规则与 boardtest/vsrc/wav_reader.v 逐条一致）----
 // ok = RIFF/WAVE 魔数 && fmt 块存在且体 ≥16 字节 && PCM/1ch/24000Hz/8bit
 //      && data 块存在（字节流 = data 体；超出文件尾截断）
@@ -749,7 +874,7 @@ int main(int argc, char **argv) {
     // S2 按键 → 第二张（配对 WAV 重读入对侧音频缓冲，就绪后与图原子提交）
     press_next();
     guard = 200000000;                 // 图 + 音频两段装载
-    while (guard-- && commits < 2) { cycle(); watch_commit(); }
+    while (guard-- && commits < 2) { cycle(); watch_commit(); diag(); }
     check(commits >= 2, "S2 按键切换 → 第二张提交");
     if (commits >= 2)
         check(compare_pixbuf(g.bmps[order[1]].data),
@@ -764,7 +889,7 @@ int main(int argc, char **argv) {
     // S3 按键 → 第三张
     press_next();
     guard = 200000000;
-    while (guard-- && commits < 3) { cycle(); watch_commit(); }
+    while (guard-- && commits < 3) { cycle(); watch_commit(); diag(); }
     check(commits >= 3, "S3 按键切换 → 第三张提交");
     if (commits >= 3)
         check(compare_pixbuf(g.bmps[order[2]].data),
@@ -780,7 +905,7 @@ int main(int argc, char **argv) {
     int exp4 = next_bmp_idx(order[2], (int)g.bmps.size(), tmap);
     press_next();
     guard = 200000000;
-    while (guard-- && commits < 4) { cycle(); watch_commit(); }
+    while (guard-- && commits < 4) { cycle(); watch_commit(); diag(); }
     check(commits >= 4, "S4 第四张提交");
     if (commits >= 4)
         check(compare_pixbuf(g.bmps[exp4].data),
@@ -796,15 +921,18 @@ int main(int argc, char **argv) {
 
     // S5/S6：继续按。自适应——按到的项是合法图则期望提交+比对；
     //         坏图 / WAV（含越出 type_map 6 项的 WAV，按图片处理→img_err 跳过）则期望不提交。
-    // 返回本次是否提交（供调用方续用）
-    auto press_adaptive = [&](const char *tag, int &exp, int &c_after) -> bool {
+    // 返回本次是否提交（供调用方续用）。prev_dir=true 走上一张键（S10 用）。
+    // ⚠ 2026-10-04 教训：S10 首版忘传方向，prev 环遍历实际全按了 next——
+    //   4 个"像素失配"全是测试自身假失败（模型按 prv 链出期望、RTL 按 nxt 执行）。
+    auto press_adaptive = [&](const char *tag, int &exp, int &c_after,
+                              bool prev_dir = false) -> bool {
         bool bad = !loadable_bmp(g.bmps[exp].data);
         if (bad)
             std::printf("      卡自检：索引 %d 非合法图，验证跳过路径\n", exp);
         int c_before = commits;
-        press_next();
-        uint64_t g2 = bad ? 3000000u : 220000000u;   // 坏图头校验快；合法图整帧+配对音频两段装载（S2 同 200M+裕量）
-        while (g2-- && commits == c_before) { cycle(); watch_commit(); }
+        if (prev_dir) press_prev(); else press_next();
+        uint64_t g2 = bad ? 3000000u : 1500000000u;  // 坏图头校验快；合法图整帧+配对音频两段装载：全保真最坏 ~1.4G（720p 图+0.7MB WAV+SPI），220M 会把慢装载误判成超时（2026-10-04 S10 实测）
+        while (g2-- && commits == c_before) { cycle(); watch_commit(); diag(); }
         if (bad) {
             check(commits == c_before, tag);          // 跳过：不应提交
             c_after = c_before;
@@ -851,7 +979,7 @@ int main(int argc, char **argv) {
         press_auto();                      // 开
         int c_base = commits;
         uint64_t g3 = 400000000u;          // 坏图拒载重试要跨 2 个 1s 周期 + 装载
-        while (g3-- && commits == c_base) { cycle(); watch_commit(); }
+        while (g3-- && commits == c_base) { cycle(); watch_commit(); diag(); }
         check(commits == c_base + 1, "S7 自动轮播：开启后自动提交下一张");
         if (commits == c_base + 1) {
             // 提交瞬间先捕获音频圈起点，再烧按键去抖周期；
@@ -869,7 +997,7 @@ int main(int argc, char **argv) {
             cursor = exp7;
             c_base = commits;
             uint64_t g4 = 130000000u;      // >1s 自动周期：不应再有新提交
-            while (g4--) { cycle(); watch_commit(); }
+            while (g4--) { cycle(); watch_commit(); diag(); }
             check(commits == c_base, "S7d 自动轮播关闭后停止切换");
         }
     }
@@ -885,8 +1013,8 @@ int main(int argc, char **argv) {
                 std::printf("      卡自检：索引 %d 非合法图，上一张继续回退\n", exp8);
             int c_before = commits;
             press_prev();
-            uint64_t g8 = bad8 ? 3000000u : 220000000u;
-            while (g8-- && commits == c_before) { cycle(); watch_commit(); }
+            uint64_t g8 = bad8 ? 3000000u : 1500000000u;
+            while (g8-- && commits == c_before) { cycle(); watch_commit(); diag(); }
             if (bad8) {
                 check(commits == c_before, "S8 上一张：坏图跳过不提交");
                 if (commits != c_before) break;
@@ -902,8 +1030,124 @@ int main(int argc, char **argv) {
                     } else {
                         verify_silence("S8d 上一张无配对");
                     }
+                    cursor = exp8;   // 写回光标：S9/S10 全环遍历从这里出发
                 }
                 break;
+            }
+        }
+    }
+
+    // ---- S9/S10 全环遍历（2026-10-04 板级"环端失灵"盲区补洞）----
+    // 此前用例从 boot 图最多 next×2 + prev 回退到首个合法图——多图卡的
+    // 回绕边（尾图 next→首图 / 首图 prev→尾图）从未被踩到。这里双向各绕
+    // 整环一圈回到起点，每步自适应期望（合法图提交比对 / 非法项跳过）。
+    {
+        int start9 = cursor;
+        int cur9 = cursor;
+        for (int k = 0; k <= (int)g.bmps.size(); k++) {
+            int target = next_bmp_idx(cur9, (int)g.bmps.size(), tmap);
+            int c_after;
+            press_adaptive("S9 下一张环步进（合法图提交 / 非法项跳过）",
+                           target, c_after);
+            cur9 = target;
+            if (target == start9) break;
+        }
+        check(cur9 == start9, "S9 下一张绕整环回到起点（尾→头回绕边）");
+        cur9 = cursor;
+        for (int k = 0; k <= (int)g.bmps.size(); k++) {
+            int target = prv_bmp_idx(cur9, (int)g.bmps.size(), tmap);
+            int c_after;
+            press_adaptive("S10 上一张环步进（合法图提交 / 非法项跳过）",
+                           target, c_after, true);
+            cur9 = target;
+            if (target == start9) break;
+        }
+        check(cur9 == start9, "S10 上一张绕整环回到起点（首→尾回绕边）");
+
+        // ---- S11 播放列表转储（'L'）：直接观测 RTL 跳表/配对表/光标 ----
+        // 板级排障主通道（串口/以太网发 'L' 即可拿到同一份数据）。期望表与
+        // fat32_ro 建表算法逐步同构：BMP 链 + 收口回填（prv[首]=末，nxt[末]=首）。
+        {
+            int n_items = (int)g.bmps.size();
+            // 模型侧重构 nxt/prv 表（与 RTL 逐拍同构）
+            int em_nxt[32] = {0}, em_prv[32] = {0};
+            {
+                int last = 0, first = 0;
+                bool seen = false;
+                for (int i = 0; i < n_items; i++) {
+                    if (!g.bmps[i].is_wav) {
+                        em_prv[i] = last;
+                        if (seen) em_nxt[last] = i; else first = i;
+                        last = i; seen = true;
+                    }
+                }
+                if (seen) { em_nxt[last] = first; em_prv[first] = last; }
+            }
+            int exp_first = -1;
+            for (int i = 0; i < n_items && exp_first < 0; i++)
+                if (!g.bmps[i].is_wav) exp_first = i;
+
+            int ent_isbmp[32], ent_pv[32], ent_pw[32], ent_nx[32], ent_pr[32];
+            int n_ent = 0, sum_fc = -1, sum_bc = -1, sum_wc = -1, sum_fb = -1, sum_ii = -1;
+            dut->pl_dump_start = 1; cycle(); dut->pl_dump_start = 0;
+            uint64_t g11 = 40000000u;   // (项数+2)×40k 间隔的 10 倍裕量
+            while (g11-- && sum_fc < 0) {
+                cycle(); watch_commit(); diag();
+                if (dut->pl_pkt_val) {
+                    uint64_t pkt = (uint64_t)dut->pl_pkt;
+                    // uart_link 线序 = LSB 字节先行：按线序重组再大端解码（与控制台一致）
+                    pkt = ((pkt & 0x00000000000000FFULL) << 56) |
+                          ((pkt & 0x000000000000FF00ULL) << 40) |
+                          ((pkt & 0x0000000000FF0000ULL) << 24) |
+                          ((pkt & 0x00000000FF000000ULL) << 8)  |
+                          ((pkt & 0x000000FF00000000ULL) >> 8)  |
+                          ((pkt & 0x0000FF0000000000ULL) >> 24) |
+                          ((pkt & 0x00FF000000000000ULL) >> 40) |
+                          ((pkt & 0xFF00000000000000ULL) >> 56);
+                    int tag = (int)(pkt >> 62) & 0x3;
+                    if (tag == 1 && n_ent < 32) {
+                        int idx = (int)(pkt >> 57) & 0x1F;
+                        ent_isbmp[idx] = (int)(pkt >> 56) & 1;
+                        ent_pv[idx]    = (int)(pkt >> 55) & 1;
+                        ent_pw[idx]    = (int)(pkt >> 49) & 0x3F;
+                        ent_nx[idx]    = (int)(pkt >> 43) & 0x3F;
+                        ent_pr[idx]    = (int)(pkt >> 37) & 0x3F;
+                        n_ent++;
+                    } else if (tag == 2) {
+                        // {2'b10, file_cnt[61:56], bmp_cnt[55:50], wav_cnt[49:44],
+                        //  first_bmp[43:38], img_idx[37:33], first_idx_r[32:28],
+                        //  load_busy[27], scan_active[26], ld_state[25:23], 23'b0}
+                        sum_fc = (int)(pkt >> 56) & 0x3F;
+                        sum_bc = (int)(pkt >> 50) & 0x3F;
+                        sum_wc = (int)(pkt >> 44) & 0x3F;
+                        sum_fb = (int)(pkt >> 38) & 0x3F;
+                        sum_ii = (int)(pkt >> 33) & 0x1F;
+                    }
+                }
+            }
+            check(sum_fc >= 0, "S11 转储收到收口包");
+            if (sum_fc >= 0) {
+                check(n_ent == n_items, "S11 条目包数=播放列表项数");
+                check(sum_fc == n_items, "S11 file_cnt 与 golden 一致");
+                int exp_bc = 0, exp_wc = 0;
+                for (int i = 0; i < n_items; i++)
+                    (g.bmps[i].is_wav ? exp_wc : exp_bc)++;
+                check(sum_bc == exp_bc && sum_wc == exp_wc, "S11 bmp/wav 计数一致");
+                check(sum_fb == exp_first, "S11 first_bmp 一致");
+                check(sum_ii == start9, "S11 光标=环遍历起点");
+                for (int i = 0; i < n_items; i++) {
+                    if (i >= n_ent) break;
+                    check(ent_isbmp[i] == !g.bmps[i].is_wav,
+                          "S11 项类型与 golden 一致");
+                    if (pair_of[i] >= 0) {
+                        check(ent_pv[i] == 1 && ent_pw[i] == pair_of[i],
+                              "S11 配对表与 golden 一致");
+                    }
+                    if (!g.bmps[i].is_wav) {
+                        check(ent_nx[i] == em_nxt[i] && ent_pr[i] == em_prv[i],
+                              "S11 跳表与 golden 建表一致");
+                    }
+                }
             }
         }
     }

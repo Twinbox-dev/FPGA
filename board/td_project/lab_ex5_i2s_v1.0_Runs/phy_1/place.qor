@@ -2,28 +2,28 @@
 | QoR metrics               |         value               |
 -----------------------------------------------------------
 | Timing                    |                             |
-|     Setup WNS             |        -6693                |
-|     Setup TNS             |      -342229                |
-|     Num of violated S-EP  |          153                |
-|     FMAX                  |    68.060MHz                |
-|     SWNS path clock period |       8000ps                |
-|     Hold WNS              |           39                |
-|     Hold TNS              |            0                |
-|     Num of violated H-EP  |            0                |
+|     Setup WNS             |        -5843                |
+|     Setup TNS             |      -577130                |
+|     Num of violated S-EP  |          994                |
+|     FMAX                  |    63.119MHz                |
+|     SWNS path clock period |      10000ps                |
+|     Hold WNS              |          -11                |
+|     Hold TNS              |          -55                |
+|     Num of violated H-EP  |            5                |
 -----------------------------------------------------------
 | Routing Resource          |                             |
-|     Wire length           |       698314                |
+|     Wire length           |       836756                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #slices               |         7741                |
-|     slices percentage     |       78.99%                |
-|     #RAMs                 |           33                |
-|     #DSPs                 |            4                |
+|     #slices               |         8751                |
+|     slices percentage     |       89.30%                |
+|     #RAMs                 |           38                |
+|     #DSPs                 |            5                |
 |     #DRAMHARDCON          |            0                |
 -----------------------------------------------------------
 | Congestion                |                             |
-|     Top 1% tile util      |           51                |
-|     Top 1% tile avg util  |       53.24%                |
+|     Top 1% tile util      |           57                |
+|     Top 1% tile avg util  |       59.45%                |
 |     Over 100% util #tile  |            0                |
 -----------------------------------------------------------
 Report place stage QoR done.

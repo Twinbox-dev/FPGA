@@ -1,5 +1,7 @@
 
-module video_rgb_to_axis_640x480(
+module video_rgb_to_axis_640x480 #(
+    parameter integer H_ACTIVE = 1280
+)(
     input  wire        I_clk,
     input  wire        I_rst,
     input  wire        I_vs,
@@ -44,7 +46,7 @@ always @(posedge I_clk or posedge I_rst) begin
         if (I_de) begin
             if (!S_de_1d) begin
                 // 一行首像素
-                S_x_cnt <= 11'd0;
+                S_x_cnt <= 11'd1;
                 if (S_frame_arm) begin
                     O_video_user <= 1'b1;
                     S_frame_arm  <= 1'b0;
@@ -54,8 +56,8 @@ always @(posedge I_clk or posedge I_rst) begin
                 S_x_cnt <= S_x_cnt + 11'd1;
             end
 
-            // 640x480 最后一个有效像素
-            if (S_x_cnt == 11'd639)
+            // TLAST 与本行最后一个有效像素同拍（计数器在首像素后为 1）。
+            if (S_x_cnt == H_ACTIVE - 1)
                 O_video_last <= 1'b1;
         end
         else begin

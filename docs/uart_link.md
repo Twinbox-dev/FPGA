@@ -55,6 +55,7 @@ ctrl_core 持有：音量在 top 送 HDMI 核前做 `×gain>>3`（gain=8 恒等�
 | 0x27 | `'` | 脉动灵敏度 +1（4 档 0..3，上电 1）|
 | 0x3B | `;` | 脉动灵敏度 -1 |
 | 0x53 | `S` | 回读一包状态 |
+| 0x4C | `L` | 播放列表转储（调试，见下"转储包"）|
 
 - 未知字节、不成对字节**静默丢弃**。
 - `N`/`A`/`P` 以 **100 ms 低脉冲**注入按键线，与物理按键线相与后走
@@ -97,6 +98,28 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 （面板已退休，UART 是该组遥测的唯一出口）。flagA/flagB 为准静态电平直取；
 underrun 来自 74.25M 域的粘滞寄存器，模块内 2FF 同步。发送中的新请求丢弃
 （快速连键时部分 ACK 会丢，人手速度不会）。
+
+**转储包（'L' 调试命令，2026-10-04 加）**——回 N+1 个 8 字节包：每个播放列表
+条目一包，末尾收口包一包。**高 2 位作标签分帧**（01=条目 / 10=收口，ASCII
+<0x80 永不冲突），条目包按索引 0,1,2… 顺序发出，包间隔 400µs：
+
+```
+条目包  01 | idx[4:0] | is_bmp | pair_valid | pair_wav[5:0] | nxt[5:0] | prv[5:0] | 37'b0
+收口包  10 | file_cnt | bmp_cnt | wav_cnt | first_bmp | img_idx[4:0] | first_idx_r[4:0] | load_busy | scan_active | ld_state[2:0] | 23'b0
+```
+
+| 字段 | 含义 |
+|------|------|
+| is_bmp | 该条目是 BMP（用跳表重建：`i==first_bmp` 或 `nxt_map[prv_map[i]]==i`；**不占用** fat32_ro 与音频扫描共享的查找口）|
+| pair_valid / pair_wav | 该 BMP 有合法同名 WAV / 其 WAV 的播放列表索引 |
+| nxt / prv | 循环跳表：下一张/上一张按下后将要装载的条目（仅 BMP 项有效）|
+| first_bmp / first_idx_r | 扫描建表的首 BMP / 首图候选（坏图推进）|
+| img_idx / load_busy / scan_active / ld_state | 发收口包瞬间的光标与装载/扫描状态快照 |
+
+**用途**：环缺图/单向切图/切图失效类板级问题的第一手数据——跳表对不对
+（nxt/prv 链）、配对表建没建、光标卡在哪个条目，一条 `L` 全看到。PC 端解码：
+`python scripts/pl_dump.py COM7 1000000`（或以太网模式 `--udp`）。仿真侧
+board_sim S11 用例对同一通路做 golden 比对。
 
 **亮度实现**：档位经**格雷码**跨时钟域（sd_card_clk → video_clk，每次步进
 只变 1 位，同步后恒为合法旧值/新值），video 域每通道加偏移 `(档-4)×16` 并

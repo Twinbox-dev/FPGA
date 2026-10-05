@@ -39,7 +39,19 @@ module eth_subsys(
     output wire        cmd_pending,
     input  wire        cmd_ack_t,
     input  wire        tx_tog,
-    input  wire [63:0] tx_pkt
+    input  wire [63:0] tx_pkt,
+
+    // 写侧分叉：图像发射流旁路（tap_clk = sd_card_clk 域；sys_rst = rst_all）
+    input  wire        sys_rst,
+    input  wire        tap_clk,
+    input  wire        tap_val,
+    input  wire [31:0] tap_word,
+    input  wire        tap_end,
+    // 读侧 dump：显示读数据捕获流（独立源时钟 video_clk，type=0x0004）
+    input  wire        tap2_clk,
+    input  wire        tap2_val,
+    input  wire [31:0] tap2_word,
+    input  wire        tap2_end
 );
     parameter DEVICE           = "EG4";
     parameter LOCAL_UDP_PORT   = 16'h0001;
@@ -134,7 +146,16 @@ module eth_subsys(
         .cmd_pending       (cmd_pending),
         .cmd_ack_t         (cmd_ack_t),
         .tx_tog            (tx_tog),
-        .tx_pkt            (tx_pkt)
+        .tx_pkt            (tx_pkt),
+        .sys_rst           (sys_rst),
+        .tap_clk           (tap_clk),
+        .tap_val           (tap_val),
+        .tap_word          (tap_word),
+        .tap_end           (tap_end),
+        .tap2_clk          (tap2_clk),
+        .tap2_val          (tap2_val),
+        .tap2_word         (tap2_word),
+        .tap2_end          (tap2_end)
     );
 
     // ================= UDP/IP 协议栈（官方 IP）=================
