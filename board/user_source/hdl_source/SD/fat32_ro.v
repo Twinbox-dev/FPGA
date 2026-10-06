@@ -160,7 +160,8 @@ module fat32_ro (
 
     // ---------------- 播放列表 ----------------
     // 类型：0=BMP 1=WAV（扩展名匹配，见目录扫描）
-    reg [31:0] pl_cluster [0:31];
+    (* ram_style = "bram_32k" *) reg [31:0] pl_cluster [0:31];
+    reg [31:0] pl_cluster_q;
     reg [31:0] pl_size    [0:31];
     reg        pl_is_wav  [0:31];
     reg [63:0] pl_name    [0:31];   // 8 字节主名（字节 k 在 [8k+7:8k]），供同名配对
@@ -178,6 +179,18 @@ module fat32_ro (
     wire ext_is_bmp = (ext1 == 8'h42) && (ext2 == 8'h4D) && (ext3 == 8'h50);  // "BMP"
     wire ext_is_wav = (ext1 == 8'h57) && (ext2 == 8'h41) && (ext3 == 8'h56);  // "WAV"
     wire ext_hit    = ext_is_bmp || ext_is_wav;
+
+    // Registered playlist cluster lookup: the existing S_OPEN cycle uses
+    // this value, so the external file-request timing remains unchanged.
+    wire pl_cluster_store = rst_n && state == S_STREAM && i_dval &&
+                            rd_kind == K_DIR && !dir_end &&
+                            entry_ph == 5'd31 && !ent_skip && ext_hit &&
+                            pl_cnt < PL_MAX;
+    always @(posedge clk) begin
+        if (pl_cluster_store)
+            pl_cluster[pl_cnt[4:0]] <= {clus_hi, clus_lo};
+        pl_cluster_q <= pl_cluster[i_file_idx];
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -363,7 +376,6 @@ module fat32_ro (
                                         // 项完成：大小第 4 字节直通，命中则入播放列表
                                         if (!ent_skip && !dir_end && ext_hit
                                             && pl_cnt < PL_MAX) begin
-                                            pl_cluster[pl_cnt[4:0]] <= {clus_hi, clus_lo};
                                             pl_size[pl_cnt[4:0]]    <= {i_data, fsize_le};
                                             pl_is_wav[pl_cnt[4:0]]  <= ext_is_wav;
                                             pl_name[pl_cnt[4:0]]    <= name_reg;
@@ -595,7 +607,6 @@ module fat32_ro (
                             o_err <= 1'b1;      // 索引越界：脉冲，留在 MOUNTED
                         end
                         else begin
-                            file_cluster <= pl_cluster[i_file_idx];
                             cur_size     <= pl_size[i_file_idx];
                             o_cur_is_wav <= pl_is_wav[i_file_idx];
                             file_bytes   <= 32'd0;
@@ -607,7 +618,8 @@ module fat32_ro (
                 end
 
                 S_OPEN: begin
-                    clu_lba <= (file_cluster - 32'd2) << spc_log2;
+                    file_cluster <= pl_cluster_q;
+                    clu_lba <= (pl_cluster_q - 32'd2) << spc_log2;
                     state   <= S_LBA;
                 end
 
