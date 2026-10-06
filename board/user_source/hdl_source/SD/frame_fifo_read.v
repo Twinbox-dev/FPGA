@@ -284,7 +284,11 @@ begin
 				begin
 					state <= S_ACK;
 				end
-				else if(cur_wrusedw < (FIFO_DEPTH - BURST_SIZE) && ~App_wr_busy)
+				// The SDRAM controller may be servicing a refresh even when the
+				// application FIFO has room. Starting a burst then can return the
+				// previous four data words repeatedly for the whole 256-word burst.
+				else if(cur_wrusedw < (FIFO_DEPTH - BURST_SIZE) &&
+				        ~App_wr_busy && ~Sdr_busy && ~Sdr_init_ref_vld)
 				begin
 					state <= S_READ_BURST;
 					App_rd_en_r <= 1'b1;

@@ -8,6 +8,8 @@
 `define   ROW_WIDTH                        11
 `define   BA_WIDTH                        2
 
-`define	  SDR_CLK_PERIOD				1000000000/125000000
-`define   SELF_REFRESH_INTERVAL			64000000/`SDR_CLK_PERIOD/2**(`ROW_WIDTH)
+// ext_mem_clk is 100 MHz: one cycle is 10 ns. Keep the refresh macro grouped;
+// an unparenthesized 1e9/125e6 expansion made the integer division below zero.
+`define   SDR_CLK_PERIOD                10
+`define   SELF_REFRESH_INTERVAL         (64000000 / (`SDR_CLK_PERIOD * (2 ** (`ROW_WIDTH))))
 

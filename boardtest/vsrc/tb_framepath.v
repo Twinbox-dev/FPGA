@@ -22,7 +22,7 @@ module tb_framepath;
     frame_read_write #(.FRAME_WIDTH(16), .FRAME_HEIGHT(64),
                        .BURST_SIZE(256), .WRITE_V_FLIP(0)) dut (
         .rst(rst), .mem_clk(mem_clk),
-        .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b1), .Sdr_busy(1'b0),
+        .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b0), .Sdr_busy(1'b0),
         .App_rd_en(app_rd_en), .App_rd_addr(app_rd_addr),
         .Sdr_rd_en(sdr_rd_en), .Sdr_rd_dout(sdr_rd_dout),
         .read_clk(video_clk), .read_req(read_req), .read_req_ack(read_ack),

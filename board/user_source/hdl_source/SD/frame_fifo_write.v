@@ -283,7 +283,9 @@ begin
 					state <= S_ACK;
 				end
 				//if the FIFO space is a burst write request, goto burst write state
-				else if(into_burst)
+				// A refresh may temporarily reject application writes. Do not
+				// consume a FIFO burst until the SDRAM port is ready again.
+				else if(into_burst && ~Sdr_busy && ~Sdr_init_ref_vld)
 				begin
 					state <= S_WRITE_BURST;
 					//wr_burst_len <= BURST_SIZE[BURST_BITS - 1:0];

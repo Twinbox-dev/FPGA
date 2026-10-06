@@ -31,6 +31,7 @@ module tb_readeng;
     wire [ADDR_BITS-1:0] app_rd_addr;
     reg         sdr_rd_en = 0;
     reg [31:0]  sdr_rd_dout;
+    reg         sdr_ref_vld = 0, sdr_busy = 0;
     wire        app_wr_en;
     wire [ADDR_BITS-1:0] app_wr_addr;
     wire [31:0] app_wr_din;
@@ -45,8 +46,8 @@ module tb_readeng;
     wire        v_aclr, a_aclr, a_ch_act;
 
     frame_fifo_read #(.BURST_SIZE(BURST)) u_rd (
-        .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b1),
-        .Sdr_busy(1'b0), .Sdr_rd_en(sdr_rd_en), .App_wr_busy(1'b0),
+        .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(sdr_ref_vld),
+        .Sdr_busy(sdr_busy), .Sdr_rd_en(sdr_rd_en), .App_wr_busy(1'b0),
         .O_rd_busy(), .App_rd_en(app_rd_en), .App_rd_addr(app_rd_addr),
         .read_req(v_req), .read_req_ack(v_ack), .read_finish(v_fin),
         .read_addr_0(BUF0[ADDR_BITS-1:0]), .read_addr_1(BUF1[ADDR_BITS-1:0]),
@@ -68,8 +69,8 @@ module tb_readeng;
     wire        w_aclr;
 
     frame_fifo_write #(.BURST_SIZE(BURST), .FRAME_WIDTH(640), .FRAME_HEIGHT(720)) u_wr (
-        .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b1),
-        .Sdr_busy(1'b0), .App_rd_busy(1'b0), .O_wr_busy(),
+        .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(sdr_ref_vld),
+        .Sdr_busy(sdr_busy), .App_rd_busy(1'b0), .O_wr_busy(),
         .App_wr_en(app_wr_en), .App_wr_addr(app_wr_addr),
         .write_req(wr_req), .write_req_ack(wr_ack), .write_finish(wr_fin),
         .write_addr_0(BUF0[ADDR_BITS-1:0]), .write_addr_1(BUF1[ADDR_BITS-1:0]),
@@ -267,7 +268,7 @@ module tb_readeng;
     endtask
 
     // ================= 主序列 =================
-    integer i, t;
+    integer i, t, t0_errors;
     initial begin
         v_idx = 0; a_idx = 2; v_len = 0; a_len = 0;
         wr_idx = 0; wr_len = 0;
@@ -275,14 +276,56 @@ module tb_readeng;
         rst = 0;
         repeat (5) @(posedge clk);
 
+        // T0: a refresh window owns SDRAM. A queued video request must wait
+        // at the burst boundary instead of issuing an entire ignored burst.
+        t0_errors = errors;
+        sdr_ref_vld = 1; sdr_busy = 0;
+        v_idx = 0; v_len = BURST; v_req = 1;
+        t = 0;
+        while (!v_ack && t < 100) begin @(negedge clk); t = t + 1; end
+        if (!v_ack) fail_msg("T0 video request ack timeout");
+        v_req = 0;
+        repeat (10) begin
+            @(negedge clk);
+            if (app_rd_en) fail_msg("T0 read issued while refresh valid");
+        end
+        sdr_ref_vld = 0; sdr_busy = 1;
+        repeat (10) begin
+            @(negedge clk);
+            if (app_rd_en) fail_msg("T0 read issued while SDRAM busy");
+        end
+        sdr_ref_vld = 0; sdr_busy = 0;
+        t = 0;
+        while (!v_fin && t < 200) begin @(negedge clk); t = t + 1; end
+        if (!v_fin) fail_msg("T0 read did not resume after refresh");
+        else if (errors == t0_errors) $display("T0 refresh read boundary gate: PASS");
+
         // ---- T1: 音频写（idx=2）必须顺序落址（fix A）----
+        // Keep the write request queued across each controller inhibit signal.
+        // The FIFO may fill, but App_wr_en must not start a burst yet.
+        t0_errors = errors;
+        sdr_ref_vld = 1; sdr_busy = 0;
         wr_idx = 2; wr_len = 64; wr_total = 64; wr_sent = 0; wr_active = 1; wr_go = 1;
+        t = 0;
+        while (!wr_ack && t < 100) begin @(negedge clk); t = t + 1; end
+        if (!wr_ack) fail_msg("T1 write request ack timeout");
+        repeat (30) begin
+            @(negedge clk);
+            if (app_wr_en) fail_msg("T1 write issued while refresh valid");
+        end
+        sdr_ref_vld = 0; sdr_busy = 1;
+        repeat (30) begin
+            @(negedge clk);
+            if (app_wr_en) fail_msg("T1 write issued while SDRAM busy");
+        end
+        sdr_ref_vld = 0; sdr_busy = 0;
         t = 0; while (!wr_fin && t < 100000) begin @(posedge clk); t = t + 1; end
         wr_active = 0;
         if (!wr_fin) fail_msg("T1 write timeout");
         repeat (20) @(posedge clk);
         for (i = 0; i < 64; i = i + 1)
             if (sdram[BUF2 + i] !== i[31:0]) fail_msg("T1 audio write not sequential");
+        if (errors == t0_errors) $display("T1 refresh write boundary gate: PASS");
         $display("T1 audio write sequential (no vflip): PASS");
 
         // ---- T2: 图像写（idx=0）必须仍翻转 ----
@@ -372,7 +415,7 @@ module tb_readeng;
 
         gen_en = 0;
         if (errors == 0) $display("==== ALL PASS ====");
-        else             $display("==== %0d FAILURES ====", errors);
+        else             $fatal(1, "==== %0d FAILURES ====", errors);
         $finish;
     end
 
