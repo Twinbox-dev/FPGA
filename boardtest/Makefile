@@ -30,7 +30,11 @@ regress: $(SIM)
 smoke: $(SIM)
 	SIM_SMOKE=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
+# Pairing table, boot audio and the first image/audio switch.
+paircheck: $(SIM)
+	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
+
+.PHONY: run clean regress smoke paircheck readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 

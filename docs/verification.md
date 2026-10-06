@@ -1,6 +1,6 @@
 # 验证与日常迭代
 
-本文记录**当前已经实现**的验证入口。稳定基线是 `main` 的 `fc7c894`：
+本文记录**当前已经实现**的验证入口。已上板稳定基线是 `main` 的 `98caa0b`：
 SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上板黑屏，
 因此开发和对照均以 100 MHz 为准。最终多分辨率修复的证据见
 [`multires_fix_postmortem.md`](multires_fix_postmortem.md)。
@@ -9,23 +9,26 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 
 | 改动 | 开发时先运行 | 收口时 |
 |---|---|---|
- `frame_fifo_write/read`、仲裁或跨域 FIFO | `make -C boardtest framepath arbrace readeng` | 七卡回归、TD、上板 |
- `video_delay`、AXI 像素适配 | `make -C boardtest vdelay axis` | 七卡回归、HDMI 上板 |
- `eth_front`、命令、Web 预览 | `make -C boardtest ethfront cmdarb uart`；`node scripts/web_console/test_frame_view.js`；`python scripts/web_console/test_stream.py` | 七卡回归、PC/板卡联测 |
- SD/FAT/BMP/WAV 状态机 | `make -C boardtest smoke`，再针对卡型选例 | 七卡回归、真实卡上板 |
- 仅文档或不执行的脚本 | 相应格式/脚本检查 | 无需为了文档重跑全部仿真 |
+| `frame_fifo_write/read`、仲裁或跨域 FIFO | `make -C boardtest framepath arbrace readeng` | 七卡回归、TD、上板 |
+| `video_delay`、AXI 像素适配 | `make -C boardtest vdelay axis` | 七卡回归、HDMI 上板 |
+| `eth_front`、命令、Web 预览 | `make -C boardtest ethfront cmdarb uart`；`node scripts/web_console/test_frame_view.js`；`python scripts/web_console/test_stream.py` | 七卡回归、PC/板卡联测 |
+| SD/FAT/BMP/WAV 状态机 | `make -C boardtest smoke`；涉及配对时加 `paircheck` | 七卡回归、真实卡上板 |
+| 仅文档或不执行的脚本 | 相应格式/脚本检查 | 无需为了文档重跑全部仿真 |
 
 `boardtest` 需要 WSL/Linux 的 Verilator、make 和测试卡镜像。已有构建结果可复用；
 修改对应源码后 make 会重编。只跑一张卡：
 
 ```sh
 make -C boardtest smoke
+make -C boardtest paircheck
 make -C boardtest regress CARDS="card_user card_user_2wav"
 make -C boardtest regress
 ```
 
 `smoke` 使用 `card_diag`，在首图像素逐字比对与全部 WAV 扫描/BUF2 打包比对后
 结束（`SIM_SMOKE=1`），**不覆盖播放回卷、切图、上一张或自动轮播**；
+`paircheck` 在全列表配对 golden 断言、首图音频和第一次图音切换后结束
+（`SIM_PAIR=1`），实测诊断卡 18/18、约 1 分 21 秒；不覆盖后续轮播/回卷。
 `regress` 默认仍运行全部七卡。可选卡名固定为
 `card card_mbr card_empty card_frag card_diag card_user card_user_2wav`，脚本会先检查
 镜像存在。日志生成在 `boardtest/logs/`，属于可再生输出，不纳入 Git。
