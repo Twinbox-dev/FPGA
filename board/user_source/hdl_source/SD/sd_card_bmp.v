@@ -36,7 +36,7 @@
 //   尾补 0x80。写口在图像装载（buf 0/1）与音频扫描（buf 2）间分时复用。
 //
 // 同名配对 + 原子提交（S4）：
-//   扫描相位前导先把播放列表全部条目的 8 字节主名快照进 pl_names[0:31]；
+//   扫描相位前导保留原等待拍数；配对时直接查询 fat32_ro 的播放列表主名；
 //   合法 WAV 项关闭时顺序比对 BMP 名，建 pair_valid/pair_wav/wav_len_rec 配对表。
 //   切图 N+1 时：图入空闲 BUF0/1，配对 WAV 重读入空闲音频缓冲 BUF2/3
 //   （aud_disp_buf 乒乓，与 disp_buf_idx 同节奏），图完成且音频写尽后
@@ -50,7 +50,8 @@ module sd_card_bmp #(
     parameter integer CLK_FREQ_HZ       = 100_000_000,
     parameter [31:0]  SCAN_START_SECTOR = 32'd0,      // 保留参数（兼容 top 例化）
     parameter [31:0]  SCAN_MAX_SECTOR   = 32'd131071,
-    parameter [2:0]   SCAN_TARGET_COUNT = 3'd4
+    parameter [2:0]   SCAN_TARGET_COUNT = 3'd4,
+    parameter         ENABLE_LIST_DIAG  = 1'b1
 )(
     input                       clk,
     input                       rst,
@@ -73,7 +74,7 @@ module sd_card_bmp #(
     // ---- 播放列表转储（'L' 调试命令）：ctrl_core 发起，逐条目 64bit 包回吐 ----
     input                       pl_dump_start,
     output      [63:0]          pl_pkt,        // 线序：uart_link LSB 字节先行，此处已反转
-    output reg                  pl_pkt_val,
+    output                      pl_pkt_val,
     output      [7:0]           ld_diag,       // 装载诊断：{0,result[1:0],ld[2:0],busy,img_wav}
 
     // ---- 写侧分叉探针：图像会话发射字同步馈以太网流（撕裂取证/上位机预览）----
@@ -292,10 +293,8 @@ module sd_card_bmp #(
     // ---- 同名配对（S4）：名字快照 + BMP↔WAV 配对表 ----
     reg        scan_start_pulse;      // 外控→扫描相位：启动扫描（单写方：外控块）
     reg        scan_nowav_pulse;      // 外控→扫描相位：无 WAV 直接置 scan_done（单写方：外控块）
-    reg        npass_active;          // 名字快照扫描（音频扫描相位前导）
+    reg        npass_active;          // 保留原播放列表前导等待拍数
     reg [5:0]  npass_k;
-    reg [63:0] pl_names [0:31];       // 全条目 8 字节主名快照（字节 k 在 [8k+7:8k]）
-    reg [31:0] pl_iswav_map;          // 位 k = 条目 k 是 WAV
     reg [63:0] aud_cur_name;          // 当前扫描项名字（请求拍锁存）
     reg        pmatch_active;         // 合法项关闭后顺序比对 BMP 名
     reg [5:0]  pmatch_j;
@@ -676,7 +675,7 @@ module sd_card_bmp #(
         .o_err       (fat_err),
         .o_file_idle (fat_idle),
         .o_dbg_state (fat_dbg),
-        .i_pl_idx    (npass_active ? npass_k[4:0] : aud_k[4:0]),
+        .i_pl_idx    (pmatch_active ? pmatch_j[4:0] : aud_k[4:0]),
         .o_pl_name   (pl_name),
         .o_pl_is_wav (pl_is_wav),
         .o_pl_valid  (pl_valid)
@@ -1276,8 +1275,11 @@ module sd_card_bmp #(
     // uart_link 发送 LSB 字节先行（pkt[0]<=tx_pkt[7:0]，与 ctrl_core 的 ACK/状态包
     // 同一约定）——转储包按 MSB-first 组好整包字节反转后再上线路，控制台按线序
     // 大端解码无需任何偏移调整。
-    assign pl_pkt = {pl_pkt_be[7:0],   pl_pkt_be[15:8],  pl_pkt_be[23:16], pl_pkt_be[31:24],
-                     pl_pkt_be[39:32], pl_pkt_be[47:40], pl_pkt_be[55:48], pl_pkt_be[63:56]};
+    assign pl_pkt = ENABLE_LIST_DIAG ?
+                    {pl_pkt_be[7:0],   pl_pkt_be[15:8],  pl_pkt_be[23:16], pl_pkt_be[31:24],
+                     pl_pkt_be[39:32], pl_pkt_be[47:40], pl_pkt_be[55:48], pl_pkt_be[63:56]} : 64'd0;
+    reg pl_pkt_val_r;
+    assign pl_pkt_val = ENABLE_LIST_DIAG && pl_pkt_val_r;
     reg [5:0]  plst_idx;
     reg [15:0] plst_pace;
     wire [5:0] plst_prv_i     = bmp_prv_map[6*plst_idx[4:0] +: 6];
@@ -1291,10 +1293,10 @@ module sd_card_bmp #(
             plst_idx   <= 6'd0;
             plst_pace  <= 16'd0;
             pl_pkt_be  <= 64'd0;
-            pl_pkt_val <= 1'b0;
+            pl_pkt_val_r <= 1'b0;
         end
         else begin
-            pl_pkt_val <= 1'b0;
+            pl_pkt_val_r <= 1'b0;
             case (plst_st)
                 3'd0: if (pl_dump_start) begin
                     plst_idx <= 6'd0;
@@ -1305,7 +1307,7 @@ module sd_card_bmp #(
                     plst_st   <= 3'd2;
                 end
                 3'd1: begin
-                    pl_pkt_val <= 1'b1;
+                    pl_pkt_val_r <= 1'b1;
                     plst_pace  <= 16'd40000;
                     if (plst_idx == file_cnt) begin
                         pl_pkt_be  <= {2'b10, file_cnt, bmp_cnt, wav_cnt, first_bmp_w,
@@ -1332,7 +1334,7 @@ module sd_card_bmp #(
                       else
                           plst_st <= 3'd5;
                 3'd5: begin
-                    pl_pkt_val <= 1'b1;
+                    pl_pkt_val_r <= 1'b1;
                     pl_pkt_be  <= {2'b11, ld_result, snap_ld, snap_words,
                                    snap_pix, snap_h, 4'b0};
                     plst_pace  <= 16'd40000;
@@ -1658,8 +1660,8 @@ module sd_card_bmp #(
     end
 
     // ==================== 音频扫描相位（S1/S4）====================
-    // 首图提交后启动。前导 npass：每拍快照一个播放列表条目的主名/类型
-    // （pl 查找口组合读出，31 拍扫完 31 项上限），建 pl_names/pl_iswav_map。
+    // 首图提交后启动。前导 npass 保留原来按 file_cnt 等待的拍数；
+    // 主名/类型已保存在 fat32_ro，pmatch 阶段分时复用其组合查找口。
     // 然后顺序遍历 WAV 项送 wav_reader 解析；合法项关闭时锁存长度进 wav_len_rec，
     // 并起 pmatch 顺序比对 BMP 主名，命中则记 pair_valid/pair_wav 配对表。
     // 全部项走完后置 aud_scan_done，开放轮播。与图像装载共用单 fat32_ro（分时）。
@@ -1675,7 +1677,6 @@ module sd_card_bmp #(
             aud_item_done_pulse <= 1'b0;
             npass_active        <= 1'b0;
             npass_k             <= 6'd0;
-            pl_iswav_map        <= 32'd0;
             aud_cur_name        <= 64'd0;
             pmatch_active       <= 1'b0;
             pmatch_j            <= 6'd0;
@@ -1692,7 +1693,6 @@ module sd_card_bmp #(
                 aud_k           <= 6'd0;
                 aud_item_active <= 1'b0;
                 npass_active    <= 1'b0;
-                pl_iswav_map    <= 32'd0;
                 pair_valid      <= 32'd0;
             end
             else if (scan_start_pulse) begin
@@ -1710,9 +1710,7 @@ module sd_card_bmp #(
             end
             else if (aud_scan_active) begin
                 if (npass_active) begin
-                    // 名字快照：pl 查找口组合有效，一拍一项（i_pl_idx=npass_k）
-                    pl_names[npass_k[4:0]]  <= pl_name;
-                    pl_iswav_map[npass_k[4:0]] <= pl_is_wav;
+                    // 原名字快照阶段的等待节奏保留，不再复制重复表项。
                     if (npass_k + 6'd1 >= file_cnt)
                         npass_active <= 1'b0;
                     npass_k <= npass_k + 6'd1;
@@ -1722,8 +1720,7 @@ module sd_card_bmp #(
                     if (pmatch_j >= file_cnt)
                         pmatch_active <= 1'b0;
                     else begin
-                        if (!pl_iswav_map[pmatch_j[4:0]] &&
-                            (pl_names[pmatch_j[4:0]] == aud_cur_name)) begin
+                        if (pl_valid && !pl_is_wav && (pl_name == aud_cur_name)) begin
                             pair_valid[pmatch_j[4:0]] <= 1'b1;
                             pair_wav[pmatch_j[4:0]]   <= {1'b0, aud_req_idx};
                         end

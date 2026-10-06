@@ -54,7 +54,12 @@ module board_top (
     output wire [63:0] pl_pkt,
     output wire        pl_pkt_val
 );
-    sd_card_bmp u_sd_card_bmp_m0 (
+`ifdef FPGA_LEAN_LIST_DIAG
+    localparam ENABLE_LIST_DIAG_BUILD = 1'b0;
+`else
+    localparam ENABLE_LIST_DIAG_BUILD = 1'b1;
+`endif
+    sd_card_bmp #(.ENABLE_LIST_DIAG(ENABLE_LIST_DIAG_BUILD)) u_sd_card_bmp_m0 (
         .clk                 (clk),
         .rst                 (rst),
         .key_next            (key_next),

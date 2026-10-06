@@ -731,6 +731,18 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (std::getenv("SIM_LEAN_LIST")) {
+        dut->pl_dump_start = 1;
+        cycle();
+        dut->pl_dump_start = 0;
+        bool quiet = (dut->pl_pkt == 0 && !dut->pl_pkt_val);
+        for (int i = 0; i < 45000; i++) {
+            cycle();
+            quiet &= (dut->pl_pkt == 0 && !dut->pl_pkt_val);
+        }
+        check(quiet, "lean build omits playlist dump packets");
+    }
+
     // Fast integration boundary: mount + first BMP pixels + every scanned WAV
     // and its SDRAM packing are checked above. Playback and navigation stay in
     // the default full regression.
@@ -772,6 +784,21 @@ int main(int argc, char **argv) {
             std::printf("[#%zu→%s] ", b,
                         pair_of[b] >= 0 ? g.bmps[pair_of[b]].name.c_str() : "静音");
     std::printf("\n");
+    {
+        auto &pv = dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__pair_valid;
+        auto &pw = dut->rootp->board_top__DOT__u_sd_card_bmp_m0__DOT__pair_wav;
+        bool pair_ok = true;
+        for (size_t b = 0; b < g.bmps.size() && b < 32; b++) {
+            bool has = (pv >> b) & 1;
+            int got = has ? (int)pw[b] : -1;
+            if (got != pair_of[b]) {
+                std::printf("      配对失配 #%zu: RTL=%d golden=%d\n",
+                            b, got, pair_of[b]);
+                pair_ok = false;
+            }
+        }
+        check(pair_ok, "SP0 全播放列表配对表与 golden 一致");
+    }
 
     // ---- 音频验证辅助 ----
     // 验证：新音频缓冲（exp_buf）首次出现 → 下一圈标记，字节流 == 指定 WAV ×2 上采样
@@ -892,6 +919,13 @@ int main(int argc, char **argv) {
         exp_aud_buf = (exp_aud_buf == 3) ? 2 : 3;
     } else if (commits >= 2) {
         verify_silence("SD 第二图无配对");
+    }
+
+    // Focused pairing check: the complete table, boot audio and first
+    // image/audio switch are verified above. The default regression continues.
+    if (std::getenv("SIM_PAIR")) {
+        std::printf("===== %d passed, %d failed (SIM_PAIR) =====\n", pass, fail);
+        return fail ? 1 : 0;
     }
 
     // S3 按键 → 第三张

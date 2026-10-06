@@ -15,11 +15,20 @@ VSRCS := vsrc/board_top.v vsrc/sd_card_bmp.v vsrc/sd_adapter.v \
 CSRCS := csrc/board_sim.cpp csrc/sd_card_model.cpp csrc/fat32_golden.cpp
 
 SIM := build_board/sim_board
+SIM_LEAN := build_board_lean/sim_board
 
 $(SIM): $(VSRCS) $(CSRCS)
 	$(VERILATOR) --cc --exe --build -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT \
 	  --top-module board_top $(VSRCS) $(CSRCS) --Mdir build_board -o sim_board \
 	  -CFLAGS "-O3 -march=native"
+
+$(SIM_LEAN): $(VSRCS) $(CSRCS)
+	$(VERILATOR) --cc --exe --build -DFPGA_LEAN_LIST_DIAG -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT \
+	  --top-module board_top $(VSRCS) $(CSRCS) --Mdir build_board_lean -o sim_board \
+	  -CFLAGS "-O3 -march=native"
+
+lean-smoke: $(SIM_LEAN)
+	SIM_LEAN_LIST=1 SIM_SMOKE=1 ./$(SIM_LEAN) ../img/card_diag.img
 
 # 全量回归：7 张卡各起一个进程并行跑（16 核机器墙钟≈最慢单卡）。
 # 用法：make regress（或 ../scripts/run_all_sims.sh）；日志在 logs/
@@ -30,7 +39,11 @@ regress: $(SIM)
 smoke: $(SIM)
 	SIM_SMOKE=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
+# Pairing table, boot audio and the first image/audio switch.
+paircheck: $(SIM)
+	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
+
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 

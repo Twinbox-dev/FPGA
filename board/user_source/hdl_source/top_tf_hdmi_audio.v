@@ -1,4 +1,6 @@
 
+// Comment out this macro and resynthesize to restore UART 'L' playlist dumps.
+`define FPGA_LEAN_LIST_DIAG
 module top(
     input                       clk,
     input                       rst_n,
@@ -54,6 +56,12 @@ localparam DUMP_AT_SDRAM_OUTPUT = 1'b1;
 localparam DUMP_WRITE_PORT = 1'b0;
 // 在 mem_clk 域下，D 的 B 源：1=送进 SDRAM IP 的读地址，0=控制器返回数据。
 localparam DUMP_READ_REQUEST_ADDR = 1'b0;
+// The lean build omits UART 'L' snapshots; all playback and pixel paths stay on.
+`ifdef FPGA_LEAN_LIST_DIAG
+localparam ENABLE_LIST_DIAG_BUILD = 1'b0;
+`else
+localparam ENABLE_LIST_DIAG_BUILD = 1'b1;
+`endif
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -465,7 +473,8 @@ sd_card_bmp #(
     .CLK_FREQ_HZ       (100_000_000),
     .SCAN_START_SECTOR (32'd0),
     .SCAN_MAX_SECTOR   (32'd131071),
-    .SCAN_TARGET_COUNT (3'd4)
+    .SCAN_TARGET_COUNT (3'd4),
+    .ENABLE_LIST_DIAG  (ENABLE_LIST_DIAG_BUILD)
 ) sd_card_bmp_m0(
     .clk               (sd_card_clk),
     .rst               (rst_all),
