@@ -50,7 +50,8 @@ module sd_card_bmp #(
     parameter integer CLK_FREQ_HZ       = 100_000_000,
     parameter [31:0]  SCAN_START_SECTOR = 32'd0,      // 保留参数（兼容 top 例化）
     parameter [31:0]  SCAN_MAX_SECTOR   = 32'd131071,
-    parameter [2:0]   SCAN_TARGET_COUNT = 3'd4
+    parameter [2:0]   SCAN_TARGET_COUNT = 3'd4,
+    parameter         ENABLE_LIST_DIAG  = 1'b1
 )(
     input                       clk,
     input                       rst,
@@ -73,7 +74,7 @@ module sd_card_bmp #(
     // ---- 播放列表转储（'L' 调试命令）：ctrl_core 发起，逐条目 64bit 包回吐 ----
     input                       pl_dump_start,
     output      [63:0]          pl_pkt,        // 线序：uart_link LSB 字节先行，此处已反转
-    output reg                  pl_pkt_val,
+    output                      pl_pkt_val,
     output      [7:0]           ld_diag,       // 装载诊断：{0,result[1:0],ld[2:0],busy,img_wav}
 
     // ---- 写侧分叉探针：图像会话发射字同步馈以太网流（撕裂取证/上位机预览）----
@@ -1274,8 +1275,11 @@ module sd_card_bmp #(
     // uart_link 发送 LSB 字节先行（pkt[0]<=tx_pkt[7:0]，与 ctrl_core 的 ACK/状态包
     // 同一约定）——转储包按 MSB-first 组好整包字节反转后再上线路，控制台按线序
     // 大端解码无需任何偏移调整。
-    assign pl_pkt = {pl_pkt_be[7:0],   pl_pkt_be[15:8],  pl_pkt_be[23:16], pl_pkt_be[31:24],
-                     pl_pkt_be[39:32], pl_pkt_be[47:40], pl_pkt_be[55:48], pl_pkt_be[63:56]};
+    assign pl_pkt = ENABLE_LIST_DIAG ?
+                    {pl_pkt_be[7:0],   pl_pkt_be[15:8],  pl_pkt_be[23:16], pl_pkt_be[31:24],
+                     pl_pkt_be[39:32], pl_pkt_be[47:40], pl_pkt_be[55:48], pl_pkt_be[63:56]} : 64'd0;
+    reg pl_pkt_val_r;
+    assign pl_pkt_val = ENABLE_LIST_DIAG && pl_pkt_val_r;
     reg [5:0]  plst_idx;
     reg [15:0] plst_pace;
     wire [5:0] plst_prv_i     = bmp_prv_map[6*plst_idx[4:0] +: 6];
@@ -1289,10 +1293,10 @@ module sd_card_bmp #(
             plst_idx   <= 6'd0;
             plst_pace  <= 16'd0;
             pl_pkt_be  <= 64'd0;
-            pl_pkt_val <= 1'b0;
+            pl_pkt_val_r <= 1'b0;
         end
         else begin
-            pl_pkt_val <= 1'b0;
+            pl_pkt_val_r <= 1'b0;
             case (plst_st)
                 3'd0: if (pl_dump_start) begin
                     plst_idx <= 6'd0;
@@ -1303,7 +1307,7 @@ module sd_card_bmp #(
                     plst_st   <= 3'd2;
                 end
                 3'd1: begin
-                    pl_pkt_val <= 1'b1;
+                    pl_pkt_val_r <= 1'b1;
                     plst_pace  <= 16'd40000;
                     if (plst_idx == file_cnt) begin
                         pl_pkt_be  <= {2'b10, file_cnt, bmp_cnt, wav_cnt, first_bmp_w,
@@ -1330,7 +1334,7 @@ module sd_card_bmp #(
                       else
                           plst_st <= 3'd5;
                 3'd5: begin
-                    pl_pkt_val <= 1'b1;
+                    pl_pkt_val_r <= 1'b1;
                     pl_pkt_be  <= {2'b11, ld_result, snap_ld, snap_words,
                                    snap_pix, snap_h, 4'b0};
                     plst_pace  <= 16'd40000;

@@ -21,6 +21,8 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 ```sh
 make -C boardtest smoke
 make -C boardtest paircheck
+make -C boardtest lean-smoke
+SIM_LEAN_LIST=1 SIM_PAIR=1 boardtest/build_board_lean/sim_board img/card_diag.img
 make -C boardtest regress CARDS="card_user card_user_2wav"
 make -C boardtest regress
 ```

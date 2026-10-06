@@ -731,6 +731,18 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (std::getenv("SIM_LEAN_LIST")) {
+        dut->pl_dump_start = 1;
+        cycle();
+        dut->pl_dump_start = 0;
+        bool quiet = (dut->pl_pkt == 0 && !dut->pl_pkt_val);
+        for (int i = 0; i < 45000; i++) {
+            cycle();
+            quiet &= (dut->pl_pkt == 0 && !dut->pl_pkt_val);
+        }
+        check(quiet, "lean build omits playlist dump packets");
+    }
+
     // Fast integration boundary: mount + first BMP pixels + every scanned WAV
     // and its SDRAM packing are checked above. Playback and navigation stay in
     // the default full regression.
