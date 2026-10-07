@@ -105,6 +105,31 @@ static std::vector<uint32_t> *aud_buf_for(int idx) {
 
 static uint64_t cycles = 0;
 static const bool g_verbose = getenv("SD_VERBOSE") != nullptr;
+static const int g_transition_mode = getenv("SIM_TRANSITION") ?
+    atoi(getenv("SIM_TRANSITION")) : 0;
+static int transition_starts = 0, transition_dones = 0;
+static int transition_delay = 0, transition_old_buf = 0;
+static bool transition_early_commit = false;
+static int last_transition_start = 0;
+
+static void service_transition() {
+    if (!g_transition_mode) return;
+    int start = dut->transition_start_toggle;
+    if (start != last_transition_start) {
+        last_transition_start = start;
+        transition_starts++;
+        transition_old_buf = dut->disp_buf_idx;
+        transition_delay = 100;
+    }
+    if (transition_delay > 0) {
+        if (dut->disp_buf_idx != transition_old_buf)
+            transition_early_commit = true;
+        if (--transition_delay == 0) {
+            dut->transition_done_toggle ^= 1;
+            transition_dones++;
+        }
+    }
+}
 
 // ---- 写会话历史环（像素比对失败时打印，定位"模型丢会话/串会话"类问题）----
 struct WrOpenEv { uint64_t cyc; int buf, ld, scanA, fillA, req_r, aud_req, len;
@@ -280,6 +305,7 @@ static void half_cycle() {
         sample_write();
         sample_read();
         watch_audio();
+        service_transition();
     }
     feed_fast_sd();   // 投喂值在下一 posedge 被采样
 }
@@ -638,6 +664,8 @@ int main(int argc, char **argv) {
     dut->rd_req_ack = 0;
     dut->rd_finish = 0;
     dut->rd_data = 0;
+    dut->effect_mode = g_transition_mode;
+    dut->transition_done_toggle = 0;
     reset(30);
 
     // 无图卡：挂载后不应装载（bmp_cnt==0，display_valid 保持 0）
@@ -924,6 +952,10 @@ int main(int argc, char **argv) {
     // Focused pairing check: the complete table, boot audio and first
     // image/audio switch are verified above. The default regression continues.
     if (std::getenv("SIM_PAIR")) {
+        if (g_transition_mode)
+            check(transition_starts >= 1 && transition_dones >= 1 &&
+                  !transition_early_commit,
+                  "transition defers image commit until video completion");
         std::printf("===== %d passed, %d failed (SIM_PAIR) =====\n", pass, fail);
         return fail ? 1 : 0;
     }

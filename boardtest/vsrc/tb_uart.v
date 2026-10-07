@@ -31,6 +31,7 @@ module tb_uart;
     wire        cmd_val_w, tx_req_w;
     wire [63:0] tx_pkt_w;
     wire [3:0]  vol_gain_w, ap_s_w, bri_gray_w, ct_gray_w;
+    wire [1:0]  transition_mode_w;
     wire        bar_en_w;  wire [1:0] bar_sens_gray_w;   // 脉动条遥测（T14）
 
     uart_link #(
@@ -61,6 +62,7 @@ module tb_uart;
         .tx_pkt        (tx_pkt_w),
         .vol_gain      (vol_gain_w),
         .auto_period_s (ap_s_w),
+        .transition_mode (transition_mode_w),
         .bri_gray      (bri_gray_w),
         .ct_gray       (ct_gray_w),
         .bar_en        (bar_en_w),
@@ -485,6 +487,40 @@ module tb_uart;
         uart_send_pair(8'h3B);                                  // ';' 回灵敏度 1
         uart_send_pair(8'h51);                                  // 'Q' 回关
         repeat (100) @(posedge clk);
+        drain_tx_idle;
+
+        // T15: explicit effect mode commands survive UART framing and report
+        // the selected mode in both ACK brightness high bits and status flagB.
+        if (core_full.transition_mode !== 2'd0) fail_msg("T15 default effect must be cut");
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h31);                              // '1' crossfade
+            uart_recv(8);
+        join
+        if (core_full.transition_mode !== 2'd1 ||
+            ((rxq[rxq_n-2] >> 4) & 8'h03) !== 8'd1)
+            fail_msg("T15 crossfade command or ACK mode wrong");
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h32);                              // '2' soft wipe
+            uart_recv(8);
+        join
+        if (core_full.transition_mode !== 2'd2 ||
+            ((rxq[rxq_n-2] >> 4) & 8'h03) !== 8'd2)
+            fail_msg("T15 wipe command or ACK mode wrong");
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h53);                              // 'S' status
+            uart_recv(8);
+        join
+        if (((rxq[rxq_n-4] >> 5) & 8'h03) !== 8'd2)
+            fail_msg("T15 status flagB effect mode wrong");
+        uart_send_pair(8'h30);                                  // '0' direct cut
+        repeat (100) @(posedge clk);
+        if (core_full.transition_mode !== 2'd0)
+            fail_msg("T15 direct-cut command wrong");
+        else
+            $display("T15 explicit transition modes and telemetry: PASS");
         drain_tx_idle;
 
         if (errors == 0) $display("==== ALL PASS ====");

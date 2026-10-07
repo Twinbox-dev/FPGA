@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- HMAC is: adfc83476ec1d81c4bfab4f8749303775639ddd1afc87459abb9ef9c17a18045 -->
+<!-- HMAC is: e777169afbdd034ba2ac5f22cb81650649a8d4a5b3c50372b5bed67e9729f0ab -->
 <All_Bram_Infos>
-    <Ucode>11001010</Ucode>
+    <Ucode>01110100</Ucode>
     <AL_PHY_BRAM>
         <INST_1>
             <rid>0X0004</rid>
@@ -257,6 +257,254 @@
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_6</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>0</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_9>
+        <INST_10>
+            <rid>0X000D</rid>
+            <wid>0X000D</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_11</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>4</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_10>
+        <INST_11>
+            <rid>0X000E</rid>
+            <wid>0X000E</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_16</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>8</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_11>
+        <INST_12>
+            <rid>0X000F</rid>
+            <wid>0X000F</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_21</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>12</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_12>
+        <INST_13>
+            <rid>0X0010</rid>
+            <wid>0X0010</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_26</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>16</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_13>
+        <INST_14>
+            <rid>0X0011</rid>
+            <wid>0X0011</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_31</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>20</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_14>
+        <INST_15>
+            <rid>0X0012</rid>
+            <wid>0X0012</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_36</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>24</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_15>
+        <INST_16>
+            <rid>0X0013</rid>
+            <wid>0X0013</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
+            <name>transition_line_buf_m0/ramread0_syn_41</name>
+            <width_a>4</width_a>
+            <width_b>4</width_b>
+            <logic_name>transition_line_buf_m0/ramread0_syn_4</logic_name>
+            <logic_width>32</logic_width>
+            <logic_depth>2048</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>28</data_offset>
+                <depth>2048</depth>
+                <width>4</width>
+                <num_section>1</num_section>
+                <section_size>32</section_size>
+                <width_per_section>4</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>159</mode_type>
+                    <width>4</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_16>
+        <INST_17>
+            <rid>0X0014</rid>
+            <wid>0X0014</wid>
+            <is_debuggable>n</is_debuggable>
+            <is_initialize>n</is_initialize>
+            <model_type>AL_PHY_BRAM</model_type>
             <name>u_eth_subsys/u_eth_front/ramread0_syn_6</name>
             <width_a>9</width_a>
             <width_b>9</width_b>
@@ -281,10 +529,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_9>
-        <INST_10>
-            <rid>0X000D</rid>
-            <wid>0X000D</wid>
+        </INST_17>
+        <INST_18>
+            <rid>0X0015</rid>
+            <wid>0X0015</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -312,10 +560,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_10>
-        <INST_11>
-            <rid>0X000E</rid>
-            <wid>0X000E</wid>
+        </INST_18>
+        <INST_19>
+            <rid>0X0016</rid>
+            <wid>0X0016</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -343,10 +591,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_11>
-        <INST_12>
-            <rid>0X000F</rid>
-            <wid>0X000F</wid>
+        </INST_19>
+        <INST_20>
+            <rid>0X0017</rid>
+            <wid>0X0017</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -374,10 +622,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_12>
-        <INST_13>
-            <rid>0X0010</rid>
-            <wid>0X0010</wid>
+        </INST_20>
+        <INST_21>
+            <rid>0X0018</rid>
+            <wid>0X0018</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -405,10 +653,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_13>
-        <INST_14>
-            <rid>0X0011</rid>
-            <wid>0X0011</wid>
+        </INST_21>
+        <INST_22>
+            <rid>0X0019</rid>
+            <wid>0X0019</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -436,10 +684,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_14>
-        <INST_15>
-            <rid>0X0012</rid>
-            <wid>0X0012</wid>
+        </INST_22>
+        <INST_23>
+            <rid>0X001A</rid>
+            <wid>0X001A</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -467,10 +715,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_15>
-        <INST_16>
-            <rid>0X0013</rid>
-            <wid>0X0013</wid>
+        </INST_23>
+        <INST_24>
+            <rid>0X001B</rid>
+            <wid>0X001B</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -498,10 +746,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_16>
-        <INST_17>
-            <rid>0X0014</rid>
-            <wid>0X0014</wid>
+        </INST_24>
+        <INST_25>
+            <rid>0X001C</rid>
+            <wid>0X001C</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -529,10 +777,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_17>
-        <INST_18>
-            <rid>0X0015</rid>
-            <wid>0X0015</wid>
+        </INST_25>
+        <INST_26>
+            <rid>0X001D</rid>
+            <wid>0X001D</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -560,10 +808,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_18>
-        <INST_19>
-            <rid>0X0016</rid>
-            <wid>0X0016</wid>
+        </INST_26>
+        <INST_27>
+            <rid>0X001E</rid>
+            <wid>0X001E</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -591,10 +839,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_19>
-        <INST_20>
-            <rid>0X0017</rid>
-            <wid>0X0017</wid>
+        </INST_27>
+        <INST_28>
+            <rid>0X001F</rid>
+            <wid>0X001F</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -622,10 +870,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_20>
-        <INST_21>
-            <rid>0X0018</rid>
-            <wid>0X0018</wid>
+        </INST_28>
+        <INST_29>
+            <rid>0X0020</rid>
+            <wid>0X0020</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -653,10 +901,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_21>
-        <INST_22>
-            <rid>0X0019</rid>
-            <wid>0X0019</wid>
+        </INST_29>
+        <INST_30>
+            <rid>0X0021</rid>
+            <wid>0X0021</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -684,10 +932,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_22>
-        <INST_23>
-            <rid>0X001A</rid>
-            <wid>0X001A</wid>
+        </INST_30>
+        <INST_31>
+            <rid>0X0022</rid>
+            <wid>0X0022</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -715,10 +963,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_23>
-        <INST_24>
-            <rid>0X001B</rid>
-            <wid>0X001B</wid>
+        </INST_31>
+        <INST_32>
+            <rid>0X0023</rid>
+            <wid>0X0023</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -746,10 +994,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_24>
-        <INST_25>
-            <rid>0X001C</rid>
-            <wid>0X001C</wid>
+        </INST_32>
+        <INST_33>
+            <rid>0X0024</rid>
+            <wid>0X0024</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -777,10 +1025,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_25>
-        <INST_26>
-            <rid>0X001D</rid>
-            <wid>0X001D</wid>
+        </INST_33>
+        <INST_34>
+            <rid>0X0025</rid>
+            <wid>0X0025</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -808,10 +1056,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_26>
-        <INST_27>
-            <rid>0X001E</rid>
-            <wid>0X001E</wid>
+        </INST_34>
+        <INST_35>
+            <rid>0X0026</rid>
+            <wid>0X0026</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -839,10 +1087,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_27>
-        <INST_28>
-            <rid>0X001F</rid>
-            <wid>0X001F</wid>
+        </INST_35>
+        <INST_36>
+            <rid>0X0027</rid>
+            <wid>0X0027</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -870,10 +1118,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_28>
-        <INST_29>
-            <rid>0X0020</rid>
-            <wid>0X0020</wid>
+        </INST_36>
+        <INST_37>
+            <rid>0X0028</rid>
+            <wid>0X0028</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -901,10 +1149,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_29>
-        <INST_30>
-            <rid>0X0021</rid>
-            <wid>0X0021</wid>
+        </INST_37>
+        <INST_38>
+            <rid>0X0029</rid>
+            <wid>0X0029</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -932,10 +1180,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_30>
-        <INST_31>
-            <rid>0X0022</rid>
-            <wid>0X0022</wid>
+        </INST_38>
+        <INST_39>
+            <rid>0X002A</rid>
+            <wid>0X002A</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -963,10 +1211,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_31>
-        <INST_32>
-            <rid>0X0023</rid>
-            <wid>0X0023</wid>
+        </INST_39>
+        <INST_40>
+            <rid>0X002B</rid>
+            <wid>0X002B</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -994,10 +1242,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_32>
-        <INST_33>
-            <rid>0X0024</rid>
-            <wid>0X0024</wid>
+        </INST_40>
+        <INST_41>
+            <rid>0X002C</rid>
+            <wid>0X002C</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -1025,10 +1273,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_33>
-        <INST_34>
-            <rid>0X0025</rid>
-            <wid>0X0025</wid>
+        </INST_41>
+        <INST_42>
+            <rid>0X002D</rid>
+            <wid>0X002D</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -1056,10 +1304,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_34>
-        <INST_35>
-            <rid>0X0026</rid>
-            <wid>0X0026</wid>
+        </INST_42>
+        <INST_43>
+            <rid>0X002E</rid>
+            <wid>0X002E</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -1087,10 +1335,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_35>
-        <INST_36>
-            <rid>0X0027</rid>
-            <wid>0X0027</wid>
+        </INST_43>
+        <INST_44>
+            <rid>0X002F</rid>
+            <wid>0X002F</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -1118,10 +1366,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_36>
-        <INST_37>
-            <rid>0X0028</rid>
-            <wid>0X0028</wid>
+        </INST_44>
+        <INST_45>
+            <rid>0X0030</rid>
+            <wid>0X0030</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -1149,10 +1397,10 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_37>
-        <INST_38>
-            <rid>0X0029</rid>
-            <wid>0X0029</wid>
+        </INST_45>
+        <INST_46>
+            <rid>0X0031</rid>
+            <wid>0X0031</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM</model_type>
@@ -1180,12 +1428,12 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_38>
+        </INST_46>
     </AL_PHY_BRAM>
     <AL_PHY_BRAM32K>
         <INST_1>
-            <rid>0X002C</rid>
-            <wid>0X002C</wid>
+            <rid>0X0034</rid>
+            <wid>0X0034</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM32K</model_type>
@@ -1215,8 +1463,8 @@
             </sub_bid_info>
         </INST_1>
         <INST_2>
-            <rid>0X0030</rid>
-            <wid>0X0030</wid>
+            <rid>0X0038</rid>
+            <wid>0X0038</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>n</is_initialize>
             <model_type>AL_PHY_BRAM32K</model_type>

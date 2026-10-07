@@ -12,25 +12,25 @@ IO Statistics
   #inout                    0
 
 Gate Statistics
-#Basic gates            21900
-  #and                   4334
+#Basic gates            22633
+  #and                   4407
   #nand                     0
-  #or                    3772
+  #or                    3827
   #nor                      0
-  #xor                    239
+  #xor                    243
   #xnor                     0
   #buf                      0
-  #not                    962
+  #not                   1029
   #bufif1                  33
-  #MX21                  3048
+  #MX21                  3294
   #FADD                     0
-  #DFF                   9512
+  #DFF                   9800
   #LATCH                    0
-#MACRO_ADD                435
-#MACRO_EQ                 337
-#MACRO_MULT                 6
-#MACRO_MUX               5262
-#MACRO_OTHERS              41
+#MACRO_ADD                471
+#MACRO_EQ                 351
+#MACRO_MULT                19
+#MACRO_MUX               5585
+#MACRO_OTHERS              42
 
 LUT Statistics
 #Total_luts               713
@@ -44,13 +44,13 @@ Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |12388  |9512   |819    |
+|top                                       |top                                               |12833  |9800   |883    |
 |  U3                                      |sdram                                             |104    |534    |9      |
 |    u2_ram                                |sdr_as_ram                                        |104    |534    |9      |
 |      u1_init_ref                         |sdr_init_ref                                      |24     |96     |4      |
 |      u2_wrrd                             |sdr_wrrd                                          |80     |438    |5      |
-|  ctrl_core_m0                            |ctrl_core                                         |47     |82     |37     |
-|  frame_read_write_m0                     |frame_read_write                                  |349    |621    |50     |
+|  ctrl_core_m0                            |ctrl_core                                         |56     |84     |37     |
+|  frame_read_write_m0                     |frame_read_write                                  |351    |621    |50     |
 |    aud_read_buf                          |rfifo_32_32_512                                   |38     |94     |7      |
 |      ram_inst                            |ram_infer_rfifo_32_32_512                         |0      |0      |1      |
 |      rd_to_wr_cross_inst                 |fifo_cross_domain_addr_process_al_rfifo_32_32_512 |16     |36     |0      |
@@ -66,25 +66,29 @@ Report Hierarchy Area:
 |      rd_to_wr_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
 |      wr_to_rd_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
 |  pulse_bar_m0                            |pulse_bar                                         |122    |42     |23     |
-|  sd_card_bmp_m0                          |sd_card_bmp                                       |2999   |2543   |257    |
-|    sd_card_top_m0                        |sd_card_top                                       |407    |181    |13     |
-|      sd_card_cmd_m0                      |sd_card_cmd                                       |275    |48     |8      |
+|  sd_card_bmp_m0                          |sd_card_bmp                                       |3186   |2611   |260    |
+|    sd_card_top_m0                        |sd_card_top                                       |408    |181    |13     |
+|      sd_card_cmd_m0                      |sd_card_cmd                                       |276    |48     |8      |
 |      sd_card_sec_read_write_m0           |sd_card_sec_read_write                            |120    |89     |0      |
 |      spi_master_m0                       |spi_master                                        |12     |44     |5      |
 |    u_adapter                             |sd_adapter                                        |5      |43     |0      |
 |    u_bmp                                 |bmp_dec                                           |178    |230    |39     |
-|    u_fat                                 |fat32_ro                                          |1097   |1098   |98     |
+|    u_fat                                 |fat32_ro                                          |1100   |1098   |98     |
 |    u_key_auto                            |key_press_debounce                                |30     |27     |2      |
 |    u_key_next                            |key_press_debounce                                |30     |27     |2      |
 |    u_key_prev                            |key_press_debounce                                |30     |27     |2      |
 |    u_wav                                 |wav_reader                                        |160    |259    |33     |
 |  seg_scan_m0                             |seg_scan                                          |10     |27     |9      |
 |  sys_pll_m0                              |sys_pll                                           |0      |0      |1      |
+|  transition_blender_m0                   |transition_blender                                |87     |53     |37     |
+|  transition_ctrl_m0                      |transition_ctrl                                   |64     |94     |10     |
+|  transition_line_buf_m0                  |transition_line_buf                               |0      |0      |1      |
+|  transition_line_read_m0                 |transition_line_read                              |89     |62     |13     |
 |  u_cmd_arb                               |cmd_arb                                           |4      |4      |0      |
-|  u_eth_subsys                            |eth_subsys                                        |7885   |3932   |162    |
+|  u_eth_subsys                            |eth_subsys                                        |7887   |3935   |162    |
 |    u_clk_gen                             |clk_gen_rst_gen                                   |1      |0      |1      |
 |      u_pll_0                             |pll_gen                                           |0      |0      |1      |
-|    u_eth_front                           |eth_front                                         |402    |403    |47     |
+|    u_eth_front                           |eth_front                                         |404    |406    |47     |
 |      u_tap2_afifo                        |tap_afifo                                         |31     |90     |6      |
 |      u_tap_afifo                         |tap_afifo                                         |31     |90     |6      |
 |    u_rx_fifo                             |rx_client_fifo                                    |62     |160    |13     |
@@ -159,11 +163,11 @@ Report Hierarchy Area:
 |      u_hdmi_video_source                 |hdmi_video_source                                 |20     |38     |24     |
 |      u_video_axi_stream_receiver         |video_axi_stream_receiver                         |8      |2      |1      |
 |        u_w24_d1024_fifo                  |w24_d1024_fifo                                    |0      |0      |1      |
-|  u_mem_return_dump                       |mem_return_dump                                   |15     |26     |2      |
+|  u_mem_return_dump                       |mem_return_dump                                   |13     |26     |2      |
 |  u_seg_ph                                |seg_decoder                                       |2      |0      |0      |
 |  u_startup_pulse                         |startup_pulse                                     |3      |22     |2      |
 |  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |6      |28     |0      |
-|  uart_link_m0                            |uart_link                                         |64     |146    |13     |
+|  uart_link_m0                            |uart_link                                         |64     |149    |13     |
 |    u_tx                                  |uart_tx_byte                                      |20     |34     |4      |
 |  video_delay_m0                          |video_delay                                       |18     |59     |0      |
 |  video_pll_m0                            |video_pll                                         |0      |0      |1      |

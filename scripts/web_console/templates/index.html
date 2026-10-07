@@ -467,8 +467,8 @@ const connState = {serial: false, eth: false};   // 两条链路各自独立的�
 const log = document.getElementById("log");
 const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
               ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅", ".":"◑", ",":"◐",
-              "q":"🎵", "l":"📋"};
-const RANGE = {"播放":"", "音量":"0–8", "轮播周期":"1–10s",
+              "q":"🎵", "l":"📋", "0":"▣", "1":"◐", "2":"⇠"};
+const RANGE = {"播放":"", "切换特效":"约 1 秒", "音量":"0–8", "轮播周期":"1–10s",
                "亮度 / 对比度":"亮度 0–8 · 对比度 0–6"};
 
 /* ---------- toast ---------- */
@@ -542,7 +542,7 @@ document.getElementById("mEth").onclick = () => setMode("eth");
 window.addEventListener("resize", slide);
 
 /* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
-let PADKEYS = new Set("npa+-<>[]s,.q;'l".split(""));
+let PADKEYS = new Set("npa012+-<>[]s,.q;'l".split(""));
 async function buildPad(){
   let d;
   try { d = await (await fetch("/api/keys")).json(); }
@@ -582,8 +582,14 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
         <button data-k="n"><span class="ico">⏭</span><span>下一张</span><span class="key">N</span></button>
         <button data-k="a"><span class="ico">🔁</span><span>自动轮播</span><span class="key">A</span></button>
         <button data-k="s"><span class="ico">📊</span><span>状态回读</span><span class="key">S</span></button>
-      </div></div>
-    <div class="grp"><div class="grp-t"><span class="bar"></span>音量<span class="rg">0–8</span></div>
+       </div></div>
+     <div class="grp"><div class="grp-t"><span class="bar"></span>切换特效</div>
+       <div class="btns">
+         <button data-k="0"><span class="ico">▣</span><span>直接切</span><span class="key">0</span></button>
+         <button data-k="1"><span class="ico">◐</span><span>交叉溶解</span><span class="key">1</span></button>
+         <button data-k="2"><span class="ico">⇠</span><span>柔边滑动</span><span class="key">2</span></button>
+       </div></div>
+     <div class="grp"><div class="grp-t"><span class="bar"></span>音量<span class="rg">0–8</span></div>
       <div class="btns">
         <button data-k="-"><span class="ico">🔉</span><span>音量 -</span><span class="key">-</span></button>
         <button data-k="+"><span class="ico">🔊</span><span>音量 +</span><span class="key">+</span></button>

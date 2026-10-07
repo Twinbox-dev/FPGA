@@ -1,6 +1,7 @@
 module video_delay
 #(
-	parameter DATA_WIDTH = 24                       // Video data one clock data width
+	parameter DATA_WIDTH = 24,                      // Video data one clock data width
+	parameter MIX_PIPELINE = 0                      // Registered mixed word before unpacking
 )
 (
 	input                       video_clk,          // Video pixel clock
@@ -14,6 +15,8 @@ module video_delay
 	output                      hs_r,                 // horizontal synchronization
 	output                      vs_r,                 // vertical synchronization
 	output                      de_r,                 // video valid
+	output                      de_word,              // timing at FIFO word fetch stage
+	output                      vs_word,
 	output[DATA_WIDTH - 1:0]    vout_data           // video data
 
 );
@@ -44,13 +47,16 @@ reg [21:0] de_d;
 reg[DATA_WIDTH - 1:0]  vout_data_r;
 
 wire       d18 = de_d[18];
-reg        p, pd;
+reg        p, pd, pd_mix;
 
 assign read_en = d18 & ~p;
-assign hs_r = hs_d[20];
-assign vs_r = vs_d[20];
-assign de_r = de_d[20];
+assign hs_r = hs_d[20 + MIX_PIPELINE];
+assign vs_r = vs_d[20 + MIX_PIPELINE];
+assign de_r = de_d[20 + MIX_PIPELINE];
 assign vout_data = vout_data_r;
+assign de_word = de_d[18];
+assign vs_word = vs_d[18];
+wire display_hi = MIX_PIPELINE ? pd_mix : pd;
 
 wire [4:0] lo_r = read_data[15:11];
 wire [5:0] lo_g = read_data[10:5];
@@ -62,7 +68,7 @@ wire [4:0] hi_b = read_data[20:16];
 always @(posedge video_clk or posedge rst) begin
 	if (rst == 1'b1)
 		vout_data_r <= {DATA_WIDTH{1'b0}};
-	else if (pd)                        // 显示奇偏移：奇数像素（高半字）
+	else if (display_hi)                // 显示奇偏移：奇数像素（高半字）
 		vout_data_r <= {hi_r, hi_r[4:2], hi_g, hi_g[5:4], hi_b, hi_b[4:2]};
 	else                                // 显示偶偏移：偶数像素（低半字）
 		vout_data_r <= {lo_r, lo_r[4:2], lo_g, lo_g[5:4], lo_b, lo_b[4:2]};
@@ -74,6 +80,7 @@ always @(posedge video_clk or posedge rst) begin
 		de_d <= 22'b0;
 		p    <= 1'b0;
 		pd   <= 1'b0;
+		pd_mix <= 1'b0;
 	end
 	else begin
 		hs_d <= {hs_d[20:0], hs};
@@ -81,6 +88,7 @@ always @(posedge video_clk or posedge rst) begin
 		de_d <= {de_d[20:0], de};
 		p    <= d18 ? ~p : 1'b0;
 		pd   <= p;
+		pd_mix <= pd;
 	end
 end
 endmodule

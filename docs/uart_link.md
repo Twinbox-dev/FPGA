@@ -43,6 +43,9 @@ ctrl_core 持有：音量在 top 送 HDMI 核前做 `×gain>>3`（gain=8 恒等�
 | 0x4E | `N` | 下一张 |
 | 0x41 | `A` | 自动轮播开关 |
 | 0x50 | `P` | 上一张 |
+| 0x30 | `0` | 直接切（上电默认）|
+| 0x31 | `1` | 新旧图交叉溶解 |
+| 0x32 | `2` | 32 像素柔边滑动替换；下一张/自动从右向左，上一张从左向右 |
 | 0x2B | `+` | 音量 +1 |
 | 0x2D | `-` | 音量 -1 |
 | 0x3E | `>` | 轮播周期 +1s |
@@ -56,6 +59,7 @@ ctrl_core 持有：音量在 top 送 HDMI 核前做 `×gain>>3`（gain=8 恒等�
 | 0x3B | `;` | 脉动灵敏度 -1 |
 | 0x53 | `S` | 回读一包状态 |
 | 0x4C | `L` | 播放列表转储（调试，见下"转储包"）|
+| 0x44 | `D` | SDRAM 显示帧原始读回；特效完成前仍为旧图 |
 
 - 未知字节、不成对字节**静默丢弃**。
 - `N`/`A`/`P` 以 **100 ms 低脉冲**注入按键线，与物理按键线相与后走
@@ -74,7 +78,7 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 | state | 主状态机 state_code（4 位） |
 | fat_state | FAT32 状态机（8 位） |
 | flagA | {video_pll_lock, sys_pll_lock, sdr_init_done, display_valid} |
-| flagB | {hdmi_locked, fat_err, disp_buf[1:0]} |
+| flagB | bit[6:5]=切换效果模式；bit4=自动轮播；低 4 位为 {hdmi_locked, fat_err, disp_buf[1:0]} |
 | underrun | {vid_stick, aud_stick, 2'b00}，1=曾发生欠载（粘滞，复位清） |
 | img_idx | 当前图索引（5bit，最近尝试项：提交/失败都更新） |
 | wav_flag | 该图是否配同名 WAV |
@@ -91,7 +95,7 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 | cmd回显 | 本次命令字节（如按 `-` 回 0x2D） |
 | vol_gain | 当前音量档（0..8，8=原始） |
 | period_s | 当前轮播周期（1..10 秒） |
-| bri_level | 当前亮度档（0..8，4=原始 0 偏移） |
+| bri_level | 低 4 位为亮度档（0..8，4=原始）；bit[5:4]=切换效果模式 |
 | flags | bit0=自动轮播开关；bit[3:1]=对比度档位（0..6，2=原始）；<br>bit4=**音频脉动条开关**；bit[6:5]=**脉动灵敏度**（0..3，上电 1）；bit7 保留 |
 
 控制参数的实时值看 ACK 包；系统全景看状态包。与原七段调试面板**同源**
@@ -99,9 +103,16 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 underrun 来自 74.25M 域的粘滞寄存器，模块内 2FF 同步。发送中的新请求丢弃
 （快速连键时部分 ACK 会丢，人手速度不会）。
 
+效果模式命令是显式设值，重复发送不会重复切换。模式在装载新图开始时锁定；
+已装载的切换过程不受后续模式命令影响。交叉溶解和柔边滑动都在新图写完后
+运行约 1 秒，结束时才提交新图及配对 WAV。网页和 UART 共用同一命令字节。
+
 **转储包（'L' 调试命令，2026-10-04 加）**——回 N+1 个 8 字节包：每个播放列表
 条目一包，末尾收口包一包。**高 2 位作标签分帧**（01=条目 / 10=收口，ASCII
 <0x80 永不冲突），条目包按索引 0,1,2… 顺序发出，包间隔 400µs：
+
+当前板侧定义了 `FPGA_LEAN_LIST_DIAG`，因此 `L` 不发播放列表数据包；
+注释顶层宏并重新综合后才恢复下述转储格式。
 
 ```
 条目包  01 | idx[4:0] | is_bmp | pair_valid | pair_wav[5:0] | nxt[5:0] | prv[5:0] | 37'b0

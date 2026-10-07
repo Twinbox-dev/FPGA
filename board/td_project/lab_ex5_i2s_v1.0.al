@@ -143,6 +143,38 @@
                     <Attr Name="CompileOrder" Val="23"/>
                 </FileInfo>
             </File>
+            <File Path="../user_source/hdl_source/SD/transition_blender.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="60"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/SD/transition_line_buf.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="61"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/SD/transition_line_read.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="62"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/SD/transition_ctrl.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="63"/>
+                </FileInfo>
+            </File>
             <File Path="../user_source/hdl_source/startup_pulse.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>

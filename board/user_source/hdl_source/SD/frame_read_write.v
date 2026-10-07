@@ -46,6 +46,10 @@ module frame_read_write
 	output[READ_DATA_BITS  - 1:0]    read_data,                  // read data
 	output                           o_vid_rd_empty,             // 视频 FIFO 空（读侧观测：720p 下溢诊断，板级调试面板用）
     output                           o_mem_rd_audio,             // mem_clk 域：当前 SDRAM 返回字归音频 FIFO
+    output                           o_mem_rd_busy,
+    output                           o_mem_wr_busy,
+    output [BURST_BITS-1:0]          o_vid_fifo_words,
+    input                            line_hold,
     // ---- 音频读通道（S4 新增；消费侧时钟复用 write_clk = sd_card_clk）----
     input                            aud_read_req,               // 电平请求，保持到 ack
     output                           aud_read_req_ack,           // 电平响应
@@ -99,8 +103,11 @@ wire                                 write_fifo_aclr;            // fifo Asynchr
 wire O_wr_busy;
 wire O_rd_busy;
 
-assign App_wr_busy = O_wr_busy;//下个时钟写指令拉高
-assign App_rd_busy = O_rd_busy;//读指令还没有过去十个时钟;因为写指令优先，不需要在意下个时钟是否是读指令
+assign App_wr_busy = O_wr_busy | line_hold;
+assign App_rd_busy = O_rd_busy | line_hold;
+assign o_mem_rd_busy = O_rd_busy;
+assign o_mem_wr_busy = O_wr_busy;
+assign o_vid_fifo_words = wrusedw;
 assign App_wr_dm = 4'b0000;
 
 //instantiate an asynchronous FIFO 

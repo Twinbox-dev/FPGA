@@ -111,3 +111,37 @@ cmdarb:
 pulsebar:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_pulsebar vsrc/tb_pulsebar.v ../board/user_source/hdl_source/SD/pulse_bar.v -o sim_pulsebar --Mdir build_pulsebar
 	./build_pulsebar/sim_pulsebar
+
+# Transition unit checks are incremental; each executable rebuilds only when
+# its testbench or RTL dependency changes. transitionpair exercises the SD
+# image/WAV commit with a simulated video-domain completion toggle.
+TSD := ../board/user_source/hdl_source/SD
+build_transition_blender/sim_transition_blender: vsrc/tb_transition_blender.v $(TSD)/transition_blender.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_blender $^ --Mdir build_transition_blender -o sim_transition_blender
+
+build_transition_line/sim_transition_line: vsrc/tb_transition_line_read.v $(TSD)/transition_line_read.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_line_read $^ --Mdir build_transition_line -o sim_transition_line
+
+build_transition_ctrl/sim_transition_ctrl: vsrc/tb_transition_ctrl.v $(TSD)/transition_ctrl.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_ctrl $^ --Mdir build_transition_ctrl -o sim_transition_ctrl
+
+build_transition_video/sim_transition_video: vsrc/tb_transition_video.v $(TSD)/transition_blender.v $(TSD)/video_delay.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_video $^ --Mdir build_transition_video -o sim_transition_video
+
+build_transition_fetch/sim_transition_fetch: vsrc/tb_transition_fetch.v $(TSD)/transition_ctrl.v $(TSD)/transition_line_read.v $(TSD)/transition_line_buf.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_fetch $^ --Mdir build_transition_fetch -o sim_transition_fetch
+
+build_transition_framepath/sim_transition_framepath: vsrc/tb_transition_framepath.v $(TSD)/transition_line_read.v $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board/user_source/hdl_source/IP/afifo_16_32_256.v ../board/user_source/hdl_source/IP/afifo_32_16_256.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_transition_framepath $^ --Mdir build_transition_framepath -o sim_transition_framepath
+
+.PHONY: transition-unit transitionpair
+transition-unit: build_transition_blender/sim_transition_blender build_transition_line/sim_transition_line build_transition_ctrl/sim_transition_ctrl build_transition_video/sim_transition_video build_transition_fetch/sim_transition_fetch build_transition_framepath/sim_transition_framepath
+	./build_transition_blender/sim_transition_blender
+	./build_transition_line/sim_transition_line
+	./build_transition_ctrl/sim_transition_ctrl
+	./build_transition_video/sim_transition_video
+	./build_transition_fetch/sim_transition_fetch
+	./build_transition_framepath/sim_transition_framepath
+
+transitionpair: $(SIM)
+	SIM_TRANSITION=1 SIM_PAIR=1 ./$(SIM) ../img/card_diag.img

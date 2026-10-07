@@ -88,6 +88,12 @@ module sd_card_bmp #(
     input                       rdump_start,       // 'D' 手动触发脉冲（ctrl_core）
     output                      dmp_trig,          // 读回捕获触发（toggle 源，本域脉冲）（冲洗 FIFO）
     output reg  [1:0]           disp_buf_idx,
+    input                [1:0]  effect_mode,       // 0=cut, 1=fade, 2=soft wipe
+    output reg                  transition_start_toggle,
+    output reg                  transition_target_buf,
+    output reg  [1:0]           transition_mode_latched,
+    output reg                  transition_prev_latched,
+    input                       transition_done_toggle,
 
     output                      write_req,
     input                       write_req_ack,
@@ -223,6 +229,18 @@ module sd_card_bmp #(
     reg [31:0] load_timeout_cnt;
     reg        next_req_pending;
     reg        prev_req_pending;
+    reg        load_direction_prev;
+    reg [1:0]  load_effect_mode;
+    reg        transition_pending;
+    reg [27:0] transition_timeout_cnt;
+    reg [2:0]  transition_done_sync;
+    wire       transition_done_pulse = transition_done_sync[2] ^ transition_done_sync[1];
+    reg [5:0]  transition_img_idx;
+    reg [1:0]  transition_disp_buf;
+    reg        transition_cmt_pair;
+    reg [1:0]  transition_cmt_buf;
+    reg [20:0] transition_cmt_len;
+    reg [1:0]  transition_aud_buf;
 
     // ---- 音频扫描相位（S1）----
     reg        aud_scan_active;
@@ -933,6 +951,21 @@ module sd_card_bmp #(
             cmt_pair              <= 1'b0;
             cmt_buf               <= 2'd2;
             cmt_len               <= 21'd0;
+            load_direction_prev   <= 1'b0;
+            load_effect_mode      <= 2'd0;
+            transition_pending    <= 1'b0;
+            transition_timeout_cnt <= 28'd0;
+            transition_done_sync  <= 3'd0;
+            transition_start_toggle <= 1'b0;
+            transition_target_buf <= 1'b0;
+            transition_mode_latched <= 2'd0;
+            transition_prev_latched <= 1'b0;
+            transition_img_idx    <= 6'd0;
+            transition_disp_buf   <= 2'd0;
+            transition_cmt_pair   <= 1'b0;
+            transition_cmt_buf    <= 2'd2;
+            transition_cmt_len    <= 21'd0;
+            transition_aud_buf    <= 2'd2;
         end
         else begin
             wrfin_tgl_sync  <= {wrfin_tgl_sync[1:0], write_finish_toggle};
@@ -942,6 +975,7 @@ module sd_card_bmp #(
             ald_start_pulse <= 1'b0;
             scan_start_pulse<= 1'b0;
             scan_nowav_pulse<= 1'b0;
+            transition_done_sync <= {transition_done_sync[1:0], transition_done_toggle};
 
             // ---- 播放提交握手：播放域取走后撤 valid（电平双拍，同 clk 无竞争）----
             if (aud_cmt_taken) aud_cmt_valid <= 1'b0;
@@ -972,14 +1006,36 @@ module sd_card_bmp #(
                 aud_wd_cnt            <= 30'd0;
                 aud_rescan            <= 1'b0;
                 aud_retry_cnt         <= 2'd0;
+                transition_pending    <= 1'b0;
+                transition_timeout_cnt <= 28'd0;
             end
             else if (fat_err) begin
                 // FAT 挂载失败/索引越界：清装载，保持黑屏
                 load_busy        <= 1'b0;
                 load_timeout_cnt <= 32'd0;
                 write_done_seen  <= 1'b0;
+                transition_pending <= 1'b0;
             end
             else begin
+                if (transition_pending) begin
+                    if (transition_done_pulse ||
+                        transition_timeout_cnt >= 28'd200_000_000) begin
+                        // Image, matching WAV and automatic D capture commit together.
+                        transition_pending <= 1'b0;
+                        transition_timeout_cnt <= 28'd0;
+                        disp_buf_idx <= transition_disp_buf;
+                        img_idx <= transition_img_idx;
+                        aud_disp_buf <= transition_aud_buf;
+                        aud_cmt_valid <= 1'b1;
+                        cmt_pair <= transition_cmt_pair;
+                        cmt_buf <= transition_cmt_buf;
+                        cmt_len <= transition_cmt_len;
+                        dmp_auto_r <= 1'b1;
+                    end else begin
+                        transition_timeout_cnt <= transition_timeout_cnt + 28'd1;
+                    end
+                end
+
                 // ---- 挂载完成：捕获首图候选（坏图推进）----
                 if (fat_mounted && !first_idx_captured) begin
                     first_idx_r      <= first_bmp_w;
@@ -1007,20 +1063,37 @@ module sd_card_bmp #(
                             ald_active       <= 1'b0;
                             load_busy        <= 1'b0;
                             load_timeout_cnt <= 32'd0;
-                            aud_disp_buf     <= ald_buf;
-                            aud_cmt_valid    <= 1'b1;   // 与图同一拍握手：原子提交
                             ld_result        <= 2'd3;
-                            cmt_pair         <= 1'b1;
-                            cmt_buf          <= ald_buf;
-                            cmt_len          <= wav_len_rec[ald_wav_idx[4:0]];
-                            if (!boot_ald) begin
-                                // 随图切换：切显示缓冲 + 光标（boot：图已在显示，只换音）
+                            if (boot_ald || !first_image_committed || load_effect_mode == 2'd0) begin
+                                // Boot audio and direct-cut mode preserve the old commit path.
+                                aud_disp_buf  <= ald_buf;
+                                aud_cmt_valid <= 1'b1;
+                                cmt_pair      <= 1'b1;
+                                cmt_buf       <= ald_buf;
+                                cmt_len       <= wav_len_rec[ald_wav_idx[4:0]];
+                                if (!boot_ald) begin
+                                    write_done_seen <= 1'b0;
+                                    disp_buf_idx    <= pending_buf_idx;
+                                    img_idx         <= load_idx;
+                                    display_valid   <= 1'b1;
+                                end
+                                dmp_auto_r <= 1'b1;
+                            end else begin
+                                // Keep both video buffers and the old WAV until HDMI finishes.
                                 write_done_seen <= 1'b0;
-                                disp_buf_idx    <= pending_buf_idx;
-                                img_idx         <= load_idx;
-                                display_valid   <= 1'b1;
+                                transition_start_toggle <= ~transition_start_toggle;
+                                transition_target_buf <= pending_buf_idx[0];
+                                transition_mode_latched <= load_effect_mode;
+                                transition_prev_latched <= load_direction_prev;
+                                transition_pending <= 1'b1;
+                                transition_timeout_cnt <= 28'd0;
+                                transition_img_idx <= load_idx;
+                                transition_disp_buf <= pending_buf_idx;
+                                transition_cmt_pair <= 1'b1;
+                                transition_cmt_buf <= ald_buf;
+                                transition_cmt_len <= wav_len_rec[ald_wav_idx[4:0]];
+                                transition_aud_buf <= ald_buf;
                             end
-                            dmp_auto_r  <= 1'b1;   // 读回捕获触发（捕获窗在 video 域）
                             boot_ald <= 1'b0;
                             // 首图显示（含配对音频就绪）后启动音频扫描相位
                             if (!first_image_committed) begin
@@ -1082,15 +1155,30 @@ module sd_card_bmp #(
                             load_busy             <= 1'b0;
                             write_done_seen       <= 1'b0;
                             ld_result             <= 2'd3;
-                            disp_buf_idx          <= pending_buf_idx;
-                            img_idx               <= load_idx;
-                            display_valid         <= 1'b1;
-                            first_image_committed <= 1'b1;
-                            dmp_auto_r            <= 1'b1;   // 自动读回 dump（无音频借道冲突）
-                            aud_cmt_valid         <= 1'b1;
-                            cmt_pair              <= 1'b0;
-                            cmt_buf               <= aud_disp_buf;
-                            cmt_len               <= 21'd0;
+                            if (!first_image_committed || load_effect_mode == 2'd0) begin
+                                disp_buf_idx          <= pending_buf_idx;
+                                img_idx               <= load_idx;
+                                display_valid         <= 1'b1;
+                                first_image_committed <= 1'b1;
+                                dmp_auto_r            <= 1'b1;
+                                aud_cmt_valid         <= 1'b1;
+                                cmt_pair              <= 1'b0;
+                                cmt_buf               <= aud_disp_buf;
+                                cmt_len               <= 21'd0;
+                            end else begin
+                                transition_start_toggle <= ~transition_start_toggle;
+                                transition_target_buf <= pending_buf_idx[0];
+                                transition_mode_latched <= load_effect_mode;
+                                transition_prev_latched <= load_direction_prev;
+                                transition_pending <= 1'b1;
+                                transition_timeout_cnt <= 28'd0;
+                                transition_img_idx <= load_idx;
+                                transition_disp_buf <= pending_buf_idx;
+                                transition_cmt_pair <= 1'b0;
+                                transition_cmt_buf <= aud_disp_buf;
+                                transition_cmt_len <= 21'd0;
+                                transition_aud_buf <= aud_disp_buf;
+                            end
                             if (wav_cnt != 6'd0) begin
                                 scan_start_pulse <= 1'b1;
                             end
@@ -1187,6 +1275,7 @@ module sd_card_bmp #(
 
                 // ---- 自动轮播 1s 计时（仅空闲且已首图提交）----
                 if (fat_mounted && auto_play_en && display_valid && !load_busy &&
+                    !transition_pending &&
                     first_image_committed && (bmp_cnt > 6'd1)) begin
                     if (auto_tick) auto_cnt <= 32'd0;
                     else           auto_cnt <= auto_cnt + 32'd1;
@@ -1200,12 +1289,15 @@ module sd_card_bmp #(
                 //   与本块同一拍——若无门控，boot 装载采样到**旧值 0**（= 一个 WAV
                 //   条目），img_err 跳过又把 first_idx_r 推过真正的首图 → 开机图
                 //   错位 + 环缺一张（2026-10-03 板级实锤）
-                if (fat_mounted && fat_idle && !load_busy && !aud_scan_active &&
+                if (fat_mounted && fat_idle && !load_busy && !transition_pending &&
+                    !aud_scan_active &&
                     (!aud_scan_done_r || ald_boot_done) && (bmp_cnt != 6'd0) &&
                     first_idx_captured) begin
                     if (!first_image_committed) begin
                         // 首图：写 buffer0（首图候选可能已被坏图推进）
                         load_idx         <= first_idx_r;
+                        load_direction_prev <= 1'b0;
+                        load_effect_mode <= effect_mode;
                         pending_buf_idx  <= 2'd0;
                         write_buf_idx_r <= 2'd0;
                         load_busy        <= 1'b1;
@@ -1219,6 +1311,8 @@ module sd_card_bmp #(
                     else if (next_req_pending) begin
                         // 手动下一张：写非当前显示缓冲
                         load_idx         <= next_idx;
+                        load_direction_prev <= 1'b0;
+                        load_effect_mode <= effect_mode;
                         pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
                         write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
                         load_busy        <= 1'b1;
@@ -1232,6 +1326,8 @@ module sd_card_bmp #(
                     else if (prev_req_pending) begin
                         // 手动上一张：写非当前显示缓冲
                         load_idx         <= prev_idx;
+                        load_direction_prev <= 1'b1;
+                        load_effect_mode <= effect_mode;
                         pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
                         write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
                         load_busy        <= 1'b1;
@@ -1244,6 +1340,8 @@ module sd_card_bmp #(
                     end
                     else if (auto_play_en && auto_tick && (bmp_cnt > 6'd1)) begin
                         load_idx         <= next_idx;
+                        load_direction_prev <= 1'b0;
+                        load_effect_mode <= effect_mode;
                         pending_buf_idx  <= next_buf_lut(disp_buf_idx, display_valid);
                         write_buf_idx_r <= next_buf_lut(disp_buf_idx, display_valid);
                         load_busy        <= 1'b1;

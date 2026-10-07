@@ -53,6 +53,7 @@ module ctrl_core #(
     // 控制参数
     output reg [3:0]    vol_gain,            // 0..8：8=原始音量，0=静音
     output reg [3:0]    auto_period_s,       // 轮播周期（秒，1..10）
+    output reg [1:0]    transition_mode,     // 0=直接切，1=交叉溶解，2=柔边替换
     output [3:0]        bri_gray,            // 亮度档位（格雷码，跨时钟域用）
     output [3:0]        ct_gray,             // 对比度档位（格雷码，跨时钟域用）
     output              bar_en,              // 音频脉动条开关
@@ -87,6 +88,19 @@ module ctrl_core #(
     reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn, cmd_pdm;
     reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn, cmd_cup, cmd_cdn;
     reg cmd_barq, cmd_sup, cmd_sdn, cmd_rdm;
+
+    // Explicit mode commands are idempotent across UART and Ethernet retries.
+    always @(posedge clk or posedge rst) begin
+        if (rst) transition_mode <= 2'd0;
+        else if (cmd_val) begin
+            case (cmd)
+                8'h30: transition_mode <= 2'd0; // '0' direct cut
+                8'h31: transition_mode <= 2'd1; // '1' crossfade
+                8'h32: transition_mode <= 2'd2; // '2' soft wipe
+                default: ;
+            endcase
+        end
+    end
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -221,7 +235,7 @@ module ctrl_core #(
                                                   // pkt[7] 标志位：bit0=自动轮播开关
                                                   //   bit[3:1]=对比度档位 bit4=脉动条
                                                   //   bit[6:5]=脉动灵敏度 bit7=0
-                     {4'b0, bri_level},           // pkt[6] 亮度档位
+                     {2'b0, transition_mode, bri_level}, // pkt[6] bits[5:4]=effect mode
                      ld_diag,                     // pkt[5] {0,result,ld,busy,该图配WAV}
                      {3'b0, img_idx},             // pkt[4] 当前图索引
                      {4'b0, auto_period_s},       // pkt[3] 轮播周期（秒）
@@ -271,7 +285,7 @@ module ctrl_core #(
     assign status_pkt = {{7'b0, img_wav},
                          {3'b0, img_idx},
                          {4'b0, und_s1},
-                         {3'b0, auto_on, flag_b},   // flagB 字节空出的 bit4 = 自动轮播开关
+                         {1'b0, transition_mode, auto_on, flag_b},
                          {ct_level, flag_a},        // flagA 字节空出的高 4 位 = 对比度档位
                          dbg_fat_state,
                          {4'b0, state_code},

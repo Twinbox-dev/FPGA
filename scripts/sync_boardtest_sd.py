@@ -9,7 +9,7 @@ import re, sys
 BOARD = 'board/user_source/hdl_source/SD/sd_card_bmp.v'
 BT    = 'boardtest/vsrc/sd_card_bmp.v'
 
-src = open(BOARD, newline='').read()
+src = open(BOARD, newline='', encoding='utf-8').read()
 crlf = '\r\n' in src
 nl = '\r\n' if crlf else '\n'
 s = src.replace('\r\n', '\n')
@@ -148,5 +148,5 @@ if missing:
     print('警告：未标注的探针信号：', missing)
 
 out = s.replace('\n', nl) if crlf else s
-open(BT, 'w', newline='').write(out)
+open(BT, 'w', newline='', encoding='utf-8').write(out)
 print(f'OK: 写出 {BT}（CRLF={crlf}，标注 {n_ann} 处）')

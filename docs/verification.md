@@ -21,6 +21,9 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 ```sh
 make -C boardtest smoke
 make -C boardtest paircheck
+make -C boardtest transition-unit
+make -C boardtest transitionpair
+SIM_TRANSITION=2 SIM_PAIR=1 boardtest/build_board/sim_board img/card_user.img
 make -C boardtest lean-smoke
 SIM_LEAN_LIST=1 SIM_PAIR=1 boardtest/build_board_lean/sim_board img/card_diag.img
 make -C boardtest regress CARDS="card_user card_user_2wav"
@@ -31,6 +34,11 @@ make -C boardtest regress
 结束（`SIM_SMOKE=1`），**不覆盖播放回卷、切图、上一张或自动轮播**；
 `paircheck` 在全列表配对 golden 断言、首图音频和第一次图音切换后结束
 （`SIM_PAIR=1`），实测诊断卡 18/18、约 1 分 21 秒；不覆盖后续轮播/回卷。
+`transition-unit` 覆盖混合器、逐像素相位、行就绪、100/75 MHz 双时钟行缓存、
+SDRAM 阻塞时整行回退及真实帧 FIFO 与行预取同时工作，共六项；最后的寄存式
+读口预留修改后仍全部通过。`transitionpair` 使用诊断卡验证带 WAV 的图音延迟
+原子提交（19/19）；`SIM_TRANSITION=2` 的 `card_user` 用例验证无配对 WAV 时
+完成切换后才静音（13/13）。默认直接切的 `paircheck` 保持 18/18。
 `regress` 默认仍运行全部七卡。可选卡名固定为
 `card card_mbr card_empty card_frag card_diag card_user card_user_2wav`，脚本会先检查
 镜像存在。日志生成在 `boardtest/logs/`，属于可再生输出，不纳入 Git。

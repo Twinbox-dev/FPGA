@@ -104,6 +104,21 @@ wire        video_read_req;
 wire        video_read_req_ack;
 wire        video_read_en;
 wire [31:0] video_read_data;
+wire [31:0] transition_word;
+wire        de_word, vs_word;
+wire [1:0]  transition_mode_cfg;
+wire        transition_start_toggle, transition_target_buf;
+wire [1:0]  transition_mode_latched;
+wire        transition_prev_latched, transition_done_toggle;
+wire        effect_active, effect_row_ready, effect_prev;
+wire [1:0]  effect_active_mode;
+wire [8:0]  effect_fade_alpha;
+wire [10:0] effect_wipe_progress;
+wire        line_req_toggle, line_ready_toggle;
+wire [9:0]  line_num, line_rd_addr, line_wr_addr;
+wire [20:0] line_base;
+wire        line_rd_bank, line_wr_bank, line_wr_en;
+wire [31:0] line_rd_data, line_wr_data;
 
 wire        sd_card_write_en;
 wire [31:0] sd_card_write_data;
@@ -135,6 +150,11 @@ wire App_rd_en;
 wire [ADDR_BITS-1:0] App_rd_addr;
 wire Sdr_rd_en;
 wire [MEM_DATA_BITS-1:0] Sdr_rd_dout;
+wire        frame_sdr_rd_valid, transition_line_hold;
+wire        mux_app_rd_en;
+wire [ADDR_BITS-1:0] mux_app_rd_addr;
+wire        frame_rd_busy, frame_wr_busy;
+wire [8:0]  vid_fifo_words;
 wire mem_rd_audio;
 wire App_wr_en;
 wire [ADDR_BITS-1:0] App_wr_addr;
@@ -336,6 +356,7 @@ ctrl_core #(
     .tx_pkt         (tx_pkt_w),
     .vol_gain       (vol_gain),
     .auto_period_s  (auto_period_s),
+    .transition_mode (transition_mode_cfg),
     .bri_gray       (bri_gray),
     .ct_gray        (ct_gray),
     .bar_en         (bar_en),
@@ -493,6 +514,12 @@ sd_card_bmp #(
     .write_finish_toggle(frame_write_toggle_mem),
     .write_buf_idx     (write_buf_idx),
     .disp_buf_idx      (disp_buf_idx),
+    .effect_mode       (transition_mode_cfg),
+    .transition_start_toggle (transition_start_toggle),
+    .transition_target_buf (transition_target_buf),
+    .transition_mode_latched (transition_mode_latched),
+    .transition_prev_latched (transition_prev_latched),
+    .transition_done_toggle (transition_done_toggle),
 
     .write_req         (sd_card_write_req),
     .write_req_ack     (sd_card_write_req_ack),
@@ -573,17 +600,56 @@ video_timing_data video_timing_data_m0(
     .de                (de_0)
 );
 
-video_delay video_delay_m0(
+transition_ctrl #(
+    .BUF0_ADDR (BUF0_ADDR[20:0]),
+    .BUF1_ADDR (BUF1_ADDR[20:0])
+) transition_ctrl_m0 (
+    .video_clk (video_clk), .rst (rst_all),
+    .start_toggle_raw (transition_start_toggle),
+    .target_buf_raw (transition_target_buf),
+    .mode_raw (transition_mode_latched),
+    .direction_prev_raw (transition_prev_latched),
+    .done_toggle (transition_done_toggle),
+    .de_word (de_word), .vs_word (vs_word),
+    .line_req_toggle (line_req_toggle), .line_num (line_num),
+    .line_base (line_base), .line_ready_toggle_raw (line_ready_toggle),
+    .line_rd_bank (line_rd_bank), .line_rd_addr (line_rd_addr),
+    .row_ready (effect_row_ready), .effect_active (effect_active),
+    .active_mode (effect_active_mode), .direction_prev (effect_prev),
+    .fade_alpha (effect_fade_alpha), .wipe_progress (effect_wipe_progress)
+);
+
+transition_line_buf transition_line_buf_m0 (
+    .mem_clk (ext_mem_clk), .wr_en (line_wr_en),
+    .wr_bank (line_wr_bank), .wr_addr (line_wr_addr),
+    .wr_data (line_wr_data), .video_clk (video_clk),
+    .rd_bank (line_rd_bank), .rd_addr (line_rd_addr),
+    .rd_data (line_rd_data)
+);
+
+transition_blender transition_blender_m0 (
+    .video_clk (video_clk), .rst (rst_all),
+    .line_de (de_word), .word_pop (video_read_en),
+    .old_word (video_read_data), .new_word (line_rd_data),
+    .effect_active (effect_active), .row_ready (effect_row_ready),
+    .effect_mode (effect_active_mode), .direction_prev (effect_prev),
+    .fade_alpha (effect_fade_alpha),
+    .wipe_progress (effect_wipe_progress), .mixed_word (transition_word)
+);
+
+video_delay #(.MIX_PIPELINE(1)) video_delay_m0(
     .video_clk         (video_clk),
     .rst               (rst_all),
     .read_en           (video_read_en),
-    .read_data         (video_read_data),      // 32 位：RGB565 双像素字
+    .read_data         (transition_word),
     .hs                (hs_0),
     .vs                (vs_0),
     .de                (de_0),
     .hs_r              (hs),
     .vs_r              (vs),
     .de_r              (de),
+    .de_word           (de_word),
+    .vs_word           (vs_word),
     .vout_data         (vout_data_raw)
 );
 
@@ -720,7 +786,7 @@ mem_return_dump #(.WORDS(FRAME_WORDS)) u_mem_return_dump (
     .rst          (rst_all),
     .start_tog    (cap_tog),
     .video_ack    (video_read_req_ack),
-    .rd_valid     (DUMP_READ_REQUEST_ADDR ? App_rd_en : Sdr_rd_en),
+    .rd_valid     (DUMP_READ_REQUEST_ADDR ? App_rd_en : frame_sdr_rd_valid),
     .rd_word      (DUMP_READ_REQUEST_ADDR ? {11'd0, App_rd_addr} : Sdr_rd_dout),
     .rd_audio     (mem_rd_audio),
     .tap_val      (mem_tap_val),
@@ -763,7 +829,7 @@ frame_read_write #(
 
     .App_rd_en         (App_rd_en),
     .App_rd_addr       (App_rd_addr),
-    .Sdr_rd_en         (Sdr_rd_en),
+    .Sdr_rd_en         (frame_sdr_rd_valid),
     .Sdr_rd_dout       (Sdr_rd_dout),
 
     .read_clk          (video_clk),
@@ -780,6 +846,10 @@ frame_read_write #(
     .read_data         (video_read_data),
     .o_vid_rd_empty    (vid_rd_empty),
     .o_mem_rd_audio    (mem_rd_audio),
+    .o_mem_rd_busy     (frame_rd_busy),
+    .o_mem_wr_busy     (frame_wr_busy),
+    .o_vid_fifo_words  (vid_fifo_words),
+    .line_hold         (transition_line_hold),
 
     .App_wr_en         (App_wr_en),
     .App_wr_addr       (App_wr_addr),
@@ -809,6 +879,23 @@ frame_read_write #(
     .aud_rd_data       (sd_aud_rd_data)
 );
 
+transition_line_read transition_line_read_m0 (
+    .mem_clk (ext_mem_clk), .rst (rst_all),
+    .sdr_init_done (Sdr_init_done), .sdr_busy (Sdr_busy),
+    .sdr_refresh (Sdr_init_ref_vld),
+    .line_req_toggle (line_req_toggle), .line_num (line_num),
+    .line_base (line_base), .line_ready_toggle (line_ready_toggle),
+    .frame_rd_en (App_rd_en), .frame_rd_addr (App_rd_addr),
+    .frame_wr_en (App_wr_en), .frame_rd_busy (frame_rd_busy),
+    .frame_wr_busy (frame_wr_busy), .video_fifo_words (vid_fifo_words),
+    .line_hold (transition_line_hold),
+    .app_rd_en (mux_app_rd_en), .app_rd_addr (mux_app_rd_addr),
+    .sdr_rd_valid (Sdr_rd_en), .sdr_rd_data (Sdr_rd_dout),
+    .frame_rd_valid (frame_sdr_rd_valid),
+    .line_wr_en (line_wr_en), .line_wr_data (line_wr_data),
+    .line_wr_addr (line_wr_addr), .line_wr_bank (line_wr_bank)
+);
+
 sdram U3(
     .Clk               (ext_mem_clk),
     .Clk_sft           (ext_mem_clk_sft),
@@ -820,8 +907,8 @@ sdram U3(
     .App_wr_addr       (App_wr_addr),
     .App_wr_dm         (App_wr_dm),
     .App_wr_din        (App_wr_din),
-    .App_rd_en         (App_rd_en),
-    .App_rd_addr       (App_rd_addr),
+    .App_rd_en         (mux_app_rd_en),
+    .App_rd_addr       (mux_app_rd_addr),
     .Sdr_rd_en         (Sdr_rd_en),
     .Sdr_rd_dout       (Sdr_rd_dout)
 );

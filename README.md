@@ -9,10 +9,12 @@
   音频改为：WAV 整文件入 SDRAM，复用帧缓冲乒乓与原子提交；格式约定
   **24kHz / 8bit / mono**（板内 ×2 上采样到 48k 喂 HDMI 核）。旧仓封存不动。
 
-## 当前形态（多分辨率 BMP + 配对 WAV，2026-10-06 上板验证）
+## 当前形态（多分辨率 BMP + 配对 WAV + 切换特效，2026-10-07 上板验证）
 HDMI 固定输出 1280×720@60；较小的 BMP 居中显示并填黑，RGB565 每个 32 位字存两个像素。
 SDRAM 2M 字中，视频 A/B 各 460,800 字，音频 A/B 各 587,776 字（98s）。
 以太网控制台支持写侧预览、SDRAM 返回抽样与 BMP 全帧黑边对照。
+串口和网页可选直接切、交叉溶解或 32 像素柔边替换；特效只在 HDMI 播放，
+完成时才提交新图及配对 WAV，PC 的 `D` 读回仍取原始显示帧。
 多分辨率故障的完整修复证据、曾被推翻的假设和后续调试准则见
 [`docs/multires_fix_postmortem.md`](docs/multires_fix_postmortem.md)；当前板卡资源/时序基线见
 [`docs/board_status.md`](docs/board_status.md)，按改动范围选择仿真见
@@ -28,6 +30,8 @@ SDRAM 2M 字中，视频 A/B 各 460,800 字，音频 A/B 各 587,776 字（98s�
   - `make -C boardtest framepath`：真实异步 FIFO 的帧写入/读回字序
   - `make -C boardtest arbrace`：写突发寄存判决与读忙仲裁竞态回归
   - `make -C boardtest vdelay`：video_delay 565 解包/像素序自检（同上）
+  - `make -C boardtest transition-unit`：切换混合、行缓存与读口仲裁快速验证
+  - `make -C boardtest transitionpair`：带 WAV 的切换完成回执与原子提交
 - `scripts/` —— 素材生成（gen_bmp / gen_wav / prep_media / gen_card / gen_diag_card）
 - `img/` —— 卡镜像与生成媒体（脚本可再生，不入 git）
 - `docs/` —— 架构、调试面板、时序排查、板卡盘点等

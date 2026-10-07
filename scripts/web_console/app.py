@@ -45,11 +45,13 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
-        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44}
+        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44,
+        "0": 0x30, "1": 0x31, "2": 0x32}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
-        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)"}
+        "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)",
+        "0": "直接切", "1": "交叉溶解", "2": "柔边滑动"}
 
 
 def decode_dump(pkt: bytes) -> str:
@@ -110,11 +112,13 @@ def decode_pkt(pkt: bytes) -> str:
     und_s = " ".join(flags_und[i] for i in range(2) if bits_und[i])
 
     auto_on = (fb >> 4) & 1              # flagB 字节空出的 bit4 = 自动轮播开关
+    effect = (fb >> 5) & 0x3             # flagB bits[6:5] = 切换效果
+    effect_s = {0: "直接切", 1: "交叉溶解", 2: "柔边滑动"}.get(effect, "未知")
     ct      = (fa >> 4) & 0xF            # flagA 字节空出的高 4 位 = 对比度档位
 
     return (f"state=0x{state:X} fat=0x{fat:02X} buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
-            f"对比度={ct}/6 自动轮播={'开' if auto_on else '关'} | "
+            f"对比度={ct}/6 特效={effect_s} 自动轮播={'开' if auto_on else '关'} | "
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
 
 
@@ -130,7 +134,8 @@ def decode_ack(pkt: bytes) -> str:
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
             0x5D: "亮度+", 0x5B: "亮度-",
             0x2E: "对比度+", 0x2C: "对比度-",
-            0x51: "脉动条", 0x3B: "灵敏度+", 0x27: "灵敏度-"}.get(cmd, f"0x{cmd:02X}")
+            0x51: "脉动条", 0x3B: "灵敏度+", 0x27: "灵敏度-",
+            0x30: "直接切", 0x31: "交叉溶解", 0x32: "柔边滑动"}.get(cmd, f"0x{cmd:02X}")
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
     RESULT = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}
     LDNAME = {0: 'IDLE', 1: 'FILL_REQ', 2: 'FILL_RUN', 3: 'FILE',
@@ -140,6 +145,9 @@ def decode_ack(pkt: bytes) -> str:
     ct    = (flags >> 1) & 0x7           # flags bit[3:1] = 对比度档位
     bar   = (flags >> 4) & 1             # flags bit4 = 脉动条开关
     sens  = (flags >> 5) & 0x3           # flags bit[6:5] = 脉动灵敏度
+    effect = (bri >> 4) & 0x3            # brightness byte bits[5:4]
+    bri &= 0xF
+    effect_s = {0: "直接切", 1: "交叉溶解", 2: "柔边滑动"}.get(effect, "未知")
     bar_s = f"脉动={'开' if bar else '关'} 灵敏度={sens}/3"
     if   cmd in (0x2B, 0x2D): detail = f"音量={vol}/8"
     elif cmd in (0x3E, 0x3C): detail = f"周期={per}s"
@@ -148,6 +156,7 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd == 0x51:         detail = bar_s
     elif cmd in (0x3B, 0x27): detail = bar_s
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
+    elif cmd in (0x30, 0x31, 0x32): detail = f"切换特效={effect_s}"
     elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
     elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
@@ -345,7 +354,7 @@ class LoopbackLink:
     mode = "serial"
 
     def __init__(self, subs=None):
-        self.vol, self.per, self.bri = 8, 1, 4
+        self.vol, self.per, self.bri, self.effect = 8, 1, 4, 0
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
         self.port = "loopback"
@@ -398,15 +407,18 @@ class LoopbackLink:
             self.bri = min(8, self.bri + 1)
         elif key == "[":
             self.bri = max(0, self.bri - 1)
+        elif key in ("0", "1", "2"):
+            self.effect = int(key)
 
         def fake():
             time.sleep(0.02)
             if key == "s":
-                pkt = bytes([0xA5, 0x01, 0x08, 0x0F, 0x08, 0x00, 0x03, 0x01])
+                pkt = bytes([0xA5, 0x01, 0x08, 0x0F,
+                             0x08 | (self.effect << 5), 0x00, 0x03, 0x01])
                 kind = "status"
             else:
                 pkt = bytes([0x5A, CMDS[key], self.vol, self.per,
-                             0x03, 0x01, self.bri, 0x00])
+                              0x03, 0x01, self.bri | (self.effect << 4), 0x00])
                 kind = "ack"
             self.broadcast({"type": "pkt", "kind": kind,
                             "text": decode_pkt(pkt) if kind == "status" else decode_ack(pkt),
@@ -658,9 +670,10 @@ def api_ports():
 @app.route("/api/keys")
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
-    order = ["p", "n", "a", "s", "-", "+", "<", ">", "[", "]",
+    order = ["p", "n", "a", "s", "0", "1", "2", "-", "+", "<", ">", "[", "]",
              ";", "'", "q", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
+               ("切换特效", ["0", "1", "2"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
