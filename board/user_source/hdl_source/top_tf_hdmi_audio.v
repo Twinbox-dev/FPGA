@@ -79,6 +79,20 @@ wire de;
 
 wire [23:0] vout_data_raw;
 wire [23:0] vout_data;
+wire [23:0] osd_rgb;
+wire osd_de, osd_vs;
+wire [1:0] osd_mode_cfg;
+wire [3:0] vol_gray;
+wire panel_show, panel_text_on, panel_band;
+wire [3:0] panel_bri_level, panel_ct_level, panel_vol_level;
+wire subtitle_text_on, subtitle_band;
+wire signed [11:0] subtitle_ox;
+wire [9:0] subtitle_oy;
+wire [7:0] subtitle_char_index, subtitle_char_data, subtitle_active_len;
+wire subtitle_text_changed;
+wire subtitle_consume, subtitle_wr_en, subtitle_commit_toggle;
+wire subtitle_ack_pulse, subtitle_ack_ok, subtitle_swap_ack;
+wire [7:0] subtitle_wr_index, subtitle_wr_char, subtitle_commit_len;
 wire        display_valid;
 
 wire [3:0]  state_code;
@@ -349,6 +363,9 @@ ctrl_core #(
     .rst            (rst_all),
     .cmd            (cmd_byte),
     .cmd_val        (cmd_val_w),
+    .subtitle_consume (subtitle_consume),
+    .subtitle_ack_pulse (subtitle_ack_pulse),
+    .subtitle_ack_ok (subtitle_ack_ok),
     .vk_next_n      (vk_next_n),
     .vk_auto_n      (vk_auto_n),
     .vk_prev_n      (vk_prev_n),
@@ -357,6 +374,8 @@ ctrl_core #(
     .vol_gain       (vol_gain),
     .auto_period_s  (auto_period_s),
     .transition_mode (transition_mode_cfg),
+    .osd_mode       (osd_mode_cfg),
+    .vol_gray       (vol_gray),
     .bri_gray       (bri_gray),
     .ct_gray        (ct_gray),
     .bar_en         (bar_en),
@@ -441,6 +460,18 @@ cmd_arb u_cmd_arb (
     .uart_cmd_val (uart_cmd_val),
     .cmd_val      (cmd_val_w),
     .cmd_byte     (cmd_byte)
+);
+
+subtitle_cmd u_subtitle_cmd (
+    .clk (sd_card_clk), .rst (rst_all),
+    .cmd (cmd_byte), .cmd_val (cmd_val_w),
+    .swap_ack_toggle_raw (subtitle_swap_ack),
+    .consume_cmd (subtitle_consume),
+    .wr_en (subtitle_wr_en), .wr_index (subtitle_wr_index),
+    .wr_char (subtitle_wr_char),
+    .commit_toggle (subtitle_commit_toggle),
+    .commit_len (subtitle_commit_len),
+    .ack_pulse (subtitle_ack_pulse), .ack_ok (subtitle_ack_ok)
 );
 
 // 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）。
@@ -732,6 +763,61 @@ pulse_bar pulse_bar_m0(
 assign vout_data = bar_hit       ? bar_rgb :
                    display_valid ? vout_adj  : 24'd0;
 
+subtitle_store u_subtitle_store (
+    .sd_clk (sd_card_clk), .video_clk (video_clk), .rst (rst_all),
+    .wr_en (subtitle_wr_en), .wr_index (subtitle_wr_index),
+    .wr_char (subtitle_wr_char),
+    .commit_toggle (subtitle_commit_toggle),
+    .commit_len (subtitle_commit_len),
+    .swap_ack_toggle (subtitle_swap_ack),
+    .vs (vs), .rd_index (subtitle_char_index),
+    .rd_char (subtitle_char_data), .active_len (subtitle_active_len),
+    .text_changed_pulse (subtitle_text_changed)
+);
+
+subtitle_scroll u_subtitle_scroll (
+    .video_clk (video_clk), .rst (rst_all), .vs (vs),
+    .text_changed_pulse (subtitle_text_changed),
+    .text_len (subtitle_active_len),
+    .ox (subtitle_ox), .oy (subtitle_oy)
+);
+
+subtitle_text_renderer u_subtitle_renderer (
+    .video_clk (video_clk), .rst (rst_all), .de (de), .vs (vs),
+    .ox (subtitle_ox), .oy (subtitle_oy),
+    .text_len (subtitle_active_len),
+    .char_index (subtitle_char_index), .char_data (subtitle_char_data),
+    .text_on (subtitle_text_on), .in_band (subtitle_band)
+);
+
+osd_visibility u_osd_visibility (
+    .video_clk (video_clk), .rst (rst_all), .vs (vs),
+    .mode_raw (osd_mode_cfg),
+    .bri_gray_raw (bri_gray), .ct_gray_raw (ct_gray),
+    .vol_gray_raw (vol_gray), .show_panel (panel_show),
+    .brightness_level (panel_bri_level),
+    .contrast_level (panel_ct_level),
+    .volume_level (panel_vol_level)
+);
+
+osd_panel_levels u_osd_panel (
+    .video_clk (video_clk), .rst (rst_all), .de (de), .vs (vs),
+    .brightness_level (panel_bri_level),
+    .contrast_level (panel_ct_level),
+    .volume_level (panel_vol_level),
+    .text_on (panel_text_on), .in_band (panel_band)
+);
+
+osd_composite u_osd_composite (
+    .video_clk (video_clk), .rst (rst_all),
+    .video_in (vout_data), .de_in (de), .vs_in (vs),
+    .panel_show (panel_show), .panel_text_on (panel_text_on),
+    .panel_band (panel_band),
+    .subtitle_text_on (subtitle_text_on),
+    .subtitle_band (subtitle_band),
+    .video_out (osd_rgb), .de_out (osd_de), .vs_out (osd_vs)
+);
+
 // ================== 读侧 dump 捕获窗（video_clk 域，第二十一轮）==================
 // 触发（'D' 或装载提交自动）后捕获一帧。保留 video FIFO 出口的旧探针；
 // DUMP_AT_SDRAM_OUTPUT=1 时取 mem_clk 域，具体选控制器返回或读请求地址
@@ -918,9 +1004,9 @@ sdram U3(
 video_rgb_to_axis_640x480 #(.H_ACTIVE(1280)) u_video_rgb_to_axis_640x480(
     .I_clk         (video_clk),
     .I_rst         (rst_all),
-    .I_vs          (vs),
-    .I_de          (de),
-    .I_rgb         (vout_data),
+    .I_vs          (osd_vs),
+    .I_de          (osd_de),
+    .I_rgb         (osd_rgb),
     .O_video_user  (axis_s_user),
     .O_video_valid (axis_s_valid),
     .O_video_last  (axis_s_last),

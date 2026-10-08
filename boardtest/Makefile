@@ -145,3 +145,32 @@ transition-unit: build_transition_blender/sim_transition_blender build_transitio
 
 transitionpair: $(SIM)
 	SIM_TRANSITION=1 SIM_PAIR=1 ./$(SIM) ../img/card_diag.img
+
+# HDMI-only subtitle/OSD units. Kept independent of the full SD-card image test.
+OSD_FONT := $(TSD)/font_rom.v $(TSD)/font.mem
+build_subtitle_cmd/sim_subtitle_cmd: vsrc/tb_subtitle_cmd.v $(TSD)/subtitle_cmd.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_cmd $^ --Mdir build_subtitle_cmd -o sim_subtitle_cmd
+build_subtitle_ctrl/sim_subtitle_ctrl: vsrc/tb_subtitle_ctrl.v $(TSD)/subtitle_cmd.v $(TSD)/ctrl_core.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_ctrl $^ --Mdir build_subtitle_ctrl -o sim_subtitle_ctrl
+build_subtitle_store/sim_subtitle_store: vsrc/tb_subtitle_store.v $(TSD)/subtitle_store.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_store $^ --Mdir build_subtitle_store -o sim_subtitle_store
+build_subtitle_scroll/sim_subtitle_scroll: vsrc/tb_subtitle_scroll.v $(TSD)/subtitle_scroll.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_scroll $^ --Mdir build_subtitle_scroll -o sim_subtitle_scroll
+build_subtitle_text/sim_subtitle_text: vsrc/tb_subtitle_text.v $(TSD)/subtitle_text_renderer.v $(OSD_FONT)
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_text $(filter %.v,$^) --Mdir build_subtitle_text -o sim_subtitle_text
+build_osd_visibility/sim_osd_visibility: vsrc/tb_osd_visibility.v $(TSD)/osd_visibility.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_visibility $^ --Mdir build_osd_visibility -o sim_osd_visibility
+build_osd_composite/sim_osd_composite: vsrc/tb_osd_composite.v $(TSD)/osd_composite.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_composite $^ --Mdir build_osd_composite -o sim_osd_composite
+build_osd_panel/sim_osd_panel: vsrc/tb_osd_panel_levels.v $(TSD)/osd_panel_levels.v $(OSD_FONT)
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_panel_levels $(filter %.v,$^) --Mdir build_osd_panel -o sim_osd_panel
+.PHONY: osd-unit
+osd-unit: build_subtitle_cmd/sim_subtitle_cmd build_subtitle_ctrl/sim_subtitle_ctrl build_subtitle_store/sim_subtitle_store build_subtitle_scroll/sim_subtitle_scroll build_subtitle_text/sim_subtitle_text build_osd_visibility/sim_osd_visibility build_osd_composite/sim_osd_composite build_osd_panel/sim_osd_panel
+	./build_subtitle_cmd/sim_subtitle_cmd
+	./build_subtitle_ctrl/sim_subtitle_ctrl
+	./build_subtitle_store/sim_subtitle_store
+	./build_subtitle_scroll/sim_subtitle_scroll
+	./build_subtitle_text/sim_subtitle_text
+	./build_osd_visibility/sim_osd_visibility
+	./build_osd_composite/sim_osd_composite
+	./build_osd_panel/sim_osd_panel

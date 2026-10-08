@@ -20,6 +20,9 @@ SDRAM 2M 字中，视频 A/B 各 460,800 字，音频 A/B 各 587,776 字（98s�
 [`docs/board_status.md`](docs/board_status.md)，按改动范围选择仿真见
 [`docs/verification.md`](docs/verification.md)。
 
+HDMI 滚动字幕与 OSD 面板已上板验证；协议、操作和验收见
+[`docs/osd_subtitle.md`](docs/osd_subtitle.md)。
+
 ## 目录
 - `board/` —— TD 工程（`user_source` 源 + `td_project` 工程文件），真机唯一真源
 - `boardtest/` —— 板级 RTL 的 Verilator 验证台（SD 引脚级卡模型 + 帧写口 C++ 模型）

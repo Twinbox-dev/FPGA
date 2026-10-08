@@ -46,12 +46,14 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
         "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44,
-        "0": 0x30, "1": 0x31, "2": 0x32}
+        "0": 0x30, "1": 0x31, "2": 0x32,
+        "3": 0x33, "4": 0x34, "5": 0x35}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
         "q": "脉动条开关", "'": "脉动灵敏度+", ";": "脉动灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)",
-        "0": "直接切", "1": "交叉溶解", "2": "柔边滑动"}
+        "0": "直接切", "1": "交叉溶解", "2": "柔边滑动",
+        "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示"}
 
 
 def decode_dump(pkt: bytes) -> str:
@@ -92,6 +94,19 @@ def send_bytes(key: str) -> bytes:
     return bytes([c, c ^ 0xFF])
 
 
+def subtitle_bytes(value: str) -> bytes:
+    """Build one atomic 0..160 character upload from printable ASCII text."""
+    if not isinstance(value, str) or len(value) > 160 or any(not 32 <= ord(c) <= 126 for c in value):
+        raise ValueError("字幕仅支持最多 160 个可打印 ASCII 字符")
+    raw = value.encode("ascii")
+    checksum = len(raw)
+    for byte in raw:
+        checksum ^= byte
+    return (bytes([0x54, len(raw) ^ 0x80]) +
+            bytes(byte | 0x80 for byte in raw) +
+            bytes([0x80 | (checksum >> 4), 0x80 | (checksum & 0x0F)]))
+
+
 def decode_pkt(pkt: bytes) -> str:
     """状态包（A5）：A5 | state | fat | flagA | flagB | underrun | img | wav"""
     _, state, fat, fa, fb, und, img, wav = pkt[:8]
@@ -114,11 +129,12 @@ def decode_pkt(pkt: bytes) -> str:
     auto_on = (fb >> 4) & 1              # flagB 字节空出的 bit4 = 自动轮播开关
     effect = (fb >> 5) & 0x3             # flagB bits[6:5] = 切换效果
     effect_s = {0: "直接切", 1: "交叉溶解", 2: "柔边滑动"}.get(effect, "未知")
+    osd_s = {0: "关闭", 1: "调节后 3 秒", 2: "始终显示"}.get((und >> 4) & 3, "未知")
     ct      = (fa >> 4) & 0xF            # flagA 字节空出的高 4 位 = 对比度档位
 
     return (f"state=0x{state:X} fat=0x{fat:02X} buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
-            f"对比度={ct}/6 特效={effect_s} 自动轮播={'开' if auto_on else '关'} | "
+            f"对比度={ct}/6 特效={effect_s} 面板={osd_s} 自动轮播={'开' if auto_on else '关'} | "
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
 
 
@@ -135,7 +151,9 @@ def decode_ack(pkt: bytes) -> str:
             0x5D: "亮度+", 0x5B: "亮度-",
             0x2E: "对比度+", 0x2C: "对比度-",
             0x51: "脉动条", 0x3B: "灵敏度+", 0x27: "灵敏度-",
-            0x30: "直接切", 0x31: "交叉溶解", 0x32: "柔边滑动"}.get(cmd, f"0x{cmd:02X}")
+            0x30: "直接切", 0x31: "交叉溶解", 0x32: "柔边滑动",
+            0x33: "面板关闭", 0x34: "面板调节后 3 秒", 0x35: "面板始终显示",
+            0x54: "字幕上传"}.get(cmd, f"0x{cmd:02X}")
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
     RESULT = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}
     LDNAME = {0: 'IDLE', 1: 'FILL_REQ', 2: 'FILL_RUN', 3: 'FILE',
@@ -146,8 +164,10 @@ def decode_ack(pkt: bytes) -> str:
     bar   = (flags >> 4) & 1             # flags bit4 = 脉动条开关
     sens  = (flags >> 5) & 0x3           # flags bit[6:5] = 脉动灵敏度
     effect = (bri >> 4) & 0x3            # brightness byte bits[5:4]
+    osd = (bri >> 6) & 0x3
     bri &= 0xF
     effect_s = {0: "直接切", 1: "交叉溶解", 2: "柔边滑动"}.get(effect, "未知")
+    osd_s = {0: "关闭", 1: "调节后 3 秒", 2: "始终显示"}.get(osd, "未知")
     bar_s = f"脉动={'开' if bar else '关'} 灵敏度={sens}/3"
     if   cmd in (0x2B, 0x2D): detail = f"音量={vol}/8"
     elif cmd in (0x3E, 0x3C): detail = f"周期={per}s"
@@ -157,6 +177,8 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd in (0x3B, 0x27): detail = bar_s
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
     elif cmd in (0x30, 0x31, 0x32): detail = f"切换特效={effect_s}"
+    elif cmd in (0x33, 0x34, 0x35): detail = f"面板={osd_s}"
+    elif cmd == 0x54:         detail = "校验通过，帧边界生效" if flags & 0x80 else "失败，原字幕保留"
     elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
     elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
@@ -208,6 +230,7 @@ class SerialLink:
         self.ser = None
         self.port = None
         self.baud = None
+        self.send_lock = threading.Lock()
         self.buf = bytearray()
         self.subs = subs if subs is not None else []   # 每个订阅者一个 queue
         self.lock = threading.Lock()
@@ -272,7 +295,8 @@ class SerialLink:
         if self.ser is None:
             return "串口未连接"
         try:
-            self.ser.write(send_bytes(key))          # [CMD, ~CMD] 成对校验
+            with self.send_lock:
+                self.ser.write(send_bytes(key))          # [CMD, ~CMD] 成对校验
         except Exception as e:
             self.close()
             return f"串口写入失败: {e}"
@@ -284,6 +308,20 @@ class SerialLink:
         return ""
 
     # ---- 读线程：字节流 → 解码包 → 广播 ----
+    def send_subtitle(self, value: str):
+        if self.ser is None:
+            return "串口未连接"
+        pairs = bytearray()
+        for byte in subtitle_bytes(value):
+            pairs.extend((byte, byte ^ 0xFF))
+        try:
+            with self.send_lock:
+                self.ser.write(pairs)
+        except Exception as e:
+            self.close()
+            return f"串口字幕发送失败: {e}"
+        return ""
+
     def _reader(self):
         buf = bytearray()
         self.dump_left, self.dump_anchored, self.dump_swap = 0, False, None
@@ -355,6 +393,8 @@ class LoopbackLink:
 
     def __init__(self, subs=None):
         self.vol, self.per, self.bri, self.effect = 8, 1, 4, 0
+        self.osd_mode = 1
+        self.subtitle = ""
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
         self.port = "loopback"
@@ -409,21 +449,32 @@ class LoopbackLink:
             self.bri = max(0, self.bri - 1)
         elif key in ("0", "1", "2"):
             self.effect = int(key)
+        elif key in ("3", "4", "5"):
+            self.osd_mode = int(key) - 3
 
         def fake():
             time.sleep(0.02)
             if key == "s":
                 pkt = bytes([0xA5, 0x01, 0x08, 0x0F,
-                             0x08 | (self.effect << 5), 0x00, 0x03, 0x01])
+                             0x08 | (self.effect << 5), self.osd_mode << 4, 0x03, 0x01])
                 kind = "status"
             else:
                 pkt = bytes([0x5A, CMDS[key], self.vol, self.per,
-                              0x03, 0x01, self.bri | (self.effect << 4), 0x00])
+                              0x03, 0x01, self.bri | (self.effect << 4) | (self.osd_mode << 6), 0x00])
                 kind = "ack"
             self.broadcast({"type": "pkt", "kind": kind,
                             "text": decode_pkt(pkt) if kind == "status" else decode_ack(pkt),
                             "ts": time.strftime("%H:%M:%S")})
         threading.Thread(target=fake, daemon=True).start()
+        return ""
+
+    def send_subtitle(self, value: str):
+        subtitle_bytes(value)
+        self.subtitle = value
+        pkt = bytes([0x5A, 0x54, self.vol, self.per, 0x03, 0x01,
+                     self.bri | (self.effect << 4) | (self.osd_mode << 6), 0x80])
+        self.broadcast({"type": "pkt", "kind": "ack", "text": decode_ack(pkt),
+                        "ts": time.strftime("%H:%M:%S")})
         return ""
 
 
@@ -451,6 +502,7 @@ class EthTransport:
     def __init__(self, subs=None):
         self.sock = None
         self.board = self.BOARD_DEFAULT
+        self.send_lock = threading.Lock()
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
         # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
@@ -530,9 +582,25 @@ class EthTransport:
             return "以太网未连接"
         payload = self._hdr(0x00, 0x01, 0x00, 0x02) + send_bytes(key)
         try:
-            self.sock.sendto(payload, (self.board, self.BOARD_PORT))
+            with self.send_lock:
+                self.sock.sendto(payload, (self.board, self.BOARD_PORT))
         except Exception as e:
             return f"UDP 发送到 {self.board}:{self.BOARD_PORT} 失败: {e}"
+        return ""
+
+    def send_subtitle(self, value: str):
+        if self.sock is None:
+            return "以太网未连接"
+        try:
+            # eth_front accepts one verified byte per datagram. Space the
+            # packets to let cmd_pending cross into the SD clock domain.
+            with self.send_lock:
+                for byte in subtitle_bytes(value):
+                    payload = self._hdr(0, 1, 0, 2) + bytes((byte, byte ^ 0xFF))
+                    self.sock.sendto(payload, (self.board, self.BOARD_PORT))
+                    time.sleep(0.002)
+        except Exception as e:
+            return f"以太网字幕发送失败: {e}"
         return ""
 
     # ---- 流包（type=0x0003）：seq 重组 + 静默收口 ----
@@ -670,10 +738,11 @@ def api_ports():
 @app.route("/api/keys")
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
-    order = ["p", "n", "a", "s", "0", "1", "2", "-", "+", "<", ">", "[", "]",
+    order = ["p", "n", "a", "s", "0", "1", "2", "3", "4", "5", "-", "+", "<", ">", "[", "]",
              ";", "'", "q", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
                ("切换特效", ["0", "1", "2"]),
+               ("OSD 面板", ["3", "4", "5"]),
               ("音量", ["-", "+"]),
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
@@ -722,6 +791,21 @@ def api_cmd():
     if err:
         return jsonify({"ok": False, "error": err}), 400
     return jsonify({"ok": True})
+
+
+@app.route("/api/subtitle", methods=["POST"])
+def api_subtitle():
+    d = request.get_json(force=True, silent=True) or {}
+    mode = d.get("mode", "serial")
+    try:
+        value = d.get("text", "")
+        subtitle_bytes(value)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    err = (eth_link if mode == "eth" else link).send_subtitle(value)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    return jsonify({"ok": True, "length": len(value)})
 
 
 @app.route("/api/stream")

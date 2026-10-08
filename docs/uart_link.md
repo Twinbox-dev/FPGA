@@ -79,7 +79,7 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 | fat_state | FAT32 状态机（8 位） |
 | flagA | {video_pll_lock, sys_pll_lock, sdr_init_done, display_valid} |
 | flagB | bit[6:5]=切换效果模式；bit4=自动轮播；低 4 位为 {hdmi_locked, fat_err, disp_buf[1:0]} |
-| underrun | {vid_stick, aud_stick, 2'b00}，1=曾发生欠载（粘滞，复位清） |
+| underrun | bit[5:4]=OSD 面板模式；bit[3:0]={vid_stick, aud_stick, 2'b00}，1=曾发生欠载（粘滞，复位清） |
 | img_idx | 当前图索引（5bit，最近尝试项：提交/失败都更新） |
 | wav_flag | 该图是否配同名 WAV |
 
@@ -95,8 +95,8 @@ A5 | state | fat_state | flagA | flagB | underrun | img_idx | wav_flag
 | cmd回显 | 本次命令字节（如按 `-` 回 0x2D） |
 | vol_gain | 当前音量档（0..8，8=原始） |
 | period_s | 当前轮播周期（1..10 秒） |
-| bri_level | 低 4 位为亮度档（0..8，4=原始）；bit[5:4]=切换效果模式 |
-| flags | bit0=自动轮播开关；bit[3:1]=对比度档位（0..6，2=原始）；<br>bit4=**音频脉动条开关**；bit[6:5]=**脉动灵敏度**（0..3，上电 1）；bit7 保留 |
+| bri_level | 低 4 位为亮度档（0..8，4=原始）；bit[5:4]=切换效果模式；bit[7:6]=OSD 面板模式 |
+| flags | bit0=自动轮播开关；bit[3:1]=对比度档位（0..6，2=原始）；<br>bit4=**音频脉动条开关**；bit[6:5]=**脉动灵敏度**（0..3，上电 1）；bit7 为 `T` 字幕事务成功位（其余 ACK 为 0） |
 
 控制参数的实时值看 ACK 包；系统全景看状态包。与原七段调试面板**同源**
 （面板已退休，UART 是该组遥测的唯一出口）。flagA/flagB 为准静态电平直取；
@@ -135,6 +135,14 @@ board_sim S11 用例对同一通路做 golden 比对。
 **亮度实现**：档位经**格雷码**跨时钟域（sd_card_clk → video_clk，每次步进
 只变 1 位，同步后恒为合法旧值/新值），video 域每通道加偏移 `(档-4)×16` 并
 钳位 [0,255]，档 4 = 原始画面。
+
+## HDMI 字幕与面板扩展
+
+普通成对命令 `3/4/5` 分别设置 OSD 面板关闭、调节后显示 3 秒、始终显示。
+字幕使用 `T` + 编码长度 + 0–160 个编码 ASCII 字节 + 双半字节 XOR 校验的事务；每个事务字节
+仍通过原有 `[byte, ~byte]` 校验。`T` 最终 ACK 的 `flags.bit7` 是上传成功位，
+亮度字节 `bits[7:6]` 是面板模式；状态包 underrun 字节 `bits[5:4]` 同样报告模式。
+完整时序和失败处理见 [`osd_subtitle.md`](osd_subtitle.md)。
 
 ## PC 端使用
 

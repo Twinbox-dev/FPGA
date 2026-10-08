@@ -55,6 +55,9 @@ module tb_uart;
         .rst           (rst),
         .cmd           (cmd_w),
         .cmd_val       (cmd_val_w),
+        .subtitle_consume (1'b0),
+        .subtitle_ack_pulse (1'b0),
+        .subtitle_ack_ok (1'b0),
         .vk_next_n     (vk_next_n),
         .vk_auto_n     (vk_auto_n),
         .vk_prev_n     (vk_prev_n),
@@ -97,6 +100,9 @@ module tb_uart;
         .rst           (rst),
         .cmd           (cmd_f),
         .cmd_val       (cmd_val_f),
+        .subtitle_consume (1'b0),
+        .subtitle_ack_pulse (1'b0),
+        .subtitle_ack_ok (1'b0),
         .vk_next_n     (vk_next_n_full),
         .vk_auto_n     (vk_auto_n_full),
         .vk_prev_n     (vk_prev_n_full),
@@ -259,7 +265,7 @@ module tb_uart;
             fail_msg("T5 状态包字节数不对");
         end else if (rxq[0] !== 8'hA5 || rxq[1] !== {4'b0, state_code}
                   || rxq[2] !== dbg_fat_state || rxq[3] !== {core.ct_level, flag_a}
-                  || rxq[4] !== {3'b0, auto_on_r, flag_b} || rxq[5] !== {4'b0, dbg_underrun}
+                  || rxq[4] !== {3'b0, auto_on_r, flag_b} || rxq[5] !== {2'b0, core.osd_mode, dbg_underrun}
                   || rxq[6] !== {3'b0, img_idx} || rxq[7] !== {7'b0, img_wav}) begin
             fail_msg("T5 状态包内容不对");
             for (integer i = 0; i < 8; i = i + 1)
@@ -354,7 +360,7 @@ module tb_uart;
             end
         join
         if (rxq[rxq_n-8] !== 8'h5A || rxq[rxq_n-7] !== 8'h5D
-            || rxq[rxq_n-2] !== 8'd5) begin
+            || rxq[rxq_n-2] !== {core.osd_mode, core.transition_mode, 4'd5}) begin
             fail_msg("T11 ACK 包内容不对（应为 5A|5D|vol|per|img|wav|05|00）");
             for (int k = 8; k > 0; k--)
                 $display("      pkt[-%0d]=%02x", k, rxq[rxq_n-k]);
@@ -522,6 +528,38 @@ module tb_uart;
         else
             $display("T15 explicit transition modes and telemetry: PASS");
         drain_tx_idle;
+
+        // T16: OSD mode uses the spare high bits and does not alter effect.
+        if (core.osd_mode !== 2'd1) fail_msg("T16 default OSD mode wrong");
+        fork
+            uart_send_pair(8'h35);
+            uart_recv(8);
+        join
+        if (core.osd_mode !== 2'd2 || rxq[rxq_n-2][7:6] !== 2'd2)
+            fail_msg("T16 always-on OSD ACK wrong");
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h33);
+            uart_recv(8);
+        join
+        if (core.osd_mode !== 2'd0 || rxq[rxq_n-2][7:6] !== 2'd0)
+            fail_msg("T16 OSD off ACK wrong");
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h34);
+            uart_recv(8);
+        join
+        if (core.osd_mode !== 2'd1 || rxq[rxq_n-2][7:6] !== 2'd1)
+            fail_msg("T16 transient OSD ACK wrong");
+        drain_tx_idle;
+        fork
+            uart_send_pair(8'h53);
+            uart_recv(8);
+        join
+        if (rxq[rxq_n-3][5:4] !== 2'd1)
+            fail_msg("T16 status OSD mode wrong");
+        else
+            $display("T16 OSD modes and telemetry: PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);

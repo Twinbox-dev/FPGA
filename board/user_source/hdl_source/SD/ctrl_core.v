@@ -42,6 +42,9 @@ module ctrl_core #(
     // 来自传输前端：已校验的命令字节（单拍有效）
     input  [7:0]        cmd,
     input               cmd_val,
+    input               subtitle_consume,
+    input               subtitle_ack_pulse,
+    input               subtitle_ack_ok,
     // 虚拟按键（低有效，与物理按键线相与）
     output              vk_next_n,
     output              vk_auto_n,
@@ -54,6 +57,8 @@ module ctrl_core #(
     output reg [3:0]    vol_gain,            // 0..8：8=原始音量，0=静音
     output reg [3:0]    auto_period_s,       // 轮播周期（秒，1..10）
     output reg [1:0]    transition_mode,     // 0=直接切，1=交叉溶解，2=柔边替换
+    output reg [1:0]    osd_mode,            // 0=off, 1=3s after adjustment, 2=always
+    output [3:0]        vol_gray,
     output [3:0]        bri_gray,            // 亮度档位（格雷码，跨时钟域用）
     output [3:0]        ct_gray,             // 对比度档位（格雷码，跨时钟域用）
     output              bar_en,              // 音频脉动条开关
@@ -88,15 +93,28 @@ module ctrl_core #(
     reg cmd_next, cmd_auto, cmd_prev, cmd_stat, cmd_vup, cmd_vdn, cmd_pdm;
     reg cmd_pup, cmd_pdn, cmd_bup, cmd_bdn, cmd_cup, cmd_cdn;
     reg cmd_barq, cmd_sup, cmd_sdn, cmd_rdm;
+    wire normal_cmd_val = cmd_val && !subtitle_consume;
 
     // Explicit mode commands are idempotent across UART and Ethernet retries.
     always @(posedge clk or posedge rst) begin
         if (rst) transition_mode <= 2'd0;
-        else if (cmd_val) begin
+        else if (normal_cmd_val) begin
             case (cmd)
                 8'h30: transition_mode <= 2'd0; // '0' direct cut
                 8'h31: transition_mode <= 2'd1; // '1' crossfade
                 8'h32: transition_mode <= 2'd2; // '2' soft wipe
+                default: ;
+            endcase
+        end
+    end
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) osd_mode <= 2'd1;
+        else if (normal_cmd_val) begin
+            case (cmd)
+                8'h33: osd_mode <= 2'd0; // '3' off
+                8'h34: osd_mode <= 2'd1; // '4' show for 3s after adjustment
+                8'h35: osd_mode <= 2'd2; // '5' always visible
                 default: ;
             endcase
         end
@@ -117,7 +135,7 @@ module ctrl_core #(
             cmd_bup  <= 1'b0; cmd_bdn <= 1'b0;
             cmd_cup  <= 1'b0; cmd_cdn <= 1'b0; cmd_pdm <= 1'b0;
             cmd_barq <= 1'b0; cmd_sup <= 1'b0; cmd_sdn <= 1'b0; cmd_rdm <= 1'b0;
-            if (cmd_val) begin
+            if (normal_cmd_val) begin
                 case (cmd)
                     CMD_NEXT: cmd_next <= 1'b1;
                     CMD_AUTO: cmd_auto <= 1'b1;
@@ -189,6 +207,7 @@ module ctrl_core #(
     // 多位 2FF 同步后恒为合法旧值或新值（二进制多位直传会出现过渡混合值）
     assign bri_gray = (bri_level >> 1) ^ bri_level;
     assign ct_gray  = (ct_level  >> 1) ^ ct_level;
+    assign vol_gray = (vol_gain >> 1) ^ vol_gain;
     assign bar_sens_gray = (bar_sens >> 1) ^ bar_sens;   // 2 位格雷码 → 包络域
 
     // ============ 应答（return）：参数生效后延迟两拍回包 ============
@@ -201,9 +220,9 @@ module ctrl_core #(
             v1 <= 1'b0; v2 <= 1'b0; d1_stat <= 1'b0;
             echo1 <= 8'd0; echo2 <= 8'd0;
         end else begin
-            v1      <= cmd_val;
-            echo1   <= cmd_val ? cmd : echo1;
-            d1_stat <= cmd_val && (cmd == CMD_STAT);
+            v1      <= normal_cmd_val;
+            echo1   <= normal_cmd_val ? cmd : echo1;
+            d1_stat <= normal_cmd_val && (cmd == CMD_STAT);
             v2      <= v1;
             echo2   <= v1 ? echo1 : echo2;
         end
@@ -224,23 +243,24 @@ module ctrl_core #(
             rdump_start   <= d2_rdm;
         end
     end
-    assign tx_req = v2 | pl_pkt_val;
+    assign tx_req = v2 | pl_pkt_val | subtitle_ack_pulse;
     // ⚠ 每个字段都必须是**整字节**。曾把 pkt[6] 写成 {3'b0, bri_level}（7 位），
     //   整条拼接到不了 64 位 → 赋值给 tx_pkt[63:0] 时高位补零，**所有字段错位半个
     //   字节**；只因原来 pkt[7] 恒 0 才没暴露（新加的 auto 标志位一比就露馅，
     //   tb_uart T12 抓住）。判据：拼接总位宽必须正好 64。
     assign tx_pkt = pl_pkt_val ? pl_pkt :
                     d2_stat ? status_pkt :
-                    {{1'b0, bar_sens, bar_en_r, ct_level[2:0], auto_on},
+                    {{subtitle_ack_pulse && subtitle_ack_ok,
+                      bar_sens, bar_en_r, ct_level[2:0], auto_on},
                                                   // pkt[7] 标志位：bit0=自动轮播开关
                                                   //   bit[3:1]=对比度档位 bit4=脉动条
-                                                  //   bit[6:5]=脉动灵敏度 bit7=0
-                     {2'b0, transition_mode, bri_level}, // pkt[6] bits[5:4]=effect mode
+                                                  //   bit[6:5]=脉动灵敏度 bit7=T上传成功
+                     {osd_mode, transition_mode, bri_level},
                      ld_diag,                     // pkt[5] {0,result,ld,busy,该图配WAV}
                      {3'b0, img_idx},             // pkt[4] 当前图索引
                      {4'b0, auto_period_s},       // pkt[3] 轮播周期（秒）
                      {4'b0, vol_gain},            // pkt[2] 音量档位
-                     echo2,                       // pkt[1] 命令回显
+                     subtitle_ack_pulse ? 8'h54 : echo2,
                      8'h5A};                      // pkt[0] 类型 = ACK（A5 反序）
 
     // ================= 虚拟按键：100ms 低脉冲 =================
@@ -284,7 +304,7 @@ module ctrl_core #(
     //   pkt = A5 | state | fat | flagA | flagB | underrun | img_idx | wav
     assign status_pkt = {{7'b0, img_wav},
                          {3'b0, img_idx},
-                         {4'b0, und_s1},
+                         {2'b0, osd_mode, und_s1},
                          {1'b0, transition_mode, auto_on, flag_b},
                          {ct_level, flag_a},        // flagA 字节空出的高 4 位 = 对比度档位
                          dbg_fat_state,

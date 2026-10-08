@@ -5,6 +5,10 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 因此开发和对照均以 100 MHz 为准。最终多分辨率修复的证据见
 [`multires_fix_postmortem.md`](multires_fix_postmortem.md)。
 
+字幕、OSD 及控制协议修改时，先运行 `make -C boardtest osd-unit`、
+`make -C boardtest uart` 和 `python scripts/web_console/test_subtitle.py`；
+板级观察步骤见 [`osd_subtitle.md`](osd_subtitle.md)。
+
 ## 按改动范围选择验证
 
 | 改动 | 开发时先运行 | 收口时 |

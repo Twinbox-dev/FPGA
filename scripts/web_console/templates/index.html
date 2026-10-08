@@ -334,6 +334,19 @@
       </div>
     </div>
 
+    <div class="card" id="subtitleCard">
+      <h2>HDMI 滚动字幕</h2>
+      <textarea id="subtitleText" maxlength="160" rows="3"
+        placeholder="输入最多 160 个可打印 ASCII 字符；留空发送可清除字幕"
+        style="width:100%;box-sizing:border-box;resize:vertical;background:#0b111b;color:#e6edf7;border:1px solid #33435a;border-radius:8px;padding:10px;font:13px/1.5 monospace"></textarea>
+      <div class="conn" style="margin-top:10px">
+        <button class="primary" id="btnSubtitle">发送字幕</button>
+        <button class="ghost" id="btnSubtitleClear">清除</button>
+        <span class="hint" id="subtitleCount">0/160</span>
+      </div>
+      <div class="hint" style="margin-top:8px">只叠加在 HDMI；y=504，每帧向左移动 2 像素。发送后以板卡 ACK 为准。</div>
+    </div>
+
     <div class="card" id="serialCard">
       <h2>串口连接</h2>
       <div class="conn">
@@ -542,7 +555,7 @@ document.getElementById("mEth").onclick = () => setMode("eth");
 window.addEventListener("resize", slide);
 
 /* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
-let PADKEYS = new Set("npa012+-<>[]s,.q;'l".split(""));
+let PADKEYS = new Set("npa012345+-<>[]s,.q;'l".split(""));
 async function buildPad(){
   let d;
   try { d = await (await fetch("/api/keys")).json(); }
@@ -702,8 +715,31 @@ async function sendKey(k) {
   const el = document.querySelector(`#pad button[data-k="${CSS.escape(k)}"]`);
   if (el) { el.classList.add("hit"); setTimeout(()=> el.classList.remove("hit"), 180); }
 }
+const subtitleInput = document.getElementById("subtitleText");
+const subtitleCount = document.getElementById("subtitleCount");
+subtitleInput.addEventListener("input", () => {
+  subtitleCount.textContent = `${subtitleInput.value.length}/160`;
+});
+async function sendSubtitle(value) {
+  if (!connected) { toast("当前通道未连接", true); return; }
+  if (value.length > 160 || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) > 126)) {
+    toast("仅支持最多 160 个可打印 ASCII 字符", true); return;
+  }
+  const btn = document.getElementById("btnSubtitle");
+  btn.disabled = true;
+  const j = await post("/api/subtitle", {mode, text:value});
+  btn.disabled = false;
+  if (j.ok) { toast("字幕已发送，等待板卡 ACK"); addLog("sys", "SYS", `字幕已发送 ${j.length}/160 字符`); }
+  else toast(j.error || "字幕发送失败", true);
+}
+document.getElementById("btnSubtitle").onclick = () => sendSubtitle(subtitleInput.value);
+document.getElementById("btnSubtitleClear").onclick = () => {
+  subtitleInput.value = "";
+  subtitleCount.textContent = "0/160";
+  sendSubtitle("");
+};
 document.addEventListener("keydown", e => {
-  if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+  if (document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (PADKEYS.has(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接", true); }
 });
