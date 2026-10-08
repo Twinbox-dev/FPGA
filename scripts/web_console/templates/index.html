@@ -617,9 +617,9 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
         <button data-k="["><span class="ico">🔅</span><span>亮度 -</span><span class="key">[</span></button>
         <button data-k="]"><span class="ico">🔆</span><span>亮度 +</span><span class="key">]</span></button>
       </div></div>
-    <div class="grp"><div class="grp-t"><span class="bar"></span>音频脉动<span class="rg">底部条</span></div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>音频频谱<span class="rg">底部 16 柱</span></div>
       <div class="btns">
-        <button data-k="q"><span class="ico">🎵</span><span>脉动 开/关</span><span class="key">Q</span></button>
+        <button data-k="q"><span class="ico">🎵</span><span>频谱 开/关</span><span class="key">Q</span></button>
         <button data-k=";"><span class="ico">▼</span><span>灵敏度 -</span><span class="key">;</span></button>
         <button data-k="'"><span class="ico">▲</span><span>灵敏度 +</span><span class="key">'</span></button>
       </div></div>`;
@@ -755,7 +755,7 @@ function parseMetrics(text){
   const v = g(/音量=(\d+)/), p = g(/周期=(\d+)/), b = g(/亮度=(\d+)/), i = g(/img=(\d+)/);
   const a = g(/自动轮播=(开|关)/);          // 来自 ACK 的 flags 字节 / 状态包的 flagB bit4
   const c = g(/对比度=(\d+)/);             // ACK flags bit[3:1] / 状态包 flagA 高 4 位
-  const bar = g(/脉动=(开|关)/);           // ACK flags bit4（'Q' 应答）
+  const bar = g(/频谱=(开|关)/);           // ACK flags bit4（'Q' 应答）
   const sn  = g(/灵敏度=(\d)/);            // ACK flags bit[6:5]
   if (v !== null){ document.getElementById("mVol").textContent = v; flash("mVol"); }
   if (p !== null){ document.getElementById("mPer").textContent = p; flash("mPer"); }

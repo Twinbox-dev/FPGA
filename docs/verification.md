@@ -8,6 +8,8 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 字幕、OSD 及控制协议修改时，先运行 `make -C boardtest osd-unit`、
 `make -C boardtest uart` 和 `python scripts/web_console/test_subtitle.py`；
 板级观察步骤见 [`osd_subtitle.md`](osd_subtitle.md)。
+频谱模块或音频采样接线修改时，先运行 `make -C boardtest spectrum-unit`；
+当前 8-bit 音源与后续 24-bit 升级边界见 [`audio_spectrum.md`](audio_spectrum.md)。
 
 ## 按改动范围选择验证
 

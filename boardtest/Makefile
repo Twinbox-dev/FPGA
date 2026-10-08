@@ -174,3 +174,12 @@ osd-unit: build_subtitle_cmd/sim_subtitle_cmd build_subtitle_ctrl/sim_subtitle_c
 	./build_osd_visibility/sim_osd_visibility
 	./build_osd_composite/sim_osd_composite
 	./build_osd_panel/sim_osd_panel
+
+build_spectrum_dft/sim_spectrum_dft: vsrc/tb_spectrum_dft.v $(TSD)/spectrum_dft.v $(TSD)/spectrum_sample_buf.v $(TSD)/spectrum_twiddle_512.mem
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_spectrum_dft $(filter %.v,$^) --Mdir build_spectrum_dft -o sim_spectrum_dft
+build_spectrum_overlay/sim_spectrum_overlay: vsrc/tb_spectrum_overlay.v $(TSD)/spectrum_overlay.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_spectrum_overlay $^ --Mdir build_spectrum_overlay -o sim_spectrum_overlay
+.PHONY: spectrum-unit
+spectrum-unit: build_spectrum_dft/sim_spectrum_dft build_spectrum_overlay/sim_spectrum_overlay
+	./build_spectrum_dft/sim_spectrum_dft
+	./build_spectrum_overlay/sim_spectrum_overlay

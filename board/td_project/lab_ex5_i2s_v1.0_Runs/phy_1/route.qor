@@ -3,20 +3,20 @@
 -----------------------------------------------------------
 | Timing                    |                             |
 |     Setup WNS             |        -5699                |
-|     Setup TNS             |     -1157442                |
-|     Num of violated S-EP  |         1582                |
+|     Setup TNS             |     -3256282                |
+|     Num of violated S-EP  |         2773                |
 |     Hold WNS              |        -2935                |
-|     Hold TNS              |       -60515                |
-|     Num of violated H-EP  |           42                |
+|     Hold TNS              |       -60019                |
+|     Num of violated H-EP  |           41                |
 -----------------------------------------------------------
 | Routing Resource          |                             |
-|     Wire length           |      1823664                |
+|     Wire length           |      1970944                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #slices               |         8901                |
-|     slices percentage     |       90.83%                |
-|     #RAMs                 |           53                |
-|     #DSPs                 |           12                |
+|     #slices               |         9187                |
+|     slices percentage     |       93.74%                |
+|     #RAMs                 |           56                |
+|     #DSPs                 |           13                |
 |     #DRAMHARDCON          |            0                |
 -----------------------------------------------------------
 Report route stage QoR done.

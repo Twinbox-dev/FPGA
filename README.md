@@ -22,6 +22,9 @@ SDRAM 2M 字中，视频 A/B 各 460,800 字，音频 A/B 各 587,776 字（98s�
 
 HDMI 滚动字幕与 OSD 面板已上板验证；协议、操作和验收见
 [`docs/osd_subtitle.md`](docs/osd_subtitle.md)。
+真实频谱可视化已于 2026-10-09 上板验证；自研 DFT 算法、资源变化、
+当前 8-bit 音源的限制与后续 24-bit 升级见
+[`docs/audio_spectrum.md`](docs/audio_spectrum.md)。
 
 ## 目录
 - `board/` —— TD 工程（`user_source` 源 + `td_project` 工程文件），真机唯一真源

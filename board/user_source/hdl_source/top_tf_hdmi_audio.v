@@ -147,6 +147,7 @@ wire [1:0]  disp_buf_idx;
 
 // ---- 音频播放（S4：sd_card_clk 域输出，aud_valid 每样本保持 2084 clk，跨 25M 采样安全）----
 wire        aud_valid;
+wire        aud_tick;
 wire [23:0] aud_l;
 wire [23:0] aud_r;
 wire        aud_play_done;
@@ -571,7 +572,7 @@ sd_card_bmp #(
     .aud_r             (aud_r),
     .aud_play_done     (aud_play_done),
     .aud_underrun      (aud_underrun),
-    .aud_tick          (),
+    .aud_tick          (aud_tick),
     .aud_pair_on       (aud_pair_on),
     // 音频读口（frame_read_write 音频通道）
     .rd_req            (sd_aud_rd_req),
@@ -741,27 +742,33 @@ wire [23:0] vout_adj = {adj_px(vout_data_raw[23:16], ct_bin_v),
                         adj_px(vout_data_raw[15:8],  ct_bin_v),
                         adj_px(vout_data_raw[7:0],   ct_bin_v)};
 
-// ---- 音频脉动条（Q 开关/灵敏度在 ctrl_core；渲染在调色级之后覆盖，绝对色）----
-wire [23:0] bar_rgb;
-wire        bar_hit;
-pulse_bar pulse_bar_m0(
-    .clk_a           (sd_card_clk),
-    .rst_a           (rst_all),
-    .aud_l           (aud_l_g),        // 音量调节后 → 音量低条也矮
-    .aud_r           (aud_r_g),
-    .aud_val         (aud_valid),      // 48kHz 输出样本有效
-    .sens_gray       (bar_sens_gray),
-    .bar_en          (bar_en),
-    .clk_v           (video_clk),
-    .rst_v           (rst_all),
-    .de_r            (de),
-    .vs_r            (vs),
-    .bar_rgb         (bar_rgb),
-    .bar_hit         (bar_hit)
+// Genuine selected-bin DFT of the played PCM. The present WAV is 24 kHz,
+// 8-bit mono expanded to 24-bit HDMI words; take one of each repeated pair.
+// A future native 24-bit source can use the same analyzer input.
+wire [127:0] spectrum_levels;
+wire spectrum_done_toggle, spectrum_ack_toggle;
+wire [23:0] spectrum_rgb;
+wire spectrum_hit, spectrum_shade;
+spectrum_dft u_spectrum_dft (
+    .clk (sd_card_clk), .rst (rst_all),
+    .aud_tick (aud_tick), .aud_valid (aud_valid),
+    .pcm ($signed(aud_l_v)), .sens_gray (bar_sens_gray),
+    .ack_toggle (spectrum_ack_toggle),
+    .levels (spectrum_levels), .done_toggle (spectrum_done_toggle)
 );
-
-assign vout_data = bar_hit       ? bar_rgb :
-                   display_valid ? vout_adj  : 24'd0;
+spectrum_overlay u_spectrum_overlay (
+    .video_clk (video_clk), .rst (rst_all), .de (de), .vs (vs),
+    .enable_raw (bar_en),
+    .levels_raw (spectrum_levels), .done_toggle_raw (spectrum_done_toggle),
+    .ack_toggle (spectrum_ack_toggle),
+    .shade (spectrum_shade), .bar_hit (spectrum_hit), .bar_rgb (spectrum_rgb)
+);
+wire [23:0] base_video = display_valid ? vout_adj : 24'd0;
+wire [23:0] shaded_video = {1'b0, base_video[23:17],
+                            1'b0, base_video[15:9],
+                            1'b0, base_video[7:1]};
+assign vout_data = spectrum_hit ? spectrum_rgb :
+                   spectrum_shade ? shaded_video : base_video;
 
 subtitle_store u_subtitle_store (
     .sd_clk (sd_card_clk), .video_clk (video_clk), .rst (rst_all),
