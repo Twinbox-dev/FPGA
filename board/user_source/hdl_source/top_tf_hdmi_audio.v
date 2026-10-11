@@ -32,6 +32,10 @@ module top(
     output                      HDMI_DDC_SCL,
     inout                       HDMI_DDC_SDA,
 
+    // GT911 touch panel on J1 pins 31/32 (open-drain I2C)
+    inout                       gt911_scl,
+    inout                       gt911_sda,
+
     // TF card SPI
     output                      sd_ncs,
     output                      sd_dclk,
@@ -81,6 +85,11 @@ wire [23:0] vout_data_raw;
 wire [23:0] vout_data;
 wire [23:0] osd_rgb;
 wire osd_de, osd_vs;
+wire [23:0] cursor_rgb;
+wire cursor_de, cursor_vs;
+wire cursor_online, cursor_req_toggle, cursor_ack_toggle;
+wire [10:0] cursor_mailbox_x;
+wire [9:0] cursor_mailbox_y;
 wire [1:0] osd_mode_cfg;
 wire [3:0] vol_gray;
 wire panel_show, panel_text_on, panel_band;
@@ -513,6 +522,19 @@ video_pll video_pll_m0(
     .clk1_out   (hdmi_5x_clk)
 );
 
+// GT911 first stage: discover 0x5D/0x14, poll a single finger and move a
+// relative pointer. No INT/RST pin or touch-triggered playback action yet.
+gt911_trackpad u_gt911_trackpad (
+    .clk (sd_card_clk), .rst (rst_all),
+    .scl (gt911_scl), .sda (gt911_sda),
+    .cursor_ack_toggle (cursor_ack_toggle),
+    .cursor_req_toggle (cursor_req_toggle),
+    .cursor_mailbox_x (cursor_mailbox_x),
+    .cursor_mailbox_y (cursor_mailbox_y),
+    .online (cursor_online),
+    .touch_report (), .touch_down (), .cursor_x (), .cursor_y ()
+);
+
 // mem_clk 域把 write_finish 单拍转成 toggle，供 sd_card_clk 域可靠同步
 always @(posedge ext_mem_clk or posedge rst_all) begin
     if (rst_all)
@@ -825,6 +847,18 @@ osd_composite u_osd_composite (
     .video_out (osd_rgb), .de_out (osd_de), .vs_out (osd_vs)
 );
 
+// Cursor is HDMI-only. PC pixel probes still observe the pre-OSD frame data.
+gt911_cursor_overlay u_gt911_cursor (
+    .video_clk (video_clk), .rst (rst_all),
+    .video_in (osd_rgb), .de_in (osd_de), .vs_in (osd_vs),
+    .online_raw (cursor_online),
+    .cursor_req_toggle (cursor_req_toggle),
+    .cursor_mailbox_x (cursor_mailbox_x),
+    .cursor_mailbox_y (cursor_mailbox_y),
+    .cursor_ack_toggle (cursor_ack_toggle),
+    .video_out (cursor_rgb), .de_out (cursor_de), .vs_out (cursor_vs)
+);
+
 // ================== 读侧 dump 捕获窗（video_clk 域，第二十一轮）==================
 // 触发（'D' 或装载提交自动）后捕获一帧。保留 video FIFO 出口的旧探针；
 // DUMP_AT_SDRAM_OUTPUT=1 时取 mem_clk 域，具体选控制器返回或读请求地址
@@ -1011,9 +1045,9 @@ sdram U3(
 video_rgb_to_axis_640x480 #(.H_ACTIVE(1280)) u_video_rgb_to_axis_640x480(
     .I_clk         (video_clk),
     .I_rst         (rst_all),
-    .I_vs          (osd_vs),
-    .I_de          (osd_de),
-    .I_rgb         (osd_rgb),
+    .I_vs          (cursor_vs),
+    .I_de          (cursor_de),
+    .I_rgb         (cursor_rgb),
     .O_video_user  (axis_s_user),
     .O_video_valid (axis_s_valid),
     .O_video_last  (axis_s_last),

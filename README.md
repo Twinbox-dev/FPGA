@@ -25,6 +25,8 @@ HDMI 滚动字幕与 OSD 面板已上板验证；协议、操作和验收见
 真实频谱可视化已于 2026-10-09 上板验证；自研 DFT 算法、资源变化、
 当前 8-bit 音源的限制与后续 24-bit 升级见
 [`docs/audio_spectrum.md`](docs/audio_spectrum.md)。
+GT911 触控板的单指相对移动和 HDMI 光标已上板验证；接线、实现和验收见
+[`docs/gt911_trackpad.md`](docs/gt911_trackpad.md)。
 
 ## 目录
 - `board/` —— TD 工程（`user_source` 源 + `td_project` 工程文件），真机唯一真源
@@ -38,6 +40,7 @@ HDMI 滚动字幕与 OSD 面板已上板验证；协议、操作和验收见
   - `make -C boardtest vdelay`：video_delay 565 解包/像素序自检（同上）
   - `make -C boardtest transition-unit`：切换混合、行缓存与读口仲裁快速验证
   - `make -C boardtest transitionpair`：带 WAV 的切换完成回执与原子提交
+  - `make -C boardtest gt911-unit`：GT911 地址探测、坐标读取与 HDMI 光标自检
 - `scripts/` —— 素材生成（gen_bmp / gen_wav / prep_media / gen_card / gen_diag_card）
 - `img/` —— 卡镜像与生成媒体（脚本可再生，不入 git）
 - `docs/` —— 架构、调试面板、时序排查、板卡盘点等

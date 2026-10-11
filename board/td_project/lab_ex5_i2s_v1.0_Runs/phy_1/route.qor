@@ -2,19 +2,19 @@
 | QoR metrics               |         value               |
 -----------------------------------------------------------
 | Timing                    |                             |
-|     Setup WNS             |        -5699                |
-|     Setup TNS             |     -3256282                |
-|     Num of violated S-EP  |         2773                |
-|     Hold WNS              |        -2935                |
-|     Hold TNS              |       -60019                |
-|     Num of violated H-EP  |           41                |
+|     Setup WNS             |        -5743                |
+|     Setup TNS             |     -3620798                |
+|     Num of violated S-EP  |         3119                |
+|     Hold WNS              |        -2811                |
+|     Hold TNS              |       -61876                |
+|     Num of violated H-EP  |           43                |
 -----------------------------------------------------------
 | Routing Resource          |                             |
-|     Wire length           |      1970944                |
+|     Wire length           |      2209896                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #slices               |         9187                |
-|     slices percentage     |       93.74%                |
+|     #slices               |         9436                |
+|     slices percentage     |       96.29%                |
 |     #RAMs                 |           56                |
 |     #DSPs                 |           13                |
 |     #DRAMHARDCON          |            0                |

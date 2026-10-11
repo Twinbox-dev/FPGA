@@ -183,3 +183,17 @@ build_spectrum_overlay/sim_spectrum_overlay: vsrc/tb_spectrum_overlay.v $(TSD)/s
 spectrum-unit: build_spectrum_dft/sim_spectrum_dft build_spectrum_overlay/sim_spectrum_overlay
 	./build_spectrum_dft/sim_spectrum_dft
 	./build_spectrum_overlay/sim_spectrum_overlay
+
+# GT911 is independent of the SD-card model. The I2C test covers both 0x5D
+# direct ACK and fallback to 0x14; the video test checks cursor alignment.
+build_gt911_trackpad/sim_gt911_trackpad: vsrc/tb_gt911_trackpad.v $(TSD)/gt911_trackpad.v $(TSD)/gt911_i2c_byte.v $(TSD)/gt911_cursor_overlay.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_gt911_trackpad $^ --Mdir build_gt911_trackpad -o sim_gt911_trackpad
+
+build_gt911_cursor/sim_gt911_cursor: vsrc/tb_gt911_cursor.v $(TSD)/gt911_cursor_overlay.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_gt911_cursor $^ --Mdir build_gt911_cursor -o sim_gt911_cursor
+
+.PHONY: gt911-unit
+gt911-unit: build_gt911_trackpad/sim_gt911_trackpad build_gt911_cursor/sim_gt911_cursor
+	./build_gt911_trackpad/sim_gt911_trackpad
+	./build_gt911_cursor/sim_gt911_cursor
+
