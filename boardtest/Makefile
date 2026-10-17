@@ -43,7 +43,7 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront cmdarb pulsebar
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediachunk mediamux cmdarb pulsebar
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -99,6 +99,20 @@ uart:
 ethfront:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_ethfront vsrc/tb_ethfront.v ../board_display/user_source/hdl_source/ETH/eth_front.v -o sim_ethfront --Mdir build_ethfront
 	./build_ethfront/sim_ethfront
+
+# 两板应用层命令往返：PC 帧 -> 媒体板桥 -> 显示板命令邮箱。
+dualboardcmd:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_dual_board_cmd vsrc/tb_dual_board_cmd.v ../board_media/user_source/hdl_source/media_probe_bridge.v ../board_media/user_source/hdl_source/ETH/eth_front.v -o sim_dual_board_cmd --Mdir build_dual_board_cmd
+	./build_dual_board_cmd/sim_dual_board_cmd
+
+# 媒体分片编解码：边界 253 字、CRC、损坏/截断包拒收。
+mediachunk:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_chunk vsrc/tb_media_chunk.v ../board_media/user_source/hdl_source/media_chunk_tx.v ../board_display/user_source/hdl_source/ETH/media_chunk_rx.v -o sim_media_chunk --Mdir build_media_chunk
+	./build_media_chunk/sim_media_chunk
+
+mediamux:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_tx_mux vsrc/tb_media_tx_mux.v ../board_media/user_source/hdl_source/media_tx_mux.v -o sim_media_tx_mux --Mdir build_media_tx_mux
+	./build_media_tx_mux/sim_media_tx_mux
 
 # 命令仲裁自检（cmd_arb：多传输前端 → ctrl_core 的唯一汇合点）。
 # 这段胶水原本只在顶层、不在任何仿真范围内，"命令晚一拍"的 bug 只能上板发现。

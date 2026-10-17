@@ -279,14 +279,16 @@ module tb_ethfront;
         if (errors == 0) $display("T8 连续两帧载荷字节序: PASS");
 
         // ---- T9：应用头里伪装成命令对的字节不得被解出 ----
-        // 头 8 字节刻意放 [0x4E,0xB1]（= 'N' 的合法对），数据段放 'A' 对：
+        // type 保持 0x0001；头末两字节刻意放 [0x4E,0xB1]
+        //（= 'N' 的合法对），数据段放 'A' 对：
         // 只允许解出 0x41，绝不允许解出 0x4E（否则头会被当成命令）
         rx_len = 16'd2;
         @(posedge clk);
         begin : t9
             integer k;
             for (k = 0; k < 8; k = k + 1) begin
-                rx_data = (k == 4) ? 8'h4E : (k == 5) ? 8'hB1 : 8'h00;
+                rx_data = (k == 4) ? 8'h00 : (k == 5) ? 8'h01 :
+                          (k == 6) ? 8'h4E : (k == 7) ? 8'hB1 : 8'h00;
                 rx_valid = 1'b1;
                 @(posedge clk);
             end

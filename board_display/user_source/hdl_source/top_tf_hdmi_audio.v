@@ -433,6 +433,8 @@ wire [7:0]  eth_cmd;
 // eth_tx_tog 在下面的 always 块里赋值（reg）。
 wire        eth_cmd_ack_t;
 reg         eth_tx_tog;
+wire        media_chunk_ok_tog;
+wire        media_chunk_err_tog;
 
 eth_subsys u_eth_subsys(
     .clk_50              (clk),
@@ -449,6 +451,8 @@ eth_subsys u_eth_subsys(
     .cmd_ack_t           (eth_cmd_ack_t),
     .tx_tog              (eth_tx_tog),
     .tx_pkt              (eth_tx_pkt_r),
+    .media_chunk_ok_tog  (media_chunk_ok_tog),
+    .media_chunk_err_tog (media_chunk_err_tog),
     .sys_rst             (rst_all),
     .tap_clk             (tap_clk_eth),
     .tap_val             (tap_val_eth),
@@ -627,26 +631,44 @@ sd_card_bmp #(
     .dmp_trig          (dmp_trig_w)
 );
 
-// ===================== 七段数码管（预留）=====================
-// 原调试面板（state/fat/flags/underrun 六位）已由 UART 状态包取代而退休：
-// 遥测同源（state_code/dbg_fat_state/flag_a/flag_b/dbg_underrun 仍喂
-// uart_link 状态包）。保留 seg_scan/seg_decoder 与引脚约束供后续模块
-// 复用（通用扫描/译码器，与调试语义无关），现显示固定占位 '8'。
-// （2026-10-02 以太网定位期间曾临时改为 o_diag 诊断显示，定位完成后已拆，
-//   方法见 docs/ethernet.md 的「调试过程记录」。）
-wire [6:0] seg_ph;
-seg_decoder u_seg_ph (.bin_data(4'h8), .seg_data(seg_ph));
+// ===================== 双板分片诊断数码管 ======================
+// 左侧 db 为标记，后四位为错误计数和完整分片计数（各 8 位十六进制）。
+// ETH 域的完成事件以 toggle 同步到 50 MHz，避免跨域传递多位计数器。
+reg [2:0] media_ok_sync, media_err_sync;
+reg [7:0] media_ok_count, media_err_count;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        media_ok_sync <= 3'd0;
+        media_err_sync <= 3'd0;
+        media_ok_count <= 8'd0;
+        media_err_count <= 8'd0;
+    end else begin
+        media_ok_sync <= {media_ok_sync[1:0], media_chunk_ok_tog};
+        media_err_sync <= {media_err_sync[1:0], media_chunk_err_tog};
+        if (media_ok_sync[2] ^ media_ok_sync[1])
+            media_ok_count <= media_ok_count + 8'd1;
+        if (media_err_sync[2] ^ media_err_sync[1])
+            media_err_count <= media_err_count + 8'd1;
+    end
+end
+wire [6:0] seg0, seg1, seg2, seg3, seg4, seg5;
+seg_decoder u_seg0 (.bin_data(media_ok_count[3:0]), .seg_data(seg0));
+seg_decoder u_seg1 (.bin_data(media_ok_count[7:4]), .seg_data(seg1));
+seg_decoder u_seg2 (.bin_data(media_err_count[3:0]), .seg_data(seg2));
+seg_decoder u_seg3 (.bin_data(media_err_count[7:4]), .seg_data(seg3));
+seg_decoder u_seg4 (.bin_data(4'hb), .seg_data(seg4));
+seg_decoder u_seg5 (.bin_data(4'hd), .seg_data(seg5));
 seg_scan seg_scan_m0(
     .clk               (clk),
     .rst_n             (rst_n),
     .seg_sel           (seg_sel),
     .seg_data          (seg_data),
-    .seg_data_0        ({1'b1,seg_ph}),
-    .seg_data_1        ({1'b1,seg_ph}),
-    .seg_data_2        ({1'b1,seg_ph}),
-    .seg_data_3        ({1'b1,seg_ph}),
-    .seg_data_4        ({1'b1,seg_ph}),
-    .seg_data_5        ({1'b1,seg_ph})
+    .seg_data_0        ({1'b1,seg0}),
+    .seg_data_1        ({1'b1,seg1}),
+    .seg_data_2        ({1'b1,seg2}),
+    .seg_data_3        ({1'b1,seg3}),
+    .seg_data_4        ({1'b1,seg4}),
+    .seg_data_5        ({1'b1,seg5})
 );
 
 // ===================== 原图像时序与帧缓存 =====================

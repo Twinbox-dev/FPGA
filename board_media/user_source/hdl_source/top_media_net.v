@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
-// First media-board milestone: an independent Ethernet endpoint.  The SD and
-// inter-board data paths will be added only after this endpoint is validated.
+// Second milestone: relay one command through the media board to the display
+// board.  The SD and bulk inter-board data paths are not connected yet.
 module top (
     input  wire       clk,
     input  wire       rst_n,
@@ -38,12 +38,13 @@ module top (
         .tx_pkt      (tx_pkt)
     );
 
-    // .3 is the media board; the original display board remains at .2.
+    // PC .1 -> media .3:1 -> display .2:1 -> PC .1:2.
     // 02:00:00:00:00:03 is a locally administered, unicast MAC.
     eth_subsys #(
         .LOCAL_IP  (32'hc0a88903),
         .LOCAL_MAC (48'h020000000003),
-        .DST_IP    (32'hc0a88901)
+        .DST_IP    (32'hc0a88902),
+        .DST_UDP_PORT (16'h0001)
     ) u_eth (
         .clk_50             (clk),
         .rst_all            (boot_rst),

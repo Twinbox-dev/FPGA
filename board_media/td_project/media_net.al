@@ -155,6 +155,22 @@
                     <Attr Name="CompileOrder" Val="18"/>
                 </FileInfo>
             </File>
+            <File Path="../user_source/hdl_source/media_chunk_tx.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="20"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/media_tx_mux.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="21"/>
+                </FileInfo>
+            </File>
         </Verilog>
         <ADC_FILE>
             <File Path="../user_source/constraints_source/pin.adc">
@@ -188,26 +204,36 @@
         </IP_FILE>
     </Source_Files>
     <FileSets>
-        <FileSet Name="design_1" Type="DesignFiles"></FileSet>
-        <FileSet Name="constraint_1" Type="ConstrainFiles"></FileSet>
+        <FileSet Name="design_1" Type="DesignFiles">
+        </FileSet>
+        <FileSet Name="constraint_1" Type="ConstrainFiles">
+        </FileSet>
     </FileSets>
     <TOP_MODULE>
         <LABEL>top</LABEL>
         <MODULE>top</MODULE>
         <CREATEINDEX>user</CREATEINDEX>
     </TOP_MODULE>
-    <Property></Property>
-    <Device_Settings></Device_Settings>
-    <Configurations></Configurations>
+    <Property>
+    </Property>
+    <Device_Settings>
+    </Device_Settings>
+    <Configurations>
+    </Configurations>
     <Runs>
         <Run Name="syn_1" Type="Synthesis" ConstraintSet="constraint_1" Description="" Active="true">
-            <Strategy Name="Default_Synthesis_Strategy"></Strategy>
-            <UserParams></UserParams>
+            <Strategy Name="Default_Synthesis_Strategy">
+            </Strategy>
+            <UserParams>
+            </UserParams>
         </Run>
         <Run Name="phy_1" Type="PhysicalDesign" ConstraintSet="constraint_1" Description="" SynRun="syn_1" Active="true">
-            <Strategy Name="Default_PhysicalDesign_Strategy"></Strategy>
-            <UserParams></UserParams>
+            <Strategy Name="Default_PhysicalDesign_Strategy">
+            </Strategy>
+            <UserParams>
+            </UserParams>
         </Run>
     </Runs>
-    <Project_Settings></Project_Settings>
+    <Project_Settings>
+    </Project_Settings>
 </Project>

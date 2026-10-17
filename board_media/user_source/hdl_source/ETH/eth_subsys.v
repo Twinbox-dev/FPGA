@@ -57,7 +57,8 @@ module eth_subsys(
     parameter LOCAL_UDP_PORT   = 16'h0001;
     parameter LOCAL_IP         = 32'hc0a88903;   // media board: 192.168.137.3
     parameter LOCAL_MAC        = 48'h020000000003; // media board's unique MAC
-    parameter DST_IP           = 32'hc0a88901;   // 192.168.137.1（PC 侧）
+    parameter DST_IP           = 32'hc0a88901;   // packet destination, PC by default
+    parameter DST_UDP_PORT     = 16'h0002;        // destination UDP port
     // 速率开关（2026-10-02 定）：**当前=千兆**（GIGABIT=1）。
     // 已知风险（用户明确接受）：综合时序过不了——厂商加密 UDP 栈内部（ARP 缓存）
     // 在 125MHz 下实测 Fmax 只有 44MHz（setup 差 5.3ns，281 个端点），
@@ -128,20 +129,37 @@ module eth_subsys(
     wire [7:0]  app_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
     wire [15:0] udp_data_length;
+    wire [7:0]  ctrl_tx_data, chunk_tx_data;
+    wire        ctrl_tx_req, ctrl_tx_valid, ctrl_tx_ack;
+    wire        chunk_tx_req, chunk_tx_valid, chunk_tx_ack;
+    wire [15:0] ctrl_tx_length, chunk_tx_length;
+    wire ctrl_udp_ready;
+    media_tx_mux u_tx_mux (
+        .clk(udp_clk), .rst(reset),
+        .stack_ready(udp_tx_ready), .stack_ack(app_tx_ack),
+        .ctrl_req(ctrl_tx_req), .ctrl_valid(ctrl_tx_valid),
+        .ctrl_data(ctrl_tx_data), .ctrl_length(ctrl_tx_length),
+        .ctrl_ready(ctrl_udp_ready), .ctrl_ack(ctrl_tx_ack),
+        .chunk_req(chunk_tx_req), .chunk_valid(chunk_tx_valid),
+        .chunk_data(chunk_tx_data), .chunk_length(chunk_tx_length),
+        .chunk_ack(chunk_tx_ack),
+        .stack_req(app_tx_data_request), .stack_valid(app_tx_data_valid),
+        .stack_data(app_tx_data), .stack_length(udp_data_length)
+    );
 
-    eth_front u_eth_front (
+    eth_front #(.TX_TYPE(16'h0001)) u_eth_front (
         .app_rx_clk        (udp_clk),
         .app_tx_clk        (udp_clk),
         .reset             (reset),
         .app_rx_data       (app_rx_data),
         .app_rx_data_valid (app_rx_data_valid),
         .app_rx_data_length(app_rx_data_length),
-        .udp_tx_ready      (udp_tx_ready),
-        .app_tx_ack        (app_tx_ack),
-        .app_tx_data       (app_tx_data),
-        .app_tx_data_request(app_tx_data_request),
-        .app_tx_data_valid (app_tx_data_valid),
-        .udp_data_length   (udp_data_length),
+        .udp_tx_ready      (ctrl_udp_ready),
+        .app_tx_ack        (ctrl_tx_ack),
+        .app_tx_data       (ctrl_tx_data),
+        .app_tx_data_request(ctrl_tx_req),
+        .app_tx_data_valid (ctrl_tx_valid),
+        .udp_data_length   (ctrl_tx_length),
         .cmd               (cmd),
         .cmd_pending       (cmd_pending),
         .cmd_ack_t         (cmd_ack_t),
@@ -156,6 +174,52 @@ module eth_subsys(
         .tap2_val          (tap2_val),
         .tap2_word         (tap2_word),
         .tap2_end          (tap2_end)
+    );
+
+    // PC command 'M' asks for one deterministic 7-word media chunk.  This is
+    // an on-board link probe; the normal image producer will replace it later.
+    reg cmd_pending_d;
+    reg [15:0] diag_sequence;
+    reg [7:0] diag_word_index;
+    wire diag_data_ready, diag_busy, diag_done;
+    wire diag_start = cmd_pending && !cmd_pending_d &&
+                      cmd == 8'h4d && !diag_busy;
+    always @(posedge udp_clk or posedge reset) begin
+        if (reset) begin
+            cmd_pending_d <= 1'b0;
+            diag_sequence <= 16'd0;
+            diag_word_index <= 8'd0;
+        end else begin
+            cmd_pending_d <= cmd_pending;
+            if (diag_start) begin
+                diag_sequence <= diag_sequence + 16'd1;
+                diag_word_index <= 8'd0;
+            end else if (diag_data_ready)
+                diag_word_index <= diag_word_index + 8'd1;
+        end
+    end
+    reg [31:0] diag_word;
+    always @* begin
+        case (diag_word_index)
+            8'd0: diag_word = 32'ha5c30000;
+            8'd1: diag_word = 32'ha4c10307;
+            8'd2: diag_word = 32'ha7c7060e;
+            8'd3: diag_word = 32'ha6c50915;
+            8'd4: diag_word = 32'ha1cb0c1c;
+            8'd5: diag_word = 32'ha0c90f23;
+            8'd6: diag_word = 32'ha3cf122a;
+            default: diag_word = 32'd0;
+        endcase
+    end
+    media_chunk_tx u_diag_chunk_tx (
+        .clk(udp_clk), .rst(reset), .start(diag_start),
+        .session(16'h1302), .sequence_id(diag_sequence),
+        .count(8'd7), .flags(8'h01),
+        .data_word(diag_word), .data_valid(diag_data_ready && diag_word_index < 8'd7),
+        .data_ready(diag_data_ready),
+        .tx_ack(chunk_tx_ack), .tx_request(chunk_tx_req),
+        .tx_valid(chunk_tx_valid), .tx_byte(chunk_tx_data),
+        .tx_length(chunk_tx_length), .busy(diag_busy), .done(diag_done)
     );
 
     // ================= UDP/IP 协议栈（官方 IP）=================
@@ -207,8 +271,8 @@ module eth_subsys(
         .app_tx_data_valid     (app_tx_data_valid),
         .app_tx_data           (app_tx_data),
         .app_tx_data_length    (udp_data_length),
-        .app_tx_dst_port       (16'h0002),          // PC 侧端口（demo 同款）
-        .ip_tx_dst_address     (DST_IP),            // PC 侧 IP
+        .app_tx_dst_port       (DST_UDP_PORT),
+        .ip_tx_dst_address     (DST_IP),
         .input_local_udp_port_num       (local_port_dyn),
         .input_local_udp_port_num_valid (local_cfg_valid),
         .input_local_ip_address         (local_ip_dyn),

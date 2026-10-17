@@ -1,8 +1,9 @@
 `timescale 1ns / 1ps
 
 // Crosses the ETH command mailbox into the 50 MHz board clock domain.
-// The response is deliberately distinct from the display-board ACK/status:
-// bytes E1, command, 'E', 'M', 00, 00, 00, 00.
+// For the inter-board command probe, emit [CMD, ~CMD] in the first two bytes
+// of the existing eight-byte transmit slot.  Display eth_front accepts this
+// pair after the application header and delivers it to its control core.
 module media_probe_bridge (
     input  wire        clk,
     input  wire        rst,
@@ -32,8 +33,10 @@ module media_probe_bridge (
                 // captures tx_pkt only after synchronizing tx_tog.
                 consumed  <= 1'b1;
                 cmd_ack_t <= ~cmd_ack_t;
-                tx_pkt    <= {32'd0, 8'h4d, 8'h45, cmd, 8'he1};
-                tx_tog    <= ~tx_tog;
+                if (cmd != 8'h4d) begin // 'M' starts the synthetic media chunk
+                    tx_pkt <= {48'd0, ~cmd, cmd};
+                    tx_tog <= ~tx_tog;
+                end
             end
         end
     end

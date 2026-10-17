@@ -4,7 +4,7 @@
    Executable = C:/Program Files/Anlogic/TD_6.2.1_Engineer_6.2.168.116/bin/run.exe
    Built at =   16:32:07 Jun 12 2025
    Run by =     23506
-   Run Date =   Sat Oct 17 19:27:47 2026
+   Run Date =   Sun Oct 18 01:10:02 2026
 
    Run on =     AIRWIN
 ============================================================
@@ -127,8 +127,8 @@ HDL-1007 : undeclared symbol '**', assumed default net type '**' in ../../../use
 HDL-1007 : undeclared symbol '**', assumed default net type '**' in ../../../user_source/hdl_source/hdmi1.4b_transmitter_core/hdmi_1_4b_transmitter_core_wrapper.enc.v(5989)
 HDL-1007 : back to file '../../../user_source/hdl_source/hdmi1.4b_transmitter_core/hdmi_1_4b_transmitter_core_wrapper.enc.v' in ../../../user_source/hdl_source/hdmi1.4b_transmitter_core/hdmi_1_4b_transmitter_core_wrapper.enc.v(77)
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/top_tf_hdmi_audio.v
-HDL-1007 : undeclared symbol 'eth_tx_pkt_r', assumed default net type 'wire' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(451)
-HDL-7225 CRITICAL-WARNING: 'eth_tx_pkt_r' is already implicitly declared on line 451 in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(494)
+HDL-1007 : undeclared symbol 'eth_tx_pkt_r', assumed default net type 'wire' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(453)
+HDL-7225 CRITICAL-WARNING: 'eth_tx_pkt_r' is already implicitly declared on line 453 in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(498)
 HDL-5373 WARNING: identifier 'wd_rst' is used before its declaration in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(237)
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/color_bar.v
 HDL-1007 : analyze included file ../../../user_source/hdl_source/SD/video_define.v in ../../../user_source/hdl_source/SD/color_bar.v(2)
@@ -158,7 +158,7 @@ HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/sd_card_sec_r
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/sd_card_top.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/spi_master.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/sdram.v
-HDL-1007 : analyze included file C:\Users\23506\Desktop\anlogic\board\td_project\/../user_source/hdl_source/include/global_def.v in ../../../user_source/hdl_source/SD/sdram.v(10)
+HDL-1007 : analyze included file C:\Users\23506\Desktop\anlogic\board_display\td_project\/../user_source/hdl_source/include/global_def.v in ../../../user_source/hdl_source/SD/sdram.v(10)
 HDL-1007 : back to file '../../../user_source/hdl_source/SD/sdram.v' in ../../../user_source/hdl_source/SD/sdram.v(10)
 HDL-1007 : undeclared symbol 'SDR_CKE', assumed default net type 'wire' in ../../../user_source/hdl_source/SD/sdram.v(89)
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/include/sdr_as_ram.enc.v
@@ -166,7 +166,7 @@ HDL-1007 : analyze included file ../../../user_source/hdl_source/include/global_
 HDL-1007 : back to file '../../../user_source/hdl_source/include/sdr_as_ram.enc.v' in ../../../user_source/hdl_source/include/sdr_as_ram.enc.v(10)
 HDL-1007 : back to file '../../../user_source/hdl_source/include/sdr_as_ram.enc.v' in ../../../user_source/hdl_source/include/sdr_as_ram.enc.v(45)
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/include/sdr_init_ref.enc.v
-HDL-1007 : analyze included file C:\Users\23506\Desktop\anlogic\board\td_project\/../user_source/hdl_source/include/global_def.v in ../../../user_source/hdl_source/include/sdr_init_ref.enc.v(11)
+HDL-1007 : analyze included file C:\Users\23506\Desktop\anlogic\board_display\td_project\/../user_source/hdl_source/include/global_def.v in ../../../user_source/hdl_source/include/sdr_init_ref.enc.v(11)
 HDL-1007 : back to file '../../../user_source/hdl_source/include/sdr_init_ref.enc.v' in ../../../user_source/hdl_source/include/sdr_init_ref.enc.v(11)
 HDL-1007 : undeclared symbol '**', assumed default net type '**' in ../../../user_source/hdl_source/include/sdr_init_ref.enc.v(57)
 HDL-1007 : back to file '../../../user_source/hdl_source/include/sdr_init_ref.enc.v' in ../../../user_source/hdl_source/include/sdr_init_ref.enc.v(149)
@@ -195,9 +195,9 @@ HDL-1007 : undeclared symbol '**', assumed default net type '**' in ../../../use
 HDL-1007 : back to file '../../../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v' in ../../../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v(420)
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/ETH/eth_subsys.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/ETH/eth_front.v
-HDL-5373 WARNING: identifier 'ack_seen' is used before its declaration in ../../../user_source/hdl_source/ETH/eth_front.v(104)
-HDL-5373 WARNING: identifier 'hdr_b' is used before its declaration in ../../../user_source/hdl_source/ETH/eth_front.v(288)
-HDL-5373 WARNING: identifier 'pop_go' is used before its declaration in ../../../user_source/hdl_source/ETH/eth_front.v(495)
+HDL-5373 WARNING: identifier 'ack_seen' is used before its declaration in ../../../user_source/hdl_source/ETH/eth_front.v(111)
+HDL-5373 WARNING: identifier 'hdr_b' is used before its declaration in ../../../user_source/hdl_source/ETH/eth_front.v(295)
+HDL-5373 WARNING: identifier 'pop_go' is used before its declaration in ../../../user_source/hdl_source/ETH/eth_front.v(502)
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/ETH/temac_block.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/ETH/rgmii_interface.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/ETH/IDDR.v
@@ -252,7 +252,8 @@ HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/spectrum_samp
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/gt911_i2c_byte.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/gt911_trackpad.v
 HDL-1007 : analyze verilog file ../../../user_source/hdl_source/SD/gt911_cursor_overlay.v
-PRJ-1401 : Successfully analyzed 68 source files.
+HDL-1007 : analyze verilog file ../../../user_source/hdl_source/ETH/media_chunk_rx.v
+PRJ-1401 : Successfully analyzed 69 source files.
 RUN-1002 : start command "commit_param -step design"
 RUN-1001 : Print Global Property
 RUN-1001 : --------------------------------------------------------
@@ -278,18 +279,18 @@ HDL-5300 WARNING: found if-condition inside asynchronous set or reset block; syn
 HDL-1007 : elaborate module ctrl_core in ../../../user_source/hdl_source/SD/ctrl_core.v(35)
 HDL-1007 : elaborate module uart_link in ../../../user_source/hdl_source/SD/uart_link.v(22)
 HDL-1007 : elaborate module uart_tx_byte in ../../../user_source/hdl_source/SD/uart_link.v(182)
-HDL-1007 : port 'tri_speed' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_awready' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_wready' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_bresp' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_bvalid' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_arready' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_rdata' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_rresp' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 's_axi_rvalid' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 'mdio_o' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 'mdio_oen' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
-HDL-1007 : port 'mdio_clk' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
+HDL-1007 : port 'tri_speed' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_awready' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_wready' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_bresp' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_bvalid' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_arready' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_rdata' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_rresp' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 's_axi_rvalid' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 'mdio_o' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 'mdio_oen' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
+HDL-1007 : port 'mdio_clk' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
 HDL-1007 : elaborate module eth_subsys in ../../../user_source/hdl_source/ETH/eth_subsys.v(24)
 HDL-1007 : elaborate module clk_gen_rst_gen in ../../../user_source/hdl_source/ETH/clk_gen_rst_gen.v(31)
 HDL-1007 : elaborate module pll_gen in ../../../user_source/hdl_source/ETH/pll_gen.v(26)
@@ -297,9 +298,11 @@ HDL-1007 : elaborate module EG_LOGIC_BUFG in C:\Program Files\Anlogic\TD_6.2.1_E
 HDL-1007 : elaborate module EG_PHY_PLL(FIN="50.000",REFCLK_DIV=2,FBCLK_DIV=5,CLKC0_DIV=8,CLKC1_DIV=8,CLKC2_DIV=80,CLKC3_DIV=40,CLKC4_DIV=8,CLKC0_ENABLE="ENABLE",CLKC1_ENABLE="ENABLE",CLKC2_ENABLE="ENABLE",CLKC3_ENABLE="ENABLE",CLKC4_ENABLE="ENABLE",FEEDBK_PATH="CLKC0_EXT",STDBY_ENABLE="DISABLE",CLKC0_CPHASE=7,CLKC1_CPHASE=7,CLKC2_CPHASE=79,CLKC3_CPHASE=39,GMC_GAIN=2,ICP_CURRENT=9,KVCO=2,LPF_CAPACITOR=1,LPF_RESISTOR=8,SYNC_ENABLE="DISABLE") in C:\Program Files\Anlogic\TD_6.2.1_Engineer_6.2.168.116\arch/eagle_macro.v(889)
 HDL-1007 : elaborate module div_clk_gen in ../../../user_source/hdl_source/ETH/div_clk_gen.v(31)
 HDL-1007 : elaborate module eth_front in ../../../user_source/hdl_source/ETH/eth_front.v(29)
-HDL-1007 : extracting RAM for identifier 'str_mem' in ../../../user_source/hdl_source/ETH/eth_front.v(250)
-HDL-1007 : elaborate module tap_afifo in ../../../user_source/hdl_source/ETH/eth_front.v(460)
-HDL-1007 : extracting RAM for identifier 'mem' in ../../../user_source/hdl_source/ETH/eth_front.v(480)
+HDL-1007 : extracting RAM for identifier 'str_mem' in ../../../user_source/hdl_source/ETH/eth_front.v(257)
+HDL-1007 : elaborate module tap_afifo in ../../../user_source/hdl_source/ETH/eth_front.v(467)
+HDL-1007 : extracting RAM for identifier 'mem' in ../../../user_source/hdl_source/ETH/eth_front.v(487)
+HDL-1007 : elaborate module media_chunk_rx in ../../../user_source/hdl_source/ETH/media_chunk_rx.v(9)
+HDL-1007 : extracting RAM for identifier 'words' in ../../../user_source/hdl_source/ETH/media_chunk_rx.v(26)
 HDL-1007 : port '**' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v(284)
 HDL-1007 : port '**' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v(284)
 HDL-1007 : port '**' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v(284)
@@ -603,7 +606,7 @@ HDL-5007 WARNING: actual bit length 32 differs from formal bit length 1 for port
 HDL-5323 WARNING: input port 'dib[8]' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/rx_client_fifo.v(871)
 HDL-5323 WARNING: input port 'dib[8]' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/rx_client_fifo.v(892)
 HDL-1007 : elaborate module udp_clk_gen in ../../../user_source/hdl_source/ETH/temac_clk_gen.v(30)
-HDL-5323 WARNING: input port 's_axi_aclk' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(313)
+HDL-5323 WARNING: input port 's_axi_aclk' remains unconnected for this instance in ../../../user_source/hdl_source/ETH/eth_subsys.v(373)
 HDL-1007 : elaborate module cmd_arb in ../../../user_source/hdl_source/SD/ctrl_core.v(332)
 HDL-1007 : elaborate module subtitle_cmd in ../../../user_source/hdl_source/SD/subtitle_cmd.v(6)
 HDL-1007 : elaborate module sys_pll in ../../../user_source/hdl_source/ip/sys_pll.v(24)
@@ -673,8 +676,8 @@ HDL-1007 : elaborate module gt911_cursor_overlay in ../../../user_source/hdl_sou
 HDL-1007 : extracting RAM for identifier 'sprite_mem' in ../../../user_source/hdl_source/SD/gt911_cursor_overlay.v(42)
 HDL-1007 : readmemh: reading from file 'gt911_ganyu_cursor.mem' in ../../../user_source/hdl_source/SD/gt911_cursor_overlay.v(44)
 HDL-5314 WARNING: net 'sprite_mem' does not have a driver in ../../../user_source/hdl_source/SD/gt911_cursor_overlay.v(42)
-HDL-1007 : elaborate module mem_return_dump(WORDS=32'b01110000100000000000) in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(1179)
-HDL-1007 : elaborate module write_port_probe in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(1143)
+HDL-1007 : elaborate module mem_return_dump(WORDS=32'b01110000100000000000) in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(1201)
+HDL-1007 : elaborate module write_port_probe in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(1165)
 HDL-1007 : port 'valid' remains unconnected for this instance in ../../../user_source/hdl_source/SD/frame_read_write.v(114)
 HDL-1007 : port 'afull' remains unconnected for this instance in ../../../user_source/hdl_source/SD/frame_read_write.v(114)
 HDL-1007 : port 'aempty' remains unconnected for this instance in ../../../user_source/hdl_source/SD/frame_read_write.v(114)
@@ -704,13 +707,13 @@ HDL-5317 WARNING: input port 'dib[31]' is not connected on this instance in ../.
 HDL-5007 WARNING: actual bit length 10 differs from formal bit length 9 for port 'wrusedw' in ../../../user_source/hdl_source/SD/frame_read_write.v(197)
 HDL-1007 : elaborate module frame_fifo_read(BURST_SIZE=256) in ../../../user_source/hdl_source/SD/frame_fifo_read.v(2)
 HDL-5007 WARNING: actual bit length 9 differs from formal bit length 10 for port 'wrusedw' in ../../../user_source/hdl_source/SD/frame_read_write.v(233)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_0' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(972)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_1' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(973)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_2' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(974)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_3' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(975)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_len' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(977)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'write_addr_0' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(996)
-HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'write_addr_1' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(997)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_0' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(994)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_1' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(995)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_2' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(996)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_addr_3' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(997)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'read_len' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(999)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'write_addr_0' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(1018)
+HDL-5007 WARNING: actual bit length 24 differs from formal bit length 21 for port 'write_addr_1' in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(1019)
 HDL-5007 Similar messages will be suppressed.
 HDL-1007 : elaborate module transition_line_read in ../../../user_source/hdl_source/SD/transition_line_read.v(4)
 HDL-1007 : elaborate module sdram in ../../../user_source/hdl_source/SD/sdram.v(12)
@@ -764,11 +767,12 @@ HDL-1007 : elaborate module ** in ../../../user_source/hdl_source/hdmi1.4b_trans
 HDL-1007 : elaborate module hdmi_phy_wrapper in ../../../user_source/hdl_source/hdmi_phy_warpper.v(3)
 HDL-1007 : elaborate module lane_lvds_10_1 in ../../../user_source/hdl_source/lane_lvds_10_1.v(4)
 HDL-5001 WARNING: Contains anonymous inst(s) and/or net(s) that have not been renamed
+HDL-5001 WARNING: Contains anonymous inst(s) and/or net(s) that have not been renamed
 HDL-1200 : Current top model is top
-HDL-1100 : Inferred 18 RAMs.
-RUN-1003 : finish command "elaborate -top top" in  1.614696s wall, 1.390625s user + 0.140625s system = 1.531250s CPU (94.8%)
+HDL-1100 : Inferred 19 RAMs.
+RUN-1003 : finish command "elaborate -top top" in  1.480544s wall, 1.312500s user + 0.093750s system = 1.406250s CPU (95.0%)
 
-RUN-1004 : used memory is 355 MB, reserved memory is 346 MB, peak memory is 355 MB
+RUN-1004 : used memory is 361 MB, reserved memory is 350 MB, peak memory is 361 MB
 RUN-1002 : start command "read_adc ../../../user_source/constraints_source/pin.adc"
 RUN-1002 : start command "set_pin_assignment  HDMI_DDC_SCL   LOCATION = P1; IOSTANDARD = LVCMOS33;DRIVESTRENGTH = 8; PULLTYPE = PULLUP;"
 RUN-1002 : start command "set_pin_assignment  HDMI_DDC_SDA   LOCATION = R1; IOSTANDARD = LVCMOS33;DRIVESTRENGTH = 8; PULLTYPE = PULLUP; "
@@ -875,14 +879,14 @@ SYN-5065 WARNING: Register "wd_armed" in ../../../user_source/hdl_source/top_tf_
 SYN-5065 WARNING: Register "wd_att" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(248) is described with both an asynchronous reset and an asynchronous set. It may have an uncertainty of the timing. Please conside rewriting code.
 SYN-5065 WARNING: Register "wd_cnt" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(247) is described with both an asynchronous reset and an asynchronous set. It may have an uncertainty of the timing. Please conside rewriting code.
 SYN-5065 WARNING: Register "wd_rst" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(249) is described with both an asynchronous reset and an asynchronous set. It may have an uncertainty of the timing. Please conside rewriting code.
-SYN-1001 : End Stage 1.1 | Check Design Sanity; Time: 0.028092s wall, 0.031250s user + 0.000000s system = 0.031250s CPU (111.2%); Memory(MB): used = 376, reserved = 483, peak = 376;
+SYN-1001 : End Stage 1.1 | Check Design Sanity; Time: 0.015097s wall, 0.015625s user + 0.000000s system = 0.015625s CPU (103.5%); Memory(MB): used = 383, reserved = 487, peak = 383;
 
-SYN-1079 : finish stage Check Design Sanity. Total instances: 46500, Total nets: 121192.
+SYN-1079 : finish stage Check Design Sanity. Total instances: 47292, Total nets: 123310.
 
 SYN-1001 : Stage 1.2 | Initialize Design
-SYN-1001 : End Stage 1.2 | Initialize Design; Time: 3.670135s wall, 3.453125s user + 0.109375s system = 3.562500s CPU (97.1%); Memory(MB): used = 339, reserved = 483, peak = 376;
+SYN-1001 : End Stage 1.2 | Initialize Design; Time: 2.827955s wall, 2.625000s user + 0.109375s system = 2.734375s CPU (96.7%); Memory(MB): used = 383, reserved = 487, peak = 383;
 
-SYN-1079 : finish stage Initialize Design. Total instances: 11792, Total nets: 80676.
+SYN-1079 : finish stage Initialize Design. Total instances: 12096, Total nets: 82185.
 
 SYN-1001 : Stage 1.3 | Flatten Module
 SYN-1011 : Flatten model top
@@ -894,9 +898,9 @@ RUN-1001 :  frame_read_write_m0/wri...  |       true       |  wfifo_32_32_512  |
 RUN-1001 :  frame_read_write_m0/rea...  |       true       |  rfifo_32_32_512  | ../../../user_source/hd...  
 RUN-1001 :  frame_read_write_m0/aud...  |       true       |  rfifo_32_32_512  | ../../../user_source/hd...  
 RUN-1001 : --------------------------------------------------------------------------------------------------
-SYN-1001 : End Stage 1.3 | Flatten Module; Time: 0.784871s wall, 0.671875s user + 0.046875s system = 0.718750s CPU (91.6%); Memory(MB): used = 343, reserved = 483, peak = 376;
+SYN-1001 : End Stage 1.3 | Flatten Module; Time: 0.645876s wall, 0.562500s user + 0.062500s system = 0.625000s CPU (96.8%); Memory(MB): used = 386, reserved = 487, peak = 386;
 
-SYN-1079 : finish stage Flatten Module. Total instances: 14056, Total nets: 70924.
+SYN-1079 : finish stage Flatten Module. Total instances: 14369, Total nets: 72361.
 
 SYN-1001 : Stage 1.4 | Uniform Instance
 SYN-5013 WARNING: Undriven net: model "top" / net "U3/u2_ram/u2_wrrd/Sdr_init_ref_ba[1]" in ../../../user_source/hdl_source/include/sdr_wrrd.enc.v(0)
@@ -921,9 +925,9 @@ SYN-5013 WARNING: Undriven net: model "top" / net "u_eth_subsys/u_rx_fifo/ramgen
 		the net's pin: pin "dib[1]" in ../../../user_source/hdl_source/ETH/RAMB16_S9_S9.v(45)
 SYN-5013 Similar messages will be suppressed.
 SYN-5025 WARNING: Using 0 for all undriven pins and nets
-SYN-1001 : End Stage 1.4 | Uniform Instance; Time: 0.194799s wall, 0.203125s user + 0.000000s system = 0.203125s CPU (104.3%); Memory(MB): used = 295, reserved = 327, peak = 376;
+SYN-1001 : End Stage 1.4 | Uniform Instance; Time: 0.172922s wall, 0.156250s user + 0.000000s system = 0.156250s CPU (90.4%); Memory(MB): used = 328, reserved = 326, peak = 386;
 
-SYN-1079 : finish stage Uniform Instance. Total instances: 12058, Total nets: 68884.
+SYN-1079 : finish stage Uniform Instance. Total instances: 12369, Total nets: 70319.
 
 SYN-1001 : Stage 1.5 | Optimize Design
 SYN-1066 : Inferred FSM for state register 'U3/u2_ram/u2_wrrd/state_reg' in module 'top'
@@ -1480,19 +1484,19 @@ SYN-1066 : Inferred FSM for state register 'uart_link_m0/u_tx/st_reg' in module 
 --------------------------------------------
 SYN-1067 : encoded FSM with state register 'uart_link_m0/u_tx/st_reg' using encoding 'one_hot' in model 'top'
 SYN-1057 : Inferred 40 FSM(s)
-SYN-1001 : Optimize 1 less-than instances
-SYN-1001 : Optimize 1 less-than instances
-SYN-1032 : 67328/783 useful/useless nets, 11223/70 useful/useless insts
+SYN-1001 : Optimize 2 less-than instances
+SYN-1001 : Optimize 2 less-than instances
+SYN-1032 : 68592/794 useful/useless nets, 11520/70 useful/useless insts
 SYN-1001 : Bypass 4 mux instances
-SYN-1021 : Optimized 67 onehot mux instances.
+SYN-1021 : Optimized 68 onehot mux instances.
 SYN-1068 : Optimized 61 binary mux instances.
 SYN-1019 : Optimized 9 mux instances.
 SYN-1021 : Optimized 3 onehot mux instances.
 SYN-1021 : Optimized 1 onehot mux instances.
 SYN-1021 : Optimized 7 onehot mux instances.
 SYN-1001 : Optimize 3 less-than instances
-SYN-1016 : Merged 1750 instances.
-SYN-1025 : Merged 39 RAM ports.
+SYN-1016 : Merged 1920 instances.
+SYN-1025 : Merged 48 RAM ports.
 SYN-1026 : Infer Logic BRAM(frame_read_write_m0/aud_read_buf/ram_inst/ramread0_syn_4)
 	 port mode: single dual port
 	 port a size: 512 x 32	 write mode: NORMAL
@@ -1537,6 +1541,10 @@ SYN-1026 : Infer Logic BRAM(u_eth_subsys/u_eth_front/u_tap_afifo/ramread0_syn_4)
 	 port mode: single dual port
 	 port a size: 512 x 32	 write mode: NORMAL
 	 port b size: 512 x 32	 write mode: READBEFOREWRITE
+SYN-1026 : Infer Logic BRAM(u_eth_subsys/u_media_chunk_rx/ramread0_syn_4)
+	 port mode: single dual port
+	 port a size: 256 x 32	 write mode: NORMAL
+	 port b size: 256 x 32	 write mode: READBEFOREWRITE
 SYN-1026 : Infer Logic BRAM(u_spectrum_dft/u_sample_buf/ramread0_syn_4)
 	 port mode: single dual port
 	 port a size: 1024 x 16	 write mode: NORMAL
@@ -1549,7 +1557,7 @@ SYN-1026 : Infer Logic BRAM(u_subtitle_store/ramread0_syn_5)
 	 port mode: single dual port
 	 port a size: 512 x 7	 write mode: NORMAL
 	 port b size: 512 x 7	 write mode: READBEFOREWRITE
-SYN-1023 : Infer 6 Logic DRAMs, 16 Logic BRAMs.
+SYN-1023 : Infer 6 Logic DRAMs, 17 Logic BRAMs.
 USR-1002 : Derived clock:  create_generated_clock -name {sys_pll_m0/pll_inst.clkc[0]} -source [get_ports {clk}] -master_clock {clk} -multiply_by 2.0000 -duty_cycle 50.0000 [get_pins {sys_pll_m0/pll_inst.clkc[0]}]
 USR-1002 : Derived clock:  create_generated_clock -name {sys_pll_m0/pll_inst.clkc[1]} -source [get_ports {clk}] -master_clock {clk} -multiply_by 2.0000 -duty_cycle 50.0000 [get_pins {sys_pll_m0/pll_inst.clkc[1]}]
 USR-1002 : Derived clock:  create_generated_clock -name {sys_pll_m0/pll_inst.clkc[2]} -source [get_ports {clk}] -master_clock {clk} -multiply_by 2.0000 -phase 180 -duty_cycle 50.0000 [get_pins {sys_pll_m0/pll_inst.clkc[2]}]
@@ -1568,22 +1576,22 @@ USR-1002 : Derived clock:  create_generated_clock -name {video_pll_m0/pll_inst.c
 USR-1002 : Derived clock:  create_generated_clock -name {u_eth_subsys/g_gig$u_rx_pll.clkc[0]} -source [get_pins {u_eth_subsys/g_gig$u_rx_pll.refclk}] -master_clock {u_eth_subsys/g_gig$u_rx_pll.refclk} -multiply_by 1.0000 -duty_cycle 50.0000 [get_pins {u_eth_subsys/g_gig$u_rx_pll.clkc[0]}]
 USR-1002 : Derived clock:  create_generated_clock -name {u_eth_subsys/g_gig$u_rx_pll.clkc[1]} -source [get_pins {u_eth_subsys/g_gig$u_rx_pll.refclk}] -master_clock {u_eth_subsys/g_gig$u_rx_pll.refclk} -multiply_by 1.0000 -duty_cycle 50.0000 [get_pins {u_eth_subsys/g_gig$u_rx_pll.clkc[1]}]
 USR-6133 CRITICAL-WARNING: Clock definition problem: primary clock u_eth_subsys/g_gig$u_rx_pll.refclk is defined on internal clock network. Please use create_generated_clock instead.
-SYN-1016 : Merged 3319 instances.
-SYN-1001 : End Stage 1.5 | Optimize Design; Time: 11.352554s wall, 10.046875s user + 0.828125s system = 10.875000s CPU (95.8%); Memory(MB): used = 601, reserved = 616, peak = 601;
+SYN-1016 : Merged 3317 instances.
+SYN-1001 : End Stage 1.5 | Optimize Design; Time: 11.509454s wall, 10.031250s user + 1.015625s system = 11.046875s CPU (96.0%); Memory(MB): used = 638, reserved = 625, peak = 638;
 
-SYN-1079 : finish stage Optimize Design. Total instances: 30596, Total nets: 35014.
+SYN-1079 : finish stage Optimize Design. Total instances: 31136, Total nets: 35628.
 
 SYN-1001 : Stage 1.6 | Optimize Iteratively
 SYN-1018 : Transformed 1 mux instances.
 SYN-1019 : Optimized 9 mux instances.
 SYN-1021 : Optimized 1421 onehot mux instances.
 SYN-1014 : Optimize round 1
-SYN-1044 : Optimized 323 inv instances.
+SYN-1044 : Optimized 327 inv instances.
 SYN-1017 : Remove 66 const input seq instances
 SYN-1018 : Transformed 2 mux instances.
-SYN-1019 : Optimized 114 mux instances.
-SYN-1020 : Optimized 2063 distributor mux.
-SYN-1001 : Optimize 58 less-than instances
+SYN-1019 : Optimized 116 mux instances.
+SYN-1020 : Optimized 2082 distributor mux.
+SYN-1001 : Optimize 61 less-than instances
 SYN-5084 WARNING: Register "wd_armed" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(250) is described with both an asynchronous reset/set and an initialization value of the opposite polarity. Ignore the initialization value '0'
 SYN-5084 WARNING: Register "wd_rst" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(249) is described with both an asynchronous reset/set and an initialization value of the opposite polarity. Ignore the initialization value '0'
 SYN-1019 : Optimized 290 mux instances.
@@ -1596,6 +1604,7 @@ SYN-2595 : bram inst: transition_line_buf_m0/ramread0_syn_4 is set to PDPW/SP fr
 SYN-2595 : bram inst: u_eth_subsys/u_eth_front/ramread0_syn_4 is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_eth_subsys/u_eth_front/u_tap2_afifo/ramread0_syn_4 is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_eth_subsys/u_eth_front/u_tap_afifo/ramread0_syn_4 is set to PDPW/SP from DP for resource saving
+SYN-2595 : bram inst: u_eth_subsys/u_media_chunk_rx/ramread0_syn_4 is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_eth_subsys/u_rx_fifo/ramgen_l/inst is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_eth_subsys/u_rx_fifo/ramgen_u/inst is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_eth_subsys/u_tx_fifo/ramgen_l/inst is set to PDPW/SP from DP for resource saving
@@ -1603,29 +1612,29 @@ SYN-2595 : bram inst: u_eth_subsys/u_tx_fifo/ramgen_u/inst is set to PDPW/SP fro
 SYN-2595 : bram inst: u_spectrum_dft/u_sample_buf/ramread0_syn_4 is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_spectrum_dft/u_sample_buf/ramread1_syn_4 is set to PDPW/SP from DP for resource saving
 SYN-2595 : bram inst: u_subtitle_store/ramread0_syn_5 is set to PDPW/SP from DP for resource saving
-SYN-1016 : Merged 35110 instances.
-SYN-1015 : Optimize round 1, 80042 better
+SYN-1016 : Merged 35136 instances.
+SYN-1015 : Optimize round 1, 80160 better
 SYN-1014 : Optimize round 2
-SYN-1044 : Optimized 39 inv instances.
+SYN-1044 : Optimized 40 inv instances.
 SYN-1017 : Remove 36 const input seq instances
 SYN-1019 : Optimized 271 mux instances.
 SYN-1020 : Optimized 39 distributor mux.
 SYN-1019 : Optimized 814 mux instances.
 SYN-1001 : Optimize constant input of 1 erams.
 SYN-1016 : Merged 201 instances.
-SYN-1015 : Optimize round 2, 1812 better
+SYN-1015 : Optimize round 2, 1819 better
 SYN-5011 WARNING: Undriven pin: model "top" / inst "u_spectrum_dft/u_sample_buf/ramread0_syn_4" in ../../../user_source/hdl_source/SD/spectrum_sample_buf.v(23) / pin "bea[0]"
 SYN-5011 WARNING: Undriven pin: model "top" / inst "u_spectrum_dft/u_sample_buf/ramread0_syn_4" in ../../../user_source/hdl_source/SD/spectrum_sample_buf.v(23) / pin "beb[0]"
 SYN-5025 WARNING: Using 0 for all undriven pins and nets
-SYN-3010 : Optimized 276 DFF(s)
+SYN-3010 : Optimized 278 DFF(s)
 SYN-1014 : Optimize round 1
 SYN-1017 : Remove 5 const input seq instances
 SYN-1019 : Optimized 2 mux instances.
 SYN-1020 : Optimized 524 distributor mux.
 SYN-1019 : Optimized 11 mux instances.
 SYN-2593 : bram inst: u_spectrum_dft/u_sample_buf/ramread0_syn_4 will be optimized to a new one with A-width 11 due to unused data out
-SYN-1016 : Merged 2634 instances.
-SYN-1015 : Optimize round 1, 3268 better
+SYN-1016 : Merged 2636 instances.
+SYN-1015 : Optimize round 1, 3261 better
 SYN-1014 : Optimize round 2
 SYN-1044 : Optimized 1 inv instances.
 SYN-1017 : Remove 1 const input seq instances
@@ -1637,22 +1646,22 @@ SYN-1044 : Optimized 1 inv instances.
 SYN-1015 : Optimize round 3, 1 better
 SYN-1014 : Optimize round 4
 SYN-1015 : Optimize round 4, 0 better
-SYN-1001 : End Stage 1.6 | Optimize Iteratively; Time: 24.892810s wall, 23.046875s user + 1.218750s system = 24.265625s CPU (97.5%); Memory(MB): used = 629, reserved = 649, peak = 749;
+SYN-1001 : End Stage 1.6 | Optimize Iteratively; Time: 27.254673s wall, 24.375000s user + 1.968750s system = 26.343750s CPU (96.7%); Memory(MB): used = 659, reserved = 660, peak = 786;
 
-SYN-1079 : finish stage Optimize Iteratively. Total instances: 34534, Total nets: 38621.
+SYN-1079 : finish stage Optimize Iteratively. Total instances: 35032, Total nets: 39193.
 
 SYN-1001 : Stage 1.7 | Check Design
-SYN-1001 : End Stage 1.7 | Check Design; Time: 0.009967s wall, 0.015625s user + 0.000000s system = 0.015625s CPU (156.8%); Memory(MB): used = 629, reserved = 649, peak = 749;
+SYN-1001 : End Stage 1.7 | Check Design; Time: 0.008304s wall, 0.000000s user + 0.000000s system = 0.000000s CPU (n/a%); Memory(MB): used = 659, reserved = 661, peak = 786;
 
-SYN-1079 : finish stage Check Design. Total instances: 34534, Total nets: 38621.
+SYN-1079 : finish stage Check Design. Total instances: 35032, Total nets: 39193.
 
-SYN-1001 : End Stage 1 | Optimize RTL; Time: 40.937625s wall, 37.468750s user + 2.203125s system = 39.671875s CPU (96.9%); Memory(MB): used = 629, reserved = 649, peak = 749;
+SYN-1001 : End Stage 1 | Optimize RTL; Time: 42.437002s wall, 37.765625s user + 3.156250s system = 40.921875s CPU (96.4%); Memory(MB): used = 659, reserved = 661, peak = 786;
 
-SYN-1079 : finish stage Optimize RTL. Total instances: 34534, Total nets: 38621.
+SYN-1079 : finish stage Optimize RTL. Total instances: 35032, Total nets: 39193.
 
-RUN-1003 : finish command "optimize_rtl" in  40.965845s wall, 37.484375s user + 2.203125s system = 39.687500s CPU (96.9%)
+RUN-1003 : finish command "optimize_rtl" in  42.445750s wall, 37.781250s user + 3.156250s system = 40.937500s CPU (96.4%)
 
-RUN-1004 : used memory is 629 MB, reserved memory is 649 MB, peak memory is 749 MB
+RUN-1004 : used memory is 659 MB, reserved memory is 661 MB, peak memory is 786 MB
 RUN-1002 : start command "report_area -file lab_ex5_i2s_v1.0_rtl.area"
 RUN-1001 : standard
 ***Report Model: top Device: EG4S20BG256***
@@ -1668,25 +1677,25 @@ IO Statistics
   #inout                    0
 
 Gate Statistics
-#Basic gates            26015
-  #and                   5414
+#Basic gates            26366
+  #and                   5451
   #nand                     0
-  #or                    4652
+  #or                    4659
   #nor                      0
-  #xor                    256
+  #xor                    266
   #xnor                     0
   #buf                      0
-  #not                   1149
+  #not                   1199
   #bufif1                  35
-  #MX21                  3501
+  #MX21                  3537
   #FADD                     0
-  #DFF                  11008
+  #DFF                  11219
   #LATCH                    0
-#MACRO_ADD                562
-#MACRO_EQ                 384
+#MACRO_ADD                575
+#MACRO_EQ                 401
 #MACRO_MULT                17
-#MACRO_MUX               6138
-#MACRO_OTHERS              48
+#MACRO_MUX               6254
+#MACRO_OTHERS              49
 
 LUT Statistics
 #Total_luts               713
@@ -1751,14 +1760,14 @@ SYN-5079 CRITICAL-WARNING: Register "wd_cnt[3]" in ../../../user_source/hdl_sour
 SYN-5079 CRITICAL-WARNING: Register "wd_cnt[4]" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(247) is described with both an asynchronous reset and an asynchronous set. Implement the asynchronous set logic of current register. It may have an uncertainty of the timing. Please conside rewriting code.
 SYN-5079 CRITICAL-WARNING: Register "wd_cnt[5]" in ../../../user_source/hdl_source/top_tf_hdmi_audio.v(247) is described with both an asynchronous reset and an asynchronous set. Implement the asynchronous set logic of current register. It may have an uncertainty of the timing. Please conside rewriting code.
 SYN-5079 Similar messages will be suppressed.
-SYN-1001 : End Stage 2.1 | Map Reg; Time: 0.979782s wall, 0.953125s user + 0.031250s system = 0.984375s CPU (100.5%); Memory(MB): used = 649, reserved = 764, peak = 749;
+SYN-1001 : End Stage 2.1 | Map Reg; Time: 1.163715s wall, 0.937500s user + 0.171875s system = 1.109375s CPU (95.3%); Memory(MB): used = 679, reserved = 775, peak = 786;
 
-SYN-1079 : finish stage Map Reg. Total instances: 34694, Total nets: 38781.
+SYN-1079 : finish stage Map Reg. Total instances: 35192, Total nets: 39353.
 
 SYN-1001 : Stage 2.2 | Map IO
 SYN-2002 : EG_PHY_SDRAM_2M_32 instance U3/sdram.
 SYN-2001 : Map 101 IOs to PADs of model 'top'
-SYN-1001 : End Stage 2.2 | Map IO; Time: 0.701363s wall, 0.625000s user + 0.000000s system = 0.625000s CPU (89.1%); Memory(MB): used = 651, reserved = 765, peak = 749;
+SYN-1001 : End Stage 2.2 | Map IO; Time: 0.887532s wall, 0.781250s user + 0.109375s system = 0.890625s CPU (100.3%); Memory(MB): used = 680, reserved = 776, peak = 786;
 
 SYN-1001 : Stage 2.3 | Map Macro
 RUN-1002 : start command "update_pll_param -module top"
@@ -1774,9 +1783,9 @@ SYN-6562 WARNING: The init value of "frame_read_write_m0/write_buf/ram_inst/ramr
 SYN-6562 WARNING: The init value of "sd_card_bmp_m0/u_fat/ramread0_syn_4(../../../user_source/hdl_source/SD/fat32_ro.v(610))" will be ignored since gate eram_init is set to off
 SYN-6562 WARNING: The init value of "sd_card_bmp_m0/u_fat/ramread2_syn_4(../../../user_source/hdl_source/SD/fat32_ro.v(192))" will be ignored since gate eram_init is set to off
 SYN-6562 WARNING: The init value of "transition_line_buf_m0/ramread0_syn_4(../../../user_source/hdl_source/SD/transition_line_buf.v(21))" will be ignored since gate eram_init is set to off
-SYN-6562 WARNING: The init value of "u_eth_subsys/u_eth_front/ramread0_syn_4(../../../user_source/hdl_source/ETH/eth_front.v(299))" will be ignored since gate eram_init is set to off
-SYN-6562 WARNING: The init value of "u_eth_subsys/u_eth_front/u_tap2_afifo/ramread0_syn_4(../../../user_source/hdl_source/ETH/eth_front.v(495))" will be ignored since gate eram_init is set to off
-SYN-6562 WARNING: The init value of "u_eth_subsys/u_eth_front/u_tap_afifo/ramread0_syn_4(../../../user_source/hdl_source/ETH/eth_front.v(495))" will be ignored since gate eram_init is set to off
+SYN-6562 WARNING: The init value of "u_eth_subsys/u_eth_front/ramread0_syn_4(../../../user_source/hdl_source/ETH/eth_front.v(306))" will be ignored since gate eram_init is set to off
+SYN-6562 WARNING: The init value of "u_eth_subsys/u_eth_front/u_tap2_afifo/ramread0_syn_4(../../../user_source/hdl_source/ETH/eth_front.v(502))" will be ignored since gate eram_init is set to off
+SYN-6562 WARNING: The init value of "u_eth_subsys/u_eth_front/u_tap_afifo/ramread0_syn_4(../../../user_source/hdl_source/ETH/eth_front.v(502))" will be ignored since gate eram_init is set to off
 SYN-6562 WARNING: The init value of "u_eth_subsys/u_rx_fifo/ramgen_l/inst(../../../user_source/hdl_source/ETH/RAMB16_S9_S9.v(45))" will be ignored since gate eram_init is set to off
 SYN-6562 Similar messages will be suppressed.
 SYN-2571 : Map 17 macro multiplier
@@ -1785,20 +1794,20 @@ SYN-1016 : Merged 103 instances.
 SYN-2571 : Optimize after map_dsp, round 1, 103 better
 SYN-2571 : Optimize after map_dsp, round 2
 SYN-2571 : Optimize after map_dsp, round 2, 0 better
-SYN-1001 : Throwback 1020 control mux instances
+SYN-1001 : Throwback 1037 control mux instances
 SYN-1001 : Generate 28 bigger adders
 SYN-1001 : Convert 1 adder
-SYN-1001 : Optimize 73 adders
+SYN-1001 : Optimize 75 adders
 SYN-1001 : Convert 12 adder
 SYN-1001 : Optimize 7 less-than instances
 SYN-2501 : Optimize round 1
-SYN-1016 : Merged 1290 instances.
-SYN-2501 : Optimize round 1, 4404 better
+SYN-1016 : Merged 1340 instances.
+SYN-2501 : Optimize round 1, 4633 better
 SYN-2501 : Optimize round 2
 SYN-2501 : Optimize round 2, 0 better
 SYN-2501 : Optimize round 1
 SYN-1016 : Merged 2 instances.
-SYN-2501 : Optimize round 1, 7 better
+SYN-2501 : Optimize round 1, 6 better
 SYN-2501 : Optimize round 2
 SYN-2501 : Optimize round 2, 0 better
 10.000000
@@ -1807,9 +1816,9 @@ SYN-2501 : Optimize round 2, 0 better
 13.333000
 10.000000
 10.000000
-SYN-2501 : Map 522 macro adder(s)
-SYN-1019 : Optimized 4334 mux instances.
-SYN-1016 : Merged 1008 instances.
+SYN-2501 : Map 535 macro adder(s)
+SYN-1019 : Optimized 4424 mux instances.
+SYN-1016 : Merged 1107 instances.
 SYN-5011 WARNING: Undriven pin: model "top" / inst "U3/u2_ram/u2_wrrd/Sdr_rd_dout_reg[0]" in ../../../user_source/hdl_source/include/sdr_wrrd.enc.v(0) / pin "clk"
 SYN-5011 WARNING: Undriven pin: model "top" / inst "U3/u2_ram/u2_wrrd/Sdr_rd_dout_reg[1]" in ../../../user_source/hdl_source/include/sdr_wrrd.enc.v(0) / pin "clk"
 SYN-5011 WARNING: Undriven pin: model "top" / inst "U3/u2_ram/u2_wrrd/Sdr_rd_dout_reg[2]" in ../../../user_source/hdl_source/include/sdr_wrrd.enc.v(0) / pin "clk"
@@ -1822,58 +1831,55 @@ SYN-5011 WARNING: Undriven pin: model "top" / inst "U3/u2_ram/u2_wrrd/Sdr_rd_dou
 SYN-5011 WARNING: Undriven pin: model "top" / inst "U3/u2_ram/u2_wrrd/Sdr_rd_dout_reg[9]" in ../../../user_source/hdl_source/include/sdr_wrrd.enc.v(0) / pin "clk"
 SYN-5011 Similar messages will be suppressed.
 SYN-5025 WARNING: Using 0 for all undriven pins and nets
-SYN-1001 : End Stage 2.3 | Map Macro; Time: 10.556661s wall, 9.843750s user + 0.234375s system = 10.078125s CPU (95.5%); Memory(MB): used = 722, reserved = 826, peak = 749;
+SYN-1001 : End Stage 2.3 | Map Macro; Time: 11.143305s wall, 9.921875s user + 0.796875s system = 10.718750s CPU (96.2%); Memory(MB): used = 762, reserved = 850, peak = 786;
 
-SYN-1079 : finish stage Map Macro. Total instances: 47418, Total nets: 51373.
+SYN-1079 : finish stage Map Macro. Total instances: 48358, Total nets: 52387.
 
 SYN-1001 : Stage 2.4 | Map Gate
-SYN-3001 : Collect 10574 PI 7180 PO (77 timing unconstrained) for mapping
-SYN-2581 : Mapping with K=5, #lut = 11320 (3.36), #lev = 10 (2.89), #crit_level = 10
+SYN-3001 : Collect 10794 PI 7250 PO (77 timing unconstrained) for mapping
+SYN-2581 : Mapping with K=5, #lut = 11657 (3.38), #lev = 10 (2.85), #crit_level = 10
 SYN-2551 : Post LUT mapping optimization.
-SYN-2581 : Mapping with K=5, #lut = 11076 (3.29), #lev = 10 (3.08), #crit_level = 0
-SYN-3001 : Logic optimization opt = 5.39 sec, map = 1.33 sec, post map opt = 4.77 sec.
+SYN-2581 : Mapping with K=5, #lut = 11287 (3.32), #lev = 10 (3.05), #crit_level = 0
+SYN-3001 : Logic optimization opt = 4.97 sec, map = 1.08 sec, post map opt = 3.33 sec.
 SYN-3001 : Mapper removed 4 lut buffers
-SYN-1001 : End Stage 2.4 | Map Gate; Time: 20.666235s wall, 18.546875s user + 1.437500s system = 19.984375s CPU (96.7%); Memory(MB): used = 755, reserved = 867, peak = 765;
+SYN-1001 : End Stage 2.4 | Map Gate; Time: 16.386848s wall, 14.687500s user + 1.140625s system = 15.828125s CPU (96.6%); Memory(MB): used = 782, reserved = 871, peak = 790;
 
 SYN-1001 : Packing model "top" ...
 SYN-4010 : Pack lib has 57 rtl pack models with 26 top pack blocks
 SYN-1014 : Optimize round 1
 SYN-1015 : Optimize round 1, 0 better
-SYN-4002 : Packing 11207 DFF/LATCH to SEQ ...
-SYN-4009 : Pack 160 carry chain into lslice
-SYN-4007 : Packing 2799 adder to BLE ...
-SYN-4008 : Packed 2799 adder and 76 SEQ to BLE.
+SYN-4002 : Packing 11412 DFF/LATCH to SEQ ...
+SYN-4009 : Pack 165 carry chain into lslice
+SYN-4007 : Packing 2862 adder to BLE ...
+SYN-4008 : Packed 2862 adder and 90 SEQ to BLE.
 SYN-4007 : Packing 0 gate4 to BLE ...
 SYN-4008 : Packed 0 gate4 and 0 SEQ to BLE.
 SYN-4013 : Packed 76 DRAM and 0 SEQ.
 RUN-1002 : start command "report_qor -step gate -file gate.qor"
 RUN-1002 : start command "start_timer"
-RUN-1003 : finish command "start_timer" in  1.224804s wall, 1.109375s user + 0.062500s system = 1.171875s CPU (95.7%)
-
-RUN-1004 : used memory is 730 MB, reserved memory is 840 MB, peak memory is 765 MB
 -----------------------------------------------------------
 | QoR metrics               |         value               |
 -----------------------------------------------------------
 | Timing                    |                             |
-|     Setup WNS             |        -8290                |
-|     Setup TNS             |     -5029757                |
-|     Num of violated S-EP  |         4303                |
+|     Setup WNS             |        -8885                |
+|     Setup TNS             |     -5457189                |
+|     Num of violated S-EP  |         4332                |
 |     Hold WNS              |          471                |
 |     Hold TNS              |            0                |
 |     Num of violated H-EP  |            0                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #registers            |        11131                |
-|     #luts                 |        11705                |
-|     #lut1                 |           96                |
-|     #lut1(~A)             |           93                |
-|     #slices               |         2477                |
-|     slices percentage     |       25.28%                |
-|     #RAMs                 |           57                |
+|     #registers            |        11322                |
+|     #luts                 |        11916                |
+|     #lut1                 |          101                |
+|     #lut1(~A)             |           98                |
+|     #slices               |         2527                |
+|     slices percentage     |       25.79%                |
+|     #RAMs                 |           59                |
 |     #DSPs                 |           13                |
 |     #f7mux                |        0.00%                |
-|     #MACROs               |          477                |
-|     #insts in MACRO       |         2477                |
+|     #MACROs               |          489                |
+|     #insts in MACRO       |         2527                |
 -----------------------------------------------------------
 | kept_net                  |                             |
 |     #syn_keep             |          207                |
@@ -1883,14 +1889,14 @@ RUN-1004 : used memory is 730 MB, reserved memory is 840 MB, peak memory is 765 
 |     #max_fanout_keep      |            0                |
 |     #async_reg            |            0                |
 -----------------------------------------------------------
-| Top 10% datanet fanout#   |        43.35                |
-| dff(single fanout)->dff   |         1259                |
+| Top 10% datanet fanout#   |        43.80                |
+| dff(single fanout)->dff   |         1285                |
 | dff(single fanout)->dram  |            0                |
 -----------------------------------------------------------
 | Over-quota path num*      |                             |
-|     sd_card_clk           |          175                |
+|     sd_card_clk           |          189                |
 |     ext_mem_clk           |            4                |
-|     Total                 |          179                |
+|     Total                 |          193                |
 -----------------------------------------------------------
 | Rent**                    |                             |
 -----------------------------------------------------------
@@ -1904,11 +1910,11 @@ Over-quota Path Details
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
      Clock     |  Index  |  Budget(Period)  |  Level(Quota)  |                                               Cell Type List                                                |        Reason        |  Slack  
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  sd_card_clk  |    1    |   9854(10000)    |     17(13)     |  SEQ,LUT2,LUT4,LUT5,LUT5,LUT4,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT5,LUT5,LUT3,SEQ  |        normal        |  -7848  
-               |    2    |   9854(10000)    |     17(13)     |  SEQ,LUT2,LUT4,LUT5,LUT5,LUT4,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT5,LUT5,LUT3,SEQ  |        normal        |  -7848  
-               |    3    |   9854(10000)    |     17(13)     |  SEQ,LUT2,LUT4,LUT5,LUT5,LUT4,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT5,LUT5,LUT3,SEQ  |        normal        |  -7848  
-               |    4    |   9854(10000)    |     17(13)     |  SEQ,LUT2,LUT4,LUT5,LUT5,LUT4,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT5,LUT5,LUT3,SEQ  |        normal        |  -7848  
-               |    5    |   9854(10000)    |     17(13)     |  SEQ,LUT2,LUT4,LUT5,LUT5,LUT4,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,LUT5,LUT5,LUT3,SEQ  |        normal        |  -7848  
+  sd_card_clk  |    1    |   9854(10000)    |     18(13)     |  SEQ,LUT4,LUT3,LUT5,LUT5,LUT5,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,ADDER,LUT5,LUT5,ADDER,ADDER,LUT5,LUT3,SEQ  |        normal        |  -8331  
+               |    2    |   9854(10000)    |     18(13)     |  SEQ,LUT4,LUT3,LUT5,LUT5,LUT5,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,ADDER,LUT5,LUT5,ADDER,ADDER,LUT5,LUT3,SEQ  |        normal        |  -8331  
+               |    3    |   9854(10000)    |     18(13)     |  SEQ,LUT4,LUT3,LUT5,LUT5,LUT5,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,ADDER,LUT5,LUT5,ADDER,ADDER,LUT5,LUT3,SEQ  |        normal        |  -8331  
+               |    4    |   9854(10000)    |     18(13)     |  SEQ,LUT4,LUT3,LUT5,LUT5,LUT5,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,ADDER,LUT5,LUT5,ADDER,ADDER,LUT5,LUT3,SEQ  |        normal        |  -8331  
+               |    5    |   9854(10000)    |     18(13)     |  SEQ,LUT4,LUT3,LUT5,LUT5,LUT5,ADDER,ADDER,LUT3,ADDER,ADDER,ADDER,ADDER,LUT5,LUT5,ADDER,ADDER,LUT5,LUT3,SEQ  |        normal        |  -8331  
   ext_mem_clk  |    1    |    -99(10000)    |      1(1)      |                                               MULT18,LUT4,SEQ                                               |  large launch delay  |  -1865  
                |    2    |    -99(10000)    |      1(1)      |                                               MULT18,LUT4,SEQ                                               |  large launch delay  |  -1865  
                |    3    |    -99(10000)    |      1(1)      |                                               MULT18,LUT4,SEQ                                               |  large launch delay  |  -1865  
@@ -1917,36 +1923,36 @@ Over-quota Path Details
 Note: Table only show top 5 paths for each clock group in default
 
 Logic Level Distribution
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  Clock                                            |  Period             |  0     |  1     |  2     |  3     |  4     |  5     |  6     |  7    |  8    |  9    |  10  |  11  |  12  |  13  |  14  |  15  |  16  |  17
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  clk                                              |  20.000ns (50MHz)   |  0     |  42    |  21    |  38    |  3     |  45    |  48    |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  ext_mem_clk                                      |  10.000ns (100MHz)  |  778   |  817   |  212   |  176   |  73    |  54    |  18    |  16   |  14   |  0    |  2   |  5   |  0   |  0   |  0   |  0   |  0   |  0
-  hdmi_5x_clk                                      |  2.666ns (375MHz)   |  16    |  70    |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  sd_card_clk                                      |  10.000ns (100MHz)  |  1182  |  4443  |  659   |  1042  |  749   |  694   |  434   |  500  |  535  |  100  |  41  |  8   |  0   |  0   |  0   |  1   |  81  |  30
-  sys_pll_m0/pll_inst.clkc[2]                      |  10.000ns (100MHz)  |  16    |  32    |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/g_gig$u_rx_pll.clkc[0]              |  8.000ns (125MHz)   |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/g_gig$u_rx_pll.clkc[1]              |  8.000ns (125MHz)   |  715   |  155   |  180   |  82    |  1     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/g_gig$u_rx_pll.refclk               |  8.000ns (125MHz)   |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[0]  |  8.000ns (125MHz)   |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  8.000ns (125MHz)   |  1696  |  1266  |  3642  |  927   |  186   |  522   |  698   |  188  |  27   |  2    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[3]  |  40.000ns (25MHz)   |  5     |  1     |  12    |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  8.000ns (125MHz)   |  2     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0   |  0
-  video_clk                                        |  13.333ns (75MHz)   |  2145  |  1338  |  497   |  223   |  207   |  186   |  59    |  50   |  28   |  3    |  1   |  0   |  2   |  11  |  38  |  0   |  0   |  0
-  Total                                            |  NA                 |  6555  |  8164  |  5223  |  2488  |  1219  |  1501  |  1257  |  754  |  604  |  105  |  44  |  13  |  2   |  11  |  38  |  1   |  81  |  30
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Note: The table count the worst 100000 paths, each endpoint count only one time.(28090 paths analyzed)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Clock                                            |  Period             |  0     |  1     |  2     |  3     |  4     |  5     |  6     |  7     |  8    |  9    |  10  |  11  |  12  |  13  |  14  |  17  |  18
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  clk                                              |  20.000ns (50MHz)   |  4     |  44    |  38    |  43    |  5     |  45    |  48    |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  ext_mem_clk                                      |  10.000ns (100MHz)  |  781   |  818   |  215   |  172   |  73    |  56    |  18    |  15    |  16   |  0    |  2   |  5   |  0   |  0   |  0   |  0   |  0
+  hdmi_5x_clk                                      |  2.666ns (375MHz)   |  16    |  70    |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  sd_card_clk                                      |  10.000ns (100MHz)  |  1182  |  4442  |  570   |  1061  |  729   |  692   |  417   |  921   |  224  |  100  |  41  |  8   |  0   |  0   |  0   |  3   |  109
+  sys_pll_m0/pll_inst.clkc[2]                      |  10.000ns (100MHz)  |  16    |  32    |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/g_gig$u_rx_pll.clkc[0]              |  8.000ns (125MHz)   |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/g_gig$u_rx_pll.clkc[1]              |  8.000ns (125MHz)   |  715   |  155   |  180   |  82    |  1     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/g_gig$u_rx_pll.refclk               |  8.000ns (125MHz)   |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[0]  |  8.000ns (125MHz)   |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  8.000ns (125MHz)   |  1817  |  1278  |  3835  |  933   |  296   |  662   |  712   |  120   |  15   |  2    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[3]  |  40.000ns (25MHz)   |  5     |  1     |  12    |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  8.000ns (125MHz)   |  2     |  0     |  0     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0   |  0
+  video_clk                                        |  13.333ns (75MHz)   |  2145  |  1337  |  495   |  292   |  147   |  180   |  56    |  53    |  26   |  3    |  0   |  0   |  1   |  5   |  48  |  0   |  0
+  Total                                            |  NA                 |  6683  |  8177  |  5345  |  2583  |  1251  |  1635  |  1251  |  1109  |  281  |  105  |  43  |  13  |  1   |  5   |  48  |  3   |  109
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Note: The table count the worst 100000 paths, each endpoint count only one time.(28642 paths analyzed)
 
 Hierarchical Rent Exponent Report
 +---------------------------------------------------------------------------------------------------------------------+
 |Inst                                   |Model                                 |Rent     |Cell     |Pin     |Term     |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                    |top                                   |0.19     |26135    |110721  |28       |
-|  frame_read_write_m0                  |frame_read_write_3                    |0.61     |1723     |6345    |360      |
-|  u_hdmi_1_4b_transmitter_core_wrapper |hdmi_1_4b_transmitter_core_wrapper_16 |0.56     |2680     |9748    |304      |
-|  u_spectrum_dft                       |spectrum_dft_21                       |0.48     |1088     |4897    |132      |
-|  sd_card_bmp_m0                       |sd_card_bmp_4                         |0.45     |6835     |33124   |261      |
-|  u_eth_subsys                         |eth_subsys_12                         |0.41     |8355     |34924   |167      |
+|top                                    |top                                   |0.19     |26589    |113006  |28       |
+|  frame_read_write_m0                  |frame_read_write_3                    |0.62     |1724     |6345    |361      |
+|  u_hdmi_1_4b_transmitter_core_wrapper |hdmi_1_4b_transmitter_core_wrapper_16 |0.56     |2684     |9767    |303      |
+|  u_spectrum_dft                       |spectrum_dft_21                       |0.48     |1078     |4865    |132      |
+|  sd_card_bmp_m0                       |sd_card_bmp_4                         |0.45     |6817     |33035   |263      |
+|  u_eth_subsys                         |eth_subsys_12                         |0.41     |8768     |36993   |169      |
 +---------------------------------------------------------------------------------------------------------------------+
 Note: Cell represents total number of cells inside module; Pin represents total number of pins
       which have net connection inside module; Term represents total number of PIs and POs of module.
@@ -1954,9 +1960,9 @@ Note: Cell represents total number of cells inside module; Pin represents total 
       A module with higher rent corresponds to highly connected logic and strong connectivity with others.
 Report gate stage QoR done.
 
-RUN-1003 : finish command "report_qor -step gate -file gate.qor" in  6.173309s wall, 5.687500s user + 0.328125s system = 6.015625s CPU (97.4%)
+RUN-1003 : finish command "report_qor -step gate -file gate.qor" in  4.525240s wall, 4.031250s user + 0.453125s system = 4.484375s CPU (99.1%)
 
-RUN-1004 : used memory is 764 MB, reserved memory is 873 MB, peak memory is 765 MB
+RUN-1004 : used memory is 796 MB, reserved memory is 880 MB, peak memory is 796 MB
 RUN-1002 : start command "report_area -file lab_ex5_i2s_v1.0_gate.area"
 RUN-1001 : standard
 ***Report Model: top Device: EG4S20BG256***
@@ -1972,18 +1978,18 @@ IO Statistics
   #inout                    0
 
 LUT Statistics
-#Total_luts             11705
-  #lut4                 10233
-  #lut5                  1472
+#Total_luts             11916
+  #lut4                 10223
+  #lut5                  1693
   #lut6                     0
   #lut5_mx41                0
   #lut4_alu1b               0
 
 Utilization Statistics
-#lut                    16659   out of  19600   84.99%
-#reg                    11207   out of  19600   57.18%
-#bram                      53   out of     64   82.81%
-  #bram9k                  53
+#lut                    16970   out of  19600   86.58%
+#reg                    11412   out of  19600   58.22%
+#bram                      55   out of     64   85.94%
+  #bram9k                  55
   #fifo9k                   0
 #bram32k                    4   out of     16   25.00%
 #dsp                       13   out of     29   44.83%
@@ -1994,28 +2000,25 @@ Utilization Statistics
 #pll                        4   out of      4  100.00%
 #gclk                       4   out of     16   25.00%
 
-SYN-1001 : End Stage 2 | Optimize Gate; Time: 40.779984s wall, 36.796875s user + 2.546875s system = 39.343750s CPU (96.5%); Memory(MB): used = 764, reserved = 873, peak = 765;
+SYN-1001 : End Stage 2 | Optimize Gate; Time: 35.385265s wall, 31.281250s user + 3.000000s system = 34.281250s CPU (96.9%); Memory(MB): used = 796, reserved = 880, peak = 796;
 
-RUN-1003 : finish command "optimize_gate -packarea lab_ex5_i2s_v1.0_gate.area" in  40.789495s wall, 36.812500s user + 2.546875s system = 39.359375s CPU (96.5%)
+RUN-1003 : finish command "optimize_gate -packarea lab_ex5_i2s_v1.0_gate.area" in  35.394530s wall, 31.296875s user + 3.000000s system = 34.296875s CPU (96.9%)
 
-RUN-1004 : used memory is 764 MB, reserved memory is 873 MB, peak memory is 765 MB
+RUN-1004 : used memory is 796 MB, reserved memory is 880 MB, peak memory is 796 MB
 RUN-1002 : start command "legalize_phy_inst"
 SYN-1001 : Stage 3 | Legalize Phy Inst
 SYN-1011 : Flatten model top
-SYN-1001 : End Stage 3 | Legalize Phy Inst; Time: 0.105082s wall, 0.078125s user + 0.015625s system = 0.093750s CPU (89.2%); Memory(MB): used = 764, reserved = 873, peak = 765;
+SYN-1001 : End Stage 3 | Legalize Phy Inst; Time: 0.099815s wall, 0.093750s user + 0.000000s system = 0.093750s CPU (93.9%); Memory(MB): used = 796, reserved = 880, peak = 796;
 
 RUN-1002 : start command "update_timing"
 RUN-1002 : start command "start_timer"
-RUN-1003 : finish command "start_timer" in  1.394440s wall, 1.296875s user + 0.062500s system = 1.359375s CPU (97.5%)
+RUN-1003 : finish command "update_timing" in  2.145634s wall, 1.890625s user + 0.218750s system = 2.109375s CPU (98.3%)
 
-RUN-1004 : used memory is 764 MB, reserved memory is 873 MB, peak memory is 765 MB
-RUN-1003 : finish command "update_timing" in  3.016501s wall, 2.859375s user + 0.078125s system = 2.937500s CPU (97.4%)
-
-RUN-1004 : used memory is 764 MB, reserved memory is 873 MB, peak memory is 765 MB
+RUN-1004 : used memory is 796 MB, reserved memory is 880 MB, peak memory is 796 MB
 RUN-1002 : start command "report_timing_status -file lab_ex5_i2s_v1.0_gate.ts"
 RUN-1002 : start command "report_timing_summary -file lab_ex5_i2s_v1.0_gate.timing"
 RUN-1002 : start command "flow_status -file flow.status"
-Location         : C:\Users\23506\Desktop\anlogic\board\td_project\lab_ex5_i2s_v1.0_Runs\syn_1
+Location         : C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs\syn_1
 Running with     : Tang Dynasty v6.2.168116
                    Copyright (c) 2012-2025 Anlogic Inc.
 Top Model        : top
@@ -2023,7 +2026,7 @@ Device           : EG4S20BG256
 Speed            : NA
 
 Timing Mode      : basic
-Setup            : WNS -8290ps  TNS -5029757ps  NUM_FEPS  4303
+Setup            : WNS -8885ps  TNS -5454811ps  NUM_FEPS  4324
 Hold             : WNS   471ps  TNS        0ps  NUM_FEPS     0
 
 Flow Statistics  :
@@ -2031,13 +2034,13 @@ RUN-1001 : Flow Statistics:
 RUN-1001 : --------------------------------------------------------------------------------------------------
 RUN-1001 :      command     |  #calls  |  wall time  |  cpu time(s)  |  used memory(mb)  |  peak memory(mb)  
 RUN-1001 : --------------------------------------------------------------------------------------------------
-RUN-1001 :   optimize_gate  |    1     |  40s(50%)   |    38(49%)    |        764        |        765        
-RUN-1001 :   optimize_rtl   |    1     |  40s(50%)   |    39(50%)    |        629        |        749        
+RUN-1001 :   optimize_rtl   |    1     |  42s(54%)   |    40(54%)    |        659        |        786        
+RUN-1001 :   optimize_gate  |    1     |  35s(45%)   |    34(45%)    |        796        |        796        
 RUN-1001 :   import_device  |    1     |   0s(0%)    |     0(0%)     |        83         |        83         
-RUN-1001 :     read_adc     |    1     |   0s(0%)    |     0(0%)     |        355        |        355        
-RUN-1001 :     read_sdc     |    3     |   0s(0%)    |     0(0%)     |        355        |        355        
+RUN-1001 :     read_adc     |    1     |   0s(0%)    |     0(0%)     |        362        |        362        
+RUN-1001 :     read_sdc     |    3     |   0s(0%)    |     0(0%)     |        362        |        362        
 RUN-1001 : --------------------------------------------------------------------------------------------------
-RUN-1001 :       total      |    7     |    1m20s    |      77       |        764        |        765        
+RUN-1001 :       total      |    7     |    1m17s    |      74       |        796        |        796        
 RUN-1001 : --------------------------------------------------------------------------------------------------
 RUN-1002 : start command "export_db lab_ex5_i2s_v1.0_gate.db"
 RUN-1001 : Exported flow parameters
@@ -2061,7 +2064,7 @@ RUN-1001 : Exported ChipWatcher
 RUN-1002 : start command "export_flow_status -s read_design -e opt_gate"
 RUN-1002 : start command "flow_status"
 
-Location         : C:\Users\23506\Desktop\anlogic\board\td_project\lab_ex5_i2s_v1.0_Runs\syn_1
+Location         : C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs\syn_1
 Running with     : Tang Dynasty v6.2.168116
                    Copyright (c) 2012-2025 Anlogic Inc.
 Top Model        : top
@@ -2069,18 +2072,18 @@ Device           : EG4S20BG256
 Speed            : NA
 
 Timing Mode      : basic
-Setup            : WNS -8290ps  TNS -5029757ps  NUM_FEPS  4303
+Setup            : WNS -8885ps  TNS -5454811ps  NUM_FEPS  4324
 Hold             : WNS   471ps  TNS        0ps  NUM_FEPS     0
 
 RUN-1001 : Flow Statistics:
 RUN-1001 : --------------------------------------------------------------------------------------------------
 RUN-1001 :      command     |  #calls  |  wall time  |  cpu time(s)  |  used memory(mb)  |  peak memory(mb)  
 RUN-1001 : --------------------------------------------------------------------------------------------------
-RUN-1001 :   optimize_gate  |    1     |  40s(50%)   |    38(49%)    |        764        |        765        
-RUN-1001 :   optimize_rtl   |    1     |  40s(50%)   |    39(50%)    |        629        |        749        
+RUN-1001 :   optimize_rtl   |    1     |  42s(54%)   |    40(54%)    |        659        |        786        
+RUN-1001 :   optimize_gate  |    1     |  35s(45%)   |    34(45%)    |        796        |        796        
 RUN-1001 :   import_device  |    1     |   0s(0%)    |     0(0%)     |        83         |        83         
-RUN-1001 :     read_adc     |    1     |   0s(0%)    |     0(0%)     |        355        |        355        
-RUN-1001 :     read_sdc     |    3     |   0s(0%)    |     0(0%)     |        355        |        355        
+RUN-1001 :     read_adc     |    1     |   0s(0%)    |     0(0%)     |        362        |        362        
+RUN-1001 :     read_sdc     |    3     |   0s(0%)    |     0(0%)     |        362        |        362        
 RUN-1001 : --------------------------------------------------------------------------------------------------
-RUN-1001 :       total      |    7     |    1m20s    |      77       |        764        |        765        
+RUN-1001 :       total      |    7     |    1m17s    |      74       |        796        |        796        
 RUN-1001 : --------------------------------------------------------------------------------------------------

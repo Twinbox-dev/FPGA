@@ -74,18 +74,23 @@ module eth_front(
 
     // ================= RX：跳过 8 字节头 → [CMD,~CMD] 配对 =================
     reg [15:0] rx_cnt;
+    reg [15:0] rx_type;
     reg [7:0]  prev_byte;
     reg        prev_val;
 
     always @(posedge app_rx_clk or posedge reset) begin
         if (reset) begin
-            rx_cnt <= 16'd0; prev_byte <= 8'd0; prev_val <= 1'b0;
+            rx_cnt <= 16'd0; rx_type <= 16'd0;
+            prev_byte <= 8'd0; prev_val <= 1'b0;
             cmd <= 8'd0; cmd_pending <= 1'b0;
         end else begin
             if (app_rx_data_valid) begin
                 rx_cnt <= rx_cnt + 16'd1;
+                if (rx_cnt == 16'd4) rx_type[15:8] <= app_rx_data;
+                if (rx_cnt == 16'd5) rx_type[7:0]  <= app_rx_data;
                 // 前 8 字节为应用头，其后才是命令数据
-                if (rx_cnt >= 16'd8) begin
+                // 数据块可能恰好含有 [CMD,~CMD]，只解析 type=1 控制帧。
+                if (rx_cnt >= 16'd8 && rx_type == 16'h0001) begin
                     if (prev_val && (prev_byte == ~app_rx_data)) begin
                         prev_val <= 1'b0;
                         if (!cmd_pending) begin   // 上条未取走则丢弃（防阻塞）
@@ -96,9 +101,11 @@ module eth_front(
                         prev_byte <= app_rx_data;
                         prev_val  <= 1'b1;
                     end
-                end
+                end else if (rx_cnt >= 16'd8)
+                    prev_val <= 1'b0;
             end else begin
                 rx_cnt   <= 16'd0;       // 包尾：清配对状态，防跨包误配
+                rx_type  <= 16'd0;
                 prev_val <= 1'b0;
             end
             if (ack_seen)

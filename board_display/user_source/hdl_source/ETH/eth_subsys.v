@@ -40,6 +40,8 @@ module eth_subsys(
     input  wire        cmd_ack_t,
     input  wire        tx_tog,
     input  wire [63:0] tx_pkt,
+    output reg         media_chunk_ok_tog,
+    output reg         media_chunk_err_tog,
 
     // 写侧分叉：图像发射流旁路（tap_clk = sd_card_clk 域；sys_rst = rst_all）
     input  wire        sys_rst,
@@ -157,6 +159,64 @@ module eth_subsys(
         .tap2_word         (tap2_word),
         .tap2_end          (tap2_end)
     );
+
+    // Diagnostic media receiver.  A full packet must pass the length and CRC
+    // checks before any word is drained.  Until the SDRAM writer is attached,
+    // consume the seven known probe words and report completion to the top.
+    wire        media_pkt_error, media_chunk_done, media_chunk_valid;
+    wire [15:0] media_session, media_sequence;
+    wire [7:0]  media_count, media_flags;
+    wire [31:0] media_word_data;
+    wire        media_word_valid;
+    media_chunk_rx u_media_chunk_rx (
+        .clk(udp_clk), .rst(reset),
+        .rx_byte(app_rx_data), .rx_valid(app_rx_data_valid),
+        .chunk_valid(media_chunk_valid), .chunk_session(media_session),
+        .chunk_sequence(media_sequence), .chunk_count(media_count),
+        .chunk_flags(media_flags), .packet_error(media_pkt_error),
+        .busy(), .word_data(media_word_data), .word_valid(media_word_valid),
+        .word_ready(1'b1), .chunk_done(media_chunk_done)
+    );
+    reg [2:0] media_word_index;
+    reg       media_word_bad;
+    reg [31:0] media_expected_word;
+    always @* begin
+        case (media_word_index)
+            3'd0: media_expected_word = 32'ha5c30000;
+            3'd1: media_expected_word = 32'ha4c10307;
+            3'd2: media_expected_word = 32'ha7c7060e;
+            3'd3: media_expected_word = 32'ha6c50915;
+            3'd4: media_expected_word = 32'ha1cb0c1c;
+            3'd5: media_expected_word = 32'ha0c90f23;
+            3'd6: media_expected_word = 32'ha3cf122a;
+            default: media_expected_word = 32'd0;
+        endcase
+    end
+    always @(posedge udp_clk or posedge reset) begin
+        if (reset) begin
+            media_chunk_ok_tog <= 1'b0;
+            media_chunk_err_tog <= 1'b0;
+            media_word_index <= 3'd0;
+            media_word_bad <= 1'b0;
+        end else begin
+            if (media_chunk_valid) begin
+                media_word_index <= 3'd0;
+                media_word_bad <= 1'b0;
+            end else if (media_word_valid) begin
+                media_word_index <= media_word_index + 3'd1;
+                if (media_word_data != media_expected_word)
+                    media_word_bad <= 1'b1;
+            end
+            if (media_chunk_done) begin
+                if (media_session == 16'h1302 && media_count == 8'd7 &&
+                    media_flags == 8'h01 && !media_word_bad)
+                    media_chunk_ok_tog <= ~media_chunk_ok_tog;
+                else
+                    media_chunk_err_tog <= ~media_chunk_err_tog;
+            end else if (media_pkt_error)
+                media_chunk_err_tog <= ~media_chunk_err_tog;
+        end
+    end
 
     // ================= UDP/IP 协议栈（官方 IP）=================
     // 静态 IP/端口：地址/端口给常量，**valid 必须"复位期间 0、释放后 1"**——

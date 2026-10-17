@@ -1,0 +1,135 @@
+standard
+***Report Model: top Device: EG4S20BG256***
+
+IO Statistics
+#IO                        14   out of    188    7.45%
+  #input                    8
+  #output                   6
+  #inout                    0
+#virtual IO                 1
+  #input                    0
+  #output                   0
+  #inout                    0
+
+Utilization Statistics
+#lut                     7501   out of  19600   38.27%
+#reg                     7274   out of  19600   37.11%
+#le                      8599
+  #lut only              1325   out of   8599   15.41%
+  #reg only              1098   out of   8599   12.77%
+  #lut&reg               6176   out of   8599   71.82%
+#bram                      10   out of     64   15.62%
+  #bram9k                  10
+  #fifo9k                   0
+#bram32k                    0   out of     16    0.00%
+#dsp                        0   out of     29    0.00%
+#pad                       14   out of    188    7.45%
+  #ireg                     5
+  #oreg                     6
+  #treg                     0
+#pll                        2   out of      4   50.00%
+#gclk                       2   out of     16   12.50%
+
+
+Detailed IO Report
+
+        Name          Direction    Location    IOStandard    IOType    DriveStrength    PullType    PackReg  
+        clk             INPUT         R7        LVCMOS33      PAD           N/A           NONE       NONE    
+  eth_rgmii_rx_ctl      INPUT        T13        LVCMOS33      PAD           N/A           NONE       DDRX1   
+   eth_rgmii_rxc        INPUT        T14        LVCMOS33      PAD           N/A           NONE       NONE    
+  eth_rgmii_rxd[3]      INPUT         N9        LVCMOS33      PAD           N/A           NONE       DDRX1   
+  eth_rgmii_rxd[2]      INPUT         T9        LVCMOS33      PAD           N/A           NONE       DDRX1   
+  eth_rgmii_rxd[1]      INPUT         M6        LVCMOS33      PAD           N/A           NONE       DDRX1   
+  eth_rgmii_rxd[0]      INPUT         P6        LVCMOS33      PAD           N/A           NONE       DDRX1   
+       rst_n            INPUT         A2        LVCMOS33      PAD           N/A          PULLUP      NONE    
+  eth_rgmii_tx_ctl     OUTPUT         T7        LVCMOS33      PAD           16            NONE       DDRX1   
+   eth_rgmii_txc       OUTPUT        T12        LVCMOS33      PAD           16            NONE       DDRX1   
+  eth_rgmii_txd[3]     OUTPUT         T8        LVCMOS33      PAD           16            NONE       DDRX1   
+  eth_rgmii_txd[2]     OUTPUT         M7        LVCMOS33      PAD           16            NONE       DDRX1   
+  eth_rgmii_txd[1]     OUTPUT         T6        LVCMOS33      PAD           16            NONE       DDRX1   
+  eth_rgmii_txd[0]     OUTPUT         T4        LVCMOS33      PAD           16            NONE       DDRX1   
+
+Report Clock Domain Luts:
+
+-----------------------------------------------------------------------------------------------------------------------------------------------
+  Index   |  Name                                      |  Frequency   |  LUT As Logic   |  LUT As Shifter   |  LUT As Dram   |  BRAM   |  DSP
+-----------------------------------------------------------------------------------------------------------------------------------------------
+  #1      |  clk                                       |  50MHz       |  3              |  0                |  0             |  0      |  0
+  #2      |  u_eth/g_gig$u_rx_pll.clkc[1]              |  125MHz      |  182            |  0                |  0             |  4      |  0
+  #3      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  125MHz      |  3511           |  0                |  0             |  10     |  0
+  #4      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  125MHz      |  2              |  0                |  0             |  0      |  0
+-----------------------------------------------------------------------------------------------------------------------------------------------
+
+Clock Resource Statistics
+Index     ClockNet                                                    Type               DriverType         Driver                                    Fanout
+#1        u_eth/u_temac_block/trimac_core/tx_mac_clk                  Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc1    4484
+#2        u_eth/u_temac_block/trimac_core/rx_mac_clk                  Global             pll                u_eth/g_gig$u_rx_pll.clkc1                250
+#3        clk_dup_4                                                   Global             io                 clk_syn_5.di                              14
+#4        u_eth/clk_25_out                                            Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc3    5
+#5        eth_rgmii_rxc_dup_1                                         GeneralRouting     io                 eth_rgmii_rxc_syn_2.di                    1
+#6        u_eth/u_temac_block/u1_rgmii_interface/rgmii_txc_ddr/clk    Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc4    1
+#7        u_eth/g_gig$rx_clk_0_buf                                    Global             pll                u_eth/g_gig$u_rx_pll.clkc0                0
+#8        u_eth/u_clk_gen/u_pll_0/clk0_buf                            Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc0    0
+
+Report Hierarchy Area:
++-----------------------------------------------------------------------------------------------------------------------+
+|Instance                                |Module                  |le      |lut     |ripple  |seq     |bram    |dsp     |
++-----------------------------------------------------------------------------------------------------------------------+
+|top                                     |top                     |8599    |7192    |309     |7285    |10      |0       |
+|  u_eth                                 |eth_subsys              |8577    |7172    |309     |7252    |10      |0       |
+|    u_clk_gen                           |clk_gen_rst_gen         |0       |0       |0       |0       |0       |0       |
+|      u_pll_0                           |pll_gen                 |0       |0       |0       |0       |0       |0       |
+|    u_diag_chunk_tx                     |media_chunk_tx          |3787    |3025    |24      |3637    |0       |0       |
+|    u_eth_front                         |eth_front               |134     |111     |13      |90      |0       |0       |
+|    u_rx_fifo                           |rx_client_fifo          |211     |164     |26      |164     |4       |0       |
+|      ramgen_l                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
+|      ramgen_u                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
+|    u_temac_block                       |temac_block             |734     |624     |37      |596     |0       |0       |
+|      trimac_core                       |TEMAC_CORE              |680     |585     |29      |560     |0       |0       |
+|      u1_rgmii_interface                |rgmii_interface         |3       |3       |0       |0       |0       |0       |
+|        txdata_out_bus[0]$rgmii_txd_out |ODDR                    |1       |1       |0       |0       |0       |0       |
+|        txdata_out_bus[1]$rgmii_txd_out |ODDR                    |2       |2       |0       |0       |0       |0       |
+|      u_tx_clk_en_gen                   |tx_clk_en_gen           |39      |30      |8       |24      |0       |0       |
+|    u_tx_fifo                           |tx_client_fifo          |246     |176     |32      |201     |4       |0       |
+|      ramgen_l                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
+|      ramgen_u                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
+|    u_tx_mux                            |media_tx_mux            |5       |5       |0       |5       |0       |0       |
+|    u_udp_stack                         |udp_ip_protocol_stack   |3359    |3005    |148     |2504    |2       |0       |
+|      arp_layer                         |arp_layer               |1345    |1214    |0       |1032    |0       |0       |
+|        arp_receive_module              |arp_receive             |343     |319     |0       |314     |0       |0       |
+|        arp_send_module                 |arp_send                |325     |300     |0       |250     |0       |0       |
+|        ip_mac_addr_pairs_cache_module  |ip_mac_addr_pairs_cache |604     |522     |0       |395     |0       |0       |
+|      ip_layer                          |ip_layer                |1112    |941     |112     |790     |2       |0       |
+|        icmp_echo_data_fifo             |ram_fifo                |114     |78      |20      |95      |2       |0       |
+|          u_anlogic_soft_async_fifo     |generic_async_fifo      |114     |78      |20      |95      |2       |0       |
+|        ip_receive_module               |ip_receive              |300     |227     |30      |238     |0       |0       |
+|          icmp_packet_process_module    |icmp_packet_process     |212     |160     |30      |154     |0       |0       |
+|        ip_send_module                  |ip_send                 |698     |636     |62      |457     |0       |0       |
+|          icmp_packet_send_module       |icmp_packet_send        |183     |167     |16      |119     |0       |0       |
+|          ip_shift_register             |shift_top               |148     |148     |0       |148     |0       |0       |
+|      receive_buffer                    |receive_buffer          |18      |18      |0       |18      |0       |0       |
+|      send_buffer                       |send_buffer             |304     |287     |17      |216     |0       |0       |
+|      temac_data_process                |temac_data_process      |324     |312     |0       |283     |0       |0       |
+|        mac_shift_register              |shift_top               |141     |141     |0       |140     |0       |0       |
+|        temac_shift_register            |shift_top               |31      |31      |0       |31      |0       |0       |
+|      udp_layer                         |udp_layer               |256     |233     |19      |165     |0       |0       |
+|        udp_receive_module              |udp_receive             |90      |75      |14      |51      |0       |0       |
+|        udp_send_module                 |udp_send                |166     |158     |5       |114     |0       |0       |
+|          udp_shfit_register            |shift_top               |92      |92      |0       |69      |0       |0       |
+|  u_probe                               |media_probe_bridge      |21      |19      |0       |21      |0       |0       |
++-----------------------------------------------------------------------------------------------------------------------+
+
+
+DataNet Average Fanout:
+
+   Index     Fanout     Nets  
+    #1          1       9188  
+    #2          2       1199  
+    #3          3       446   
+    #4          4       321   
+    #5        5-10      715   
+    #6        11-50     490   
+    #7       51-100      35   
+    #8       101-500     6    
+    #9        >500       3    
+  Average     3.00            
