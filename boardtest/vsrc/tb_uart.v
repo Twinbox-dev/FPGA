@@ -14,6 +14,7 @@ module tb_uart;
     reg rst = 1;
 
     reg  rx = 1;
+    reg  touch_next = 0, touch_prev = 0;
     wire tx;
     wire vk_next_n, vk_auto_n, vk_prev_n;
 
@@ -55,6 +56,8 @@ module tb_uart;
         .rst           (rst),
         .cmd           (cmd_w),
         .cmd_val       (cmd_val_w),
+        .touch_next    (touch_next),
+        .touch_prev    (touch_prev),
         .subtitle_consume (1'b0),
         .subtitle_ack_pulse (1'b0),
         .subtitle_ack_ok (1'b0),
@@ -100,6 +103,8 @@ module tb_uart;
         .rst           (rst),
         .cmd           (cmd_f),
         .cmd_val       (cmd_val_f),
+        .touch_next    (1'b0),
+        .touch_prev    (1'b0),
         .subtitle_consume (1'b0),
         .subtitle_ack_pulse (1'b0),
         .subtitle_ack_ok (1'b0),
@@ -560,6 +565,21 @@ module tb_uart;
             fail_msg("T16 status OSD mode wrong");
         else
             $display("T16 OSD modes and telemetry: PASS");
+
+        // T17: local touch gestures reuse the debounced 100 ms virtual key
+        // route without injecting a serial/Ethernet command or ACK.
+        wait (vk_next_n && vk_auto_n && vk_prev_n);
+        @(negedge clk); touch_next = 1'b1;
+        @(negedge clk); touch_next = 1'b0;
+        repeat (2) @(posedge clk);
+        if (vk_next_n !== 1'b0) fail_msg("T17 touch next did not press virtual key");
+        wait (vk_next_n === 1'b1);
+        @(negedge clk); touch_prev = 1'b1;
+        @(negedge clk); touch_prev = 1'b0;
+        repeat (2) @(posedge clk);
+        if (vk_prev_n !== 1'b0) fail_msg("T17 touch previous did not press virtual key");
+        wait (vk_prev_n === 1'b1);
+        if (errors == 0) $display("T17 touch swipe to virtual keys: PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILURES ====", errors);

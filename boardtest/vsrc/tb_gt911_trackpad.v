@@ -13,12 +13,13 @@ module tb_gt911_trackpad;
     reg [6:0] model_addr = 7'h14;
     assign sda = slave_sda_low ? 1'b0 : 1'bz;
 
-    wire req, ack, online, report, down;
+    wire req, ack, online, report, down, swipe_next, swipe_prev;
     wire [10:0] mailbox_x, cursor_x;
     wire [9:0] mailbox_y, cursor_y;
     wire [23:0] video_rgb;
     wire video_de_out, video_vs_out;
     integer reports = 0;
+    integer next_count = 0, prev_count = 0;
     gt911_trackpad #(.I2C_DIV(2), .BOOT_CYCLES(5),
                      .POLL_CYCLES(100), .RETRY_CYCLES(20)) dut (
         .clk(clk), .rst(rst), .scl(scl), .sda(sda),
@@ -26,9 +27,12 @@ module tb_gt911_trackpad;
         .cursor_mailbox_x(mailbox_x), .cursor_mailbox_y(mailbox_y),
         .online(online),
         .touch_report(report), .touch_down(down),
+        .swipe_next(swipe_next), .swipe_prev(swipe_prev),
         .cursor_x(cursor_x), .cursor_y(cursor_y)
     );
-    gt911_cursor_overlay u_cursor (
+    gt911_cursor_overlay #(
+        .MEM_FILE("../board/user_source/hdl_source/SD/gt911_ganyu_cursor.mem")
+    ) u_cursor (
         .video_clk(video_clk), .rst(rst), .video_in(24'h123456),
         .de_in(1'b0), .vs_in(video_vs), .online_raw(online),
         .cursor_req_toggle(req), .cursor_mailbox_x(mailbox_x),
@@ -37,6 +41,10 @@ module tb_gt911_trackpad;
         .vs_out(video_vs_out)
     );
     always @(posedge clk) if (report) reports <= reports + 1;
+    always @(posedge clk) begin
+        if (swipe_next) next_count <= next_count + 1;
+        if (swipe_prev) prev_count <= prev_count + 1;
+    end
 
     task automatic wait_start;
         begin
@@ -144,6 +152,40 @@ module tb_gt911_trackpad;
             u_cursor.frame_y !== cursor_y)
             $fatal(1, "trackpad result: online=%b down=%b reports=%0d pos=%0d,%0d mailbox=%0d,%0d",
                    online, down, reports, cursor_x, cursor_y, mailbox_x, mailbox_y);
+        // Release the prior finger. Two quick horizontal gestures must produce
+        // exactly one navigation pulse each, only after release.
+        serve_read(16'h814e, 1, 40'h80);
+        serve_clear();
+        if (next_count != 0 || prev_count != 0)
+            $fatal(1, "short cursor drag triggered a swipe");
+        serve_read(16'h814e, 1, 40'h81);
+        serve_read(16'h814f, 5, 40'h04_f4_01_c8_00); // 500,200 anchor
+        serve_clear();
+        serve_read(16'h814e, 1, 40'h81);
+        serve_read(16'h814f, 5, 40'h04_9a_01_cc_00); // 410,204
+        serve_clear();
+        serve_read(16'h814e, 1, 40'h81);
+        serve_read(16'h814f, 5, 40'h04_45_01_d0_00); // 325,208
+        serve_clear();
+        if (next_count != 0 || prev_count != 0)
+            $fatal(1, "swipe emitted before release");
+        serve_read(16'h814e, 1, 40'h80);
+        serve_clear();
+        if (next_count != 1 || prev_count != 0)
+            $fatal(1, "left swipe count %0d,%0d", next_count, prev_count);
+        serve_read(16'h814e, 1, 40'h81);
+        serve_read(16'h814f, 5, 40'h05_c8_00_c8_00); // 200,200 anchor
+        serve_clear();
+        serve_read(16'h814e, 1, 40'h81);
+        serve_read(16'h814f, 5, 40'h05_22_01_cc_00); // 290,204
+        serve_clear();
+        serve_read(16'h814e, 1, 40'h81);
+        serve_read(16'h814f, 5, 40'h05_77_01_d0_00); // 375,208
+        serve_clear();
+        serve_read(16'h814e, 1, 40'h80);
+        serve_clear();
+        if (next_count != 1 || prev_count != 1)
+            $fatal(1, "right swipe count %0d,%0d", next_count, prev_count);
         // Reset the FPGA-side reader, then let the first candidate 0x5D ACK.
         @(negedge clk);
         rst = 1'b1;
@@ -166,7 +208,7 @@ module tb_gt911_trackpad;
         wait_stop();
         repeat (10) @(negedge clk);
         if (online) $fatal(1, "corrupt product ID put reader online");
-        $display("PASS GT911: both addresses, ID check, release, relative cursor, CDC");
+        $display("PASS GT911: both addresses, ID, relative cursor, CDC, two release swipes");
         $finish;
     end
     initial begin

@@ -25,7 +25,7 @@ HDMI 滚动字幕与 OSD 面板已上板验证；协议、操作和验收见
 真实频谱可视化已于 2026-10-09 上板验证；自研 DFT 算法、资源变化、
 当前 8-bit 音源的限制与后续 24-bit 升级见
 [`docs/audio_spectrum.md`](docs/audio_spectrum.md)。
-GT911 触控板的单指相对移动和 HDMI 光标已上板验证；接线、实现和验收见
+GT911 触控板的单指相对移动、角色光标和左右横划切图已上板验证；接线、实现和验收见
 [`docs/gt911_trackpad.md`](docs/gt911_trackpad.md)。
 
 ## 目录

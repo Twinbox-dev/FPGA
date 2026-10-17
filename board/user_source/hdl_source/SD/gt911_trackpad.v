@@ -17,6 +17,8 @@ module gt911_trackpad #(
     output reg         online,
     output reg         touch_report,      // one clock on a fresh point report
     output reg         touch_down,
+    output reg         swipe_next,        // one pulse on leftward release
+    output reg         swipe_prev,        // one pulse on rightward release
     output reg  [10:0] cursor_x,
     output reg  [9:0]  cursor_y
 );
@@ -80,6 +82,16 @@ module gt911_trackpad #(
     reg finger_active;
     reg [7:0] prev_id;
     reg [9:0] prev_x, prev_y;
+    reg gesture_valid;
+    reg [4:0] gesture_samples;
+    reg [9:0] gesture_start_x, gesture_start_y;
+    reg [9:0] gesture_last_x, gesture_last_y;
+    wire signed [10:0] gesture_dx =
+        $signed({1'b0, gesture_last_x}) - $signed({1'b0, gesture_start_x});
+    wire signed [10:0] gesture_dy =
+        $signed({1'b0, gesture_last_y}) - $signed({1'b0, gesture_start_y});
+    wire [10:0] gesture_abs_y = gesture_dy[10] ?
+                                  (~gesture_dy + 11'd1) : gesture_dy;
     wire signed [10:0] dx = $signed({1'b0, point_x[9:0]}) -
                              $signed({1'b0, prev_x});
     wire signed [10:0] dy = $signed({1'b0, point_y[9:0]}) -
@@ -105,10 +117,18 @@ module gt911_trackpad #(
             online <= 1'b0;
             touch_report <= 1'b0;
             touch_down <= 1'b0;
+            swipe_next <= 1'b0;
+            swipe_prev <= 1'b0;
             finger_active <= 1'b0;
             prev_id <= 8'd0;
             prev_x <= 10'd0;
             prev_y <= 10'd0;
+            gesture_valid <= 1'b0;
+            gesture_samples <= 5'd0;
+            gesture_start_x <= 10'd0;
+            gesture_start_y <= 10'd0;
+            gesture_last_x <= 10'd0;
+            gesture_last_y <= 10'd0;
             cursor_x <= 11'd640;
             cursor_y <= 10'd360;
             cursor_mailbox_x <= 11'd640;
@@ -119,6 +139,8 @@ module gt911_trackpad #(
         end else begin
             byte_valid <= 1'b0;
             touch_report <= 1'b0;
+            swipe_next <= 1'b0;
+            swipe_prev <= 1'b0;
             ack_s0 <= cursor_ack_toggle;
             ack_s1 <= ack_s0;
             if (ack_s1 == cursor_req_toggle &&
@@ -161,6 +183,7 @@ module gt911_trackpad #(
                         online <= 1'b0;
                         touch_down <= 1'b0;
                         finger_active <= 1'b0;
+                        gesture_valid <= 1'b0;
                         job <= PROBE;
                         if (address == 7'h5d) begin
                             address <= 7'h14;
@@ -185,8 +208,21 @@ module gt911_trackpad #(
                                     job <= POINT;
                                     state <= LAUNCH;
                                 end else begin
+                                    // Commit a quick horizontal swipe once,
+                                    // only when the card reports zero contacts.
+                                    if (payload[3:0] == 4'd0 &&
+                                        gesture_valid && finger_active &&
+                                        gesture_samples >= 5'd2 &&
+                                        gesture_samples <= 5'd24 &&
+                                        gesture_abs_y <= 11'd80) begin
+                                        if (gesture_dx <= -11'sd160)
+                                            swipe_next <= 1'b1;
+                                        else if (gesture_dx >= 11'sd160)
+                                            swipe_prev <= 1'b1;
+                                    end
                                     touch_down <= 1'b0;
                                     finger_active <= 1'b0;
+                                    gesture_valid <= 1'b0;
                                     job <= CLEAR;
                                     state <= LAUNCH;
                                 end
@@ -195,6 +231,23 @@ module gt911_trackpad #(
                                 if (point_x < 16'd1024 && point_y < 16'd1024) begin
                                     touch_report <= 1'b1;
                                     touch_down <= 1'b1;
+                                    if (!finger_active) begin
+                                        gesture_valid <= 1'b1;
+                                        gesture_samples <= 5'd0;
+                                        gesture_start_x <= point_x[9:0];
+                                        gesture_start_y <= point_y[9:0];
+                                        gesture_last_x <= point_x[9:0];
+                                        gesture_last_y <= point_y[9:0];
+                                    end else if (point_id != prev_id ||
+                                                 dx > 11'sd96 || dx < -11'sd96 ||
+                                                 dy > 11'sd96 || dy < -11'sd96) begin
+                                        gesture_valid <= 1'b0;
+                                    end else if (gesture_valid) begin
+                                        gesture_last_x <= point_x[9:0];
+                                        gesture_last_y <= point_y[9:0];
+                                        if (gesture_samples != 5'd31)
+                                            gesture_samples <= gesture_samples + 5'd1;
+                                    end
                                     if (!finger_active || point_id != prev_id ||
                                         dx > 11'sd96 || dx < -11'sd96 ||
                                         dy > 11'sd96 || dy < -11'sd96) begin
@@ -220,6 +273,7 @@ module gt911_trackpad #(
                                 end else begin
                                     touch_down <= 1'b0;
                                     finger_active <= 1'b0;
+                                    gesture_valid <= 1'b0;
                                 end
                                 job <= CLEAR;
                                 state <= LAUNCH;

@@ -21,6 +21,7 @@ module tb_subtitle_ctrl;
     );
     ctrl_core #(.VK_PULSE_CYC(50)) ctrl (
         .clk(clk), .rst(rst), .cmd(cmd), .cmd_val(cmd_val),
+        .touch_next(1'b0), .touch_prev(1'b0),
         .subtitle_consume(consume), .subtitle_ack_pulse(ack_pulse),
         .subtitle_ack_ok(ack_ok), .vk_next_n(vk_next_n),
         .vk_auto_n(vk_auto_n), .vk_prev_n(vk_prev_n),

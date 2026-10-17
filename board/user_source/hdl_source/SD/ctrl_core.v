@@ -42,6 +42,8 @@ module ctrl_core #(
     // 来自传输前端：已校验的命令字节（单拍有效）
     input  [7:0]        cmd,
     input               cmd_val,
+    input               touch_next,
+    input               touch_prev,
     input               subtitle_consume,
     input               subtitle_ack_pulse,
     input               subtitle_ack_ok,
@@ -283,11 +285,12 @@ module ctrl_core #(
                     vk_auto <= 1'b0;
                     vk_prev <= 1'b0;
                 end
-            end else if (cmd_next || cmd_auto || cmd_prev) begin
+            end else if (cmd_next || cmd_auto || cmd_prev ||
+                         touch_next || touch_prev) begin
                 vk_cnt  <= VK_PULSE_CYC - 1;
-                vk_next <= cmd_next;
+                vk_next <= cmd_next || touch_next;
                 vk_auto <= cmd_auto;
-                vk_prev <= cmd_prev;
+                vk_prev <= cmd_prev || touch_prev;
             end
         end
     end

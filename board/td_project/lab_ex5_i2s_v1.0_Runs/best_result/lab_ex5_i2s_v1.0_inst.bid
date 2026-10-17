@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- HMAC is: 2c6e0fdcb42db3c7febb6c6c21d5dc67ad449262e84a414d36c10048bc4bb55d -->
+<!-- HMAC is: 403847e212bcd4ae32b0143b0d510ecc4d8dfe7c52328a3af329c4184f98aecf -->
 <All_Bram_Infos>
-    <Ucode>10111011</Ucode>
+    <Ucode>00001000</Ucode>
     <AL_PHY_BRAM>
         <INST_1>
             <rid>0X0004</rid>
@@ -1713,6 +1713,37 @@
         <INST_3>
             <rid>0X0044</rid>
             <wid>0X0044</wid>
+            <is_debuggable>y</is_debuggable>
+            <is_initialize>y</is_initialize>
+            <model_type>AL_PHY_BRAM32K</model_type>
+            <name>u_gt911_cursor/ramread0_syn_5</name>
+            <width_a>16</width_a>
+            <width_b>16</width_b>
+            <logic_name>u_gt911_cursor/ramread0_syn_4</logic_name>
+            <logic_width>16</logic_width>
+            <logic_depth>1024</logic_depth>
+            <sub_bid_info>
+                <address_offset>0</address_offset>
+                <data_offset>0</data_offset>
+                <depth>1024</depth>
+                <width>16</width>
+                <num_section>1</num_section>
+                <section_size>16</section_size>
+                <width_per_section>16</width_per_section>
+                <bytes_in_per_section>1</bytes_in_per_section>
+                <working_mode>
+                    <address_step>1</address_step>
+                    <depth>2048</depth>
+                    <mode_type>162</mode_type>
+                    <width>16</width>
+                    <num_byte>1</num_byte>
+                    <ecc>0</ecc>
+                </working_mode>
+            </sub_bid_info>
+        </INST_3>
+        <INST_4>
+            <rid>0X0048</rid>
+            <wid>0X0048</wid>
             <is_debuggable>n</is_debuggable>
             <is_initialize>y</is_initialize>
             <model_type>AL_PHY_BRAM32K</model_type>
@@ -1740,6 +1771,6 @@
                     <ecc>0</ecc>
                 </working_mode>
             </sub_bid_info>
-        </INST_3>
+        </INST_4>
     </AL_PHY_BRAM32K>
 </All_Bram_Infos>

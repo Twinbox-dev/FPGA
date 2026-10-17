@@ -335,6 +335,7 @@ assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
 // ctrl_core 持有命令语义与控制参数（虚拟按键/音量），任何传输前端（现在的 UART、
 // 将来的以太网）只要把命令翻译成「字节 + valid」即可复用；详见 ctrl_core.v。
 wire vk_next_n, vk_auto_n, vk_prev_n;
+wire touch_swipe_next, touch_swipe_prev;
 wire [7:0]  cmd_byte;
 wire        cmd_val_w, tx_req_w;
 wire [63:0] tx_pkt_w;
@@ -373,6 +374,8 @@ ctrl_core #(
     .rst            (rst_all),
     .cmd            (cmd_byte),
     .cmd_val        (cmd_val_w),
+    .touch_next     (touch_swipe_next),
+    .touch_prev     (touch_swipe_prev),
     .subtitle_consume (subtitle_consume),
     .subtitle_ack_pulse (subtitle_ack_pulse),
     .subtitle_ack_ok (subtitle_ack_ok),
@@ -522,8 +525,9 @@ video_pll video_pll_m0(
     .clk1_out   (hdmi_5x_clk)
 );
 
-// GT911 first stage: discover 0x5D/0x14, poll a single finger and move a
-// relative pointer. No INT/RST pin or touch-triggered playback action yet.
+// GT911: discover 0x5D/0x14, move a relative pointer and translate a quick
+// horizontal release swipe into the existing next/previous virtual keys.
+// INT/RST and touch-screen pseudo-buttons are not used yet.
 gt911_trackpad u_gt911_trackpad (
     .clk (sd_card_clk), .rst (rst_all),
     .scl (gt911_scl), .sda (gt911_sda),
@@ -532,7 +536,9 @@ gt911_trackpad u_gt911_trackpad (
     .cursor_mailbox_x (cursor_mailbox_x),
     .cursor_mailbox_y (cursor_mailbox_y),
     .online (cursor_online),
-    .touch_report (), .touch_down (), .cursor_x (), .cursor_y ()
+    .touch_report (), .touch_down (),
+    .swipe_next (touch_swipe_next), .swipe_prev (touch_swipe_prev),
+    .cursor_x (), .cursor_y ()
 );
 
 // mem_clk 域把 write_finish 单拍转成 toggle，供 sd_card_clk 域可靠同步
