@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 
 
-OUT = Path(__file__).resolve().parents[1] / "board/user_source/hdl_source/SD/spectrum_twiddle_512.mem"
+OUT = Path(__file__).resolve().parents[1] / "board_display/user_source/hdl_source/SD/spectrum_twiddle_512.mem"
 
 
 def signed16(value: float) -> int:

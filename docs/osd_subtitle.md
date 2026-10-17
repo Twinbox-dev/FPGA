@@ -37,7 +37,7 @@ checksum = 原始 length XOR 原始 ASCII[0] XOR ... XOR 原始 ASCII[length-1]
 
 `ctrl_core` 所在的 `sd_card_clk` 域接收 `cmd_arb` 输出。`subtitle_cmd` 解码、检查长度/XOR/超时，并禁止上传字节进入普通控制命令路径。`subtitle_store` 使用两个 160 字节文本 bank：SD 时钟写非活动 bank，视频时钟同步读活动 bank，提交 toggle 经 CDC 到 VS 切换，再将确认 toggle 返回 SD 域。`subtitle_scroll` 以 VS 计帧；`subtitle_text_renderer` 与 `osd_panel_levels` 各用一个同步 `font_rom` 取 8×16 字模。`osd_visibility` 将控制档位 Gray 码跨域并在 VS 锁存，避免一帧中途改数字。`osd_composite` 将字形/底色与原视频合成，并同步延迟 RGB、DE、VS 以对齐字形掩码。
 
-`scripts/gen_font.py` 可重复生成 `board/user_source/hdl_source/SD/font.mem`，覆盖 95 个可打印 ASCII 字形；综合输入为该静态 `.mem` 文件。TD 工程 `.al` 与 `syn_1/phy_1` 源列表已列入全部新增 `.v`，综合前请确认 TD 仍使用当前工程而非旧缓存。`font_rom` 默认从 TD 工程目录相对路径读取 `.mem`；若 TD 报找不到字库，先核查工程工作目录与路径。
+`scripts/gen_font.py` 可重复生成 `board_display/user_source/hdl_source/SD/font.mem`，覆盖 95 个可打印 ASCII 字形；综合输入为该静态 `.mem` 文件。TD 工程 `.al` 与 `syn_1/phy_1` 源列表已列入全部新增 `.v`，综合前请确认 TD 仍使用当前工程而非旧缓存。`font_rom` 默认从 TD 工程目录相对路径读取 `.mem`；若 TD 报找不到字库，先核查工程工作目录与路径。
 
 ## 验证与上板观察
 

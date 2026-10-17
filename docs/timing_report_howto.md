@@ -8,7 +8,7 @@
 布局布线（Physical Design, phy）跑完后，时序报告固定在 Run 目录：
 
 ```
-board/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/final_timing.rpt
+board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/final_timing.rpt
 ```
 
 （`syn_1` 综合阶段也有一份，但那是估算；以 `phy_1` 布线后的为准。

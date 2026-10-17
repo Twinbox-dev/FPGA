@@ -41,7 +41,7 @@ RTL/时钟骨架的来源）与 `33_HX4S20_Etherent_test_01_02_final_1000`
 ⚠ 包长/帧长**都没有变**（用的都是保留位）；但**新 PC 端配旧 bit 会一直显示"关"**
 （该字节恒 0），故前端与 bit 要一起更新。
 
-## 文件（board/user_source/hdl_source/ETH/）
+## 文件（board_display/user_source/hdl_source/ETH/）
 
 | 文件 | 来源 | 说明 |
 |------|------|------|

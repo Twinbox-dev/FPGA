@@ -17,7 +17,7 @@ gen_font.py —— 生成 8x16 等宽字模库 font.mem
     的 bit(7-b) 取位约定一致（b=0 为字符格最左像素）。
 
 用法：
-  python scripts/gen_font.py [--out PATH]  # default: board/user_source/hdl_source/SD/font.mem
+  python scripts/gen_font.py [--out PATH]  # default: board_display/user_source/hdl_source/SD/font.mem
 """
 
 import argparse
@@ -651,7 +651,7 @@ def build_mem() -> list[int]:
 
 def main():
     ap = argparse.ArgumentParser()
-    default_out = Path(__file__).resolve().parents[1] / 'board/user_source/hdl_source/SD/font.mem'
+    default_out = Path(__file__).resolve().parents[1] / 'board_display/user_source/hdl_source/SD/font.mem'
     ap.add_argument('--out', default=str(default_out), help='output path')
     args = ap.parse_args()
 

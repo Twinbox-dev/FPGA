@@ -53,43 +53,43 @@ clean:
 # 读/写引擎真实 RTL 级自检（boardtest 主仿真用 C++ 模型替代这两个引擎，
 # 写翻转/会话抢占类 bug 在主仿真不可见——2026-09-27 板级两连 bug 后补）
 readeng:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_readeng vsrc/tb_readeng.v 		../board/user_source/hdl_source/SD/frame_fifo_read.v 		../board/user_source/hdl_source/SD/frame_fifo_write.v 		-o sim_readeng --Mdir build_readeng
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_readeng vsrc/tb_readeng.v 		../board_display/user_source/hdl_source/SD/frame_fifo_read.v 		../board_display/user_source/hdl_source/SD/frame_fifo_write.v 		-o sim_readeng --Mdir build_readeng
 	./build_readeng/sim_readeng
 
 # 真实帧读写封装 + 工程异步 FIFO，跨 100/100/75MHz 验证字序（SDRAM 口为模型）。
 framepath:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_framepath vsrc/tb_framepath.v ../board/user_source/hdl_source/SD/frame_read_write.v ../board/user_source/hdl_source/SD/frame_fifo_read.v ../board/user_source/hdl_source/SD/frame_fifo_write.v ../board/user_source/hdl_source/IP/afifo_16_32_256.v ../board/user_source/hdl_source/IP/afifo_32_16_256.v -o sim_framepath --Mdir build_framepath
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_framepath vsrc/tb_framepath.v ../board_display/user_source/hdl_source/SD/frame_read_write.v ../board_display/user_source/hdl_source/SD/frame_fifo_read.v ../board_display/user_source/hdl_source/SD/frame_fifo_write.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v -o sim_framepath --Mdir build_framepath
 	./build_framepath/sim_framepath
 
 # 写突发判决寄存后一拍重查读忙；旧代码在读忙升起时仍会启动写突发。
 arbrace:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_arbrace vsrc/tb_arbrace.v ../board/user_source/hdl_source/SD/frame_fifo_write.v -o sim_arbrace --Mdir build_arbrace
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_arbrace vsrc/tb_arbrace.v ../board_display/user_source/hdl_source/SD/frame_fifo_write.v -o sim_arbrace --Mdir build_arbrace
 	./build_arbrace/sim_arbrace
 
 # SDRAM 返回口被动抓取窗：视频会话同步、音频字过滤、满帧/异常收口。
 memdump:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_memdump vsrc/tb_memdump.v ../board/user_source/hdl_source/top_tf_hdmi_audio.v -o sim_memdump --Mdir build_memdump
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_memdump vsrc/tb_memdump.v ../board_display/user_source/hdl_source/top_tf_hdmi_audio.v -o sim_memdump --Mdir build_memdump
 	./build_memdump/sim_memdump
 
 # 写口双流窗口：跳过涂黑会话，输出与 App_wr_en 同拍的数据/地址和收口。
 writeprobe:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_writeprobe vsrc/tb_writeprobe.v ../board/user_source/hdl_source/top_tf_hdmi_audio.v -o sim_writeprobe --Mdir build_writeprobe
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_writeprobe vsrc/tb_writeprobe.v ../board_display/user_source/hdl_source/top_tf_hdmi_audio.v -o sim_writeprobe --Mdir build_writeprobe
 	./build_writeprobe/sim_writeprobe
 
 # video_delay 565 解包/2:1 串行化自检（视频读通道不在主仿真内，
 # 相邻像素互换 bug 漏网于此——2026-09-27 补）
 vdelay:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_vdelay vsrc/tb_vdelay.v 		../board/user_source/hdl_source/SD/video_delay.v 		-o sim_vdelay --Mdir build_vdelay
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_vdelay vsrc/tb_vdelay.v 		../board_display/user_source/hdl_source/SD/video_delay.v 		-o sim_vdelay --Mdir build_vdelay
 	./build_vdelay/sim_vdelay
 
 # 720p AXI 行结束：TLAST 必须落在第 1280 个有效像素，而不是旧 640 宽的位置。
 axis:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_axis vsrc/tb_axis.v ../board/user_source/hdl_source/video_rgb_to_axis_640x480.v -o sim_axis --Mdir build_axis
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_axis vsrc/tb_axis.v ../board_display/user_source/hdl_source/video_rgb_to_axis_640x480.v -o sim_axis --Mdir build_axis
 	./build_axis/sim_axis
 
 # UART 前端 + 控制核心自检（成对校验/虚拟按键/状态包/音量——2026-09-29 拆分后）
 uart:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_uart vsrc/tb_uart.v 		../board/user_source/hdl_source/SD/uart_link.v 		../board/user_source/hdl_source/SD/ctrl_core.v 		-o sim_uart --Mdir build_uart
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT 		--top-module tb_uart vsrc/tb_uart.v 		../board_display/user_source/hdl_source/SD/uart_link.v 		../board_display/user_source/hdl_source/SD/ctrl_core.v 		-o sim_uart --Mdir build_uart
 	./build_uart/sim_uart
 
 # 以太网应用层自检（eth_front）：RX 解命令/握手/TX 整帧。
@@ -97,25 +97,25 @@ uart:
 # Verilator 编不了，只测我们写的应用层——不可仿真的边界（UDP 栈的应用侧接口）
 # 由本 TB 扮演，方法同 SD 卡的 stub_sd_card_top.v / 串口的 tb_uart.v。
 ethfront:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_ethfront vsrc/tb_ethfront.v ../board/user_source/hdl_source/ETH/eth_front.v -o sim_ethfront --Mdir build_ethfront
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_ethfront vsrc/tb_ethfront.v ../board_display/user_source/hdl_source/ETH/eth_front.v -o sim_ethfront --Mdir build_ethfront
 	./build_ethfront/sim_ethfront
 
 # 命令仲裁自检（cmd_arb：多传输前端 → ctrl_core 的唯一汇合点）。
 # 这段胶水原本只在顶层、不在任何仿真范围内，"命令晚一拍"的 bug 只能上板发现。
 cmdarb:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_cmd_arb vsrc/tb_cmd_arb.v ../board/user_source/hdl_source/SD/ctrl_core.v -o sim_cmdarb --Mdir build_cmdarb
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_cmd_arb vsrc/tb_cmd_arb.v ../board_display/user_source/hdl_source/SD/ctrl_core.v -o sim_cmdarb --Mdir build_cmdarb
 	./build_cmdarb/sim_cmdarb
 
 # 音频脉动条自检（pulse_bar：包络 + 渲染都在主仿真盲区——显示通路/音频出口，
 # 按 tb_vdelay/tb_uart 先例补独立自检）
 pulsebar:
-	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_pulsebar vsrc/tb_pulsebar.v ../board/user_source/hdl_source/SD/pulse_bar.v -o sim_pulsebar --Mdir build_pulsebar
+	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_pulsebar vsrc/tb_pulsebar.v ../board_display/user_source/hdl_source/SD/pulse_bar.v -o sim_pulsebar --Mdir build_pulsebar
 	./build_pulsebar/sim_pulsebar
 
 # Transition unit checks are incremental; each executable rebuilds only when
 # its testbench or RTL dependency changes. transitionpair exercises the SD
 # image/WAV commit with a simulated video-domain completion toggle.
-TSD := ../board/user_source/hdl_source/SD
+TSD := ../board_display/user_source/hdl_source/SD
 build_transition_blender/sim_transition_blender: vsrc/tb_transition_blender.v $(TSD)/transition_blender.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_blender $^ --Mdir build_transition_blender -o sim_transition_blender
 
@@ -131,7 +131,7 @@ build_transition_video/sim_transition_video: vsrc/tb_transition_video.v $(TSD)/t
 build_transition_fetch/sim_transition_fetch: vsrc/tb_transition_fetch.v $(TSD)/transition_ctrl.v $(TSD)/transition_line_read.v $(TSD)/transition_line_buf.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_transition_fetch $^ --Mdir build_transition_fetch -o sim_transition_fetch
 
-build_transition_framepath/sim_transition_framepath: vsrc/tb_transition_framepath.v $(TSD)/transition_line_read.v $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board/user_source/hdl_source/IP/afifo_16_32_256.v ../board/user_source/hdl_source/IP/afifo_32_16_256.v
+build_transition_framepath/sim_transition_framepath: vsrc/tb_transition_framepath.v $(TSD)/transition_line_read.v $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_transition_framepath $^ --Mdir build_transition_framepath -o sim_transition_framepath
 
 .PHONY: transition-unit transitionpair

@@ -29,7 +29,7 @@ fat32 尚未回到 `S_MOUNTED`（`o_file_idle=0`）。
 - 探针：`ald` 期间 pstate 走 `0→1→0`（不进 `1→2`，即 `w_hdr_ok` 没来过），
   无音频写通道 WR_OPEN，FAT 无 `8→10`（S_MOUNTED→S_OPEN）迁移。
 
-## 修复（sd_card_bmp.v，board/ 与 boardtest/vsrc/ 同步）
+## 修复（sd_card_bmp.v，board_display/ 与 boardtest/vsrc/ 同步）
 
 1. **ald 触发加 `fat_idle`**：`img_ok && write_done_seen && fat_idle`——
    等 fat32 读完图文件尾、回到 MOUNTED 再踢 ald。kick 之后到 WAV 流完之间

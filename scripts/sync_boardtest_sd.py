@@ -6,7 +6,7 @@ boardtest 副本 = board 副本 + SIM_FAST 增量（端口/SD 层二选一/1ms �
 """
 import re, sys
 
-BOARD = 'board/user_source/hdl_source/SD/sd_card_bmp.v'
+BOARD = 'board_display/user_source/hdl_source/SD/sd_card_bmp.v'
 BT    = 'boardtest/vsrc/sd_card_bmp.v'
 
 src = open(BOARD, newline='', encoding='utf-8').read()
