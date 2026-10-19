@@ -1,35 +1,21 @@
 # 媒体板工程
 
-本目录用于第二块 HX4S20C 的自包含 TD 工程。目标职责是 TF/SD、FAT32、
-BMP/WAV 解析、播放列表、PC 控制和板间媒体发送；显示板工程在
-[`../board_display/`](../board_display/) 中。
+媒体板固定为 192.168.137.3，独立负责 SD/SPI、FAT32、BMP/WAV 解析、播放列表、实体按键、自动轮播和 PC 控制。它不使用 SDRAM 缓存整帧；每张图从卡读取后补成 1280×720 RGB565 正式帧。
 
-工程入口为 [media_net.al](td_project/media_net.al)：复制了完整的以太网 RTL 和
-厂商 IP，独立使用本目录源码，不引用显示板的 Verilog。显示板仍使用原有单板
-固件；媒体板尚未接入 SD、媒体解析或板间图像数据。
+网络路由按包类别选择：
 
-- PC：`192.168.137.1`；显示板：`.2`；媒体板：`.3`，独立 MAC `02:00:00:00:00:03`。
-- 第一阶段 `5099b81` 的媒体板 bit 已上板通过：`ping .3` 为 5/5，
-  `python scripts/media_eth_probe.py --count 3` 为 3/3。该版本将 `E1 CMD EM` 回给
-  PC。工程占用 3,475 LUT、10 BRAM，SWNS −3.313 ns，实际通信正常。
-- 第二阶段已于 2026-10-18 上板通过：PC 向媒体板 `.3:1` 发原有 `[CMD, ~CMD]`
-  命令；媒体板以控制帧 `type=0001` 将 `S` 等命令转发至显示板 `.2:1`；显示板
-  向 PC `.1:2` 回应。PC 的 `M` 命令触发媒体板向显示板发送一片固定 7 字图案，
-  接收板验完长度和 CRC 后更新数码管计数。本阶段仍不搬移实际控制权或图像。
-  本轮两块板均已用对应的新 bit 验证。
-- 两板和 PC 同接交换机，先确认 `.2`、`.3` 均可 ping。关闭占用 PC UDP `:2`
-  的 Web 控制台，然后运行
-  `python scripts/dual_board_cmd_probe.py --count 3 --chunks 3`。
-  实测三次 `display status via media OK`，回包源地址均为 `.2`，用户确认三次
-  分片数码管测试也全部通过。其中 `db` 是标记，两位错误计数应保持 `00`，
-  两位完整分片计数应增加到 `03`。本轮报告：媒体板 7,501/19,600 LUT、
-  10/64 BRAM9K、SWNS −3.191 ns；显示板 17,426/19,600 LUT、55/64
-  BRAM9K、4/16 BRAM32K、SWNS −6.844 ns。媒体板固定分片发送缓存目前
-  推断成寄存器，层次报告约占 3,025 LUT；正式数据通道要改成 RAM 后再评估。
-- 以太网子系统与其 50 MHz 命令桥均只在上电后复位一次；重新开始网络测试须
-  重新烧录或断电上电。
+- PC 命令发往媒体板 .3:1；V1 ACK/状态与 D 调试探针回 PC .1:2。
+- 正式图像/音频包，以及显示侧 SET、STATUS_REQ、字幕 BEGIN/DATA/END 发往显示板 .2:1。
+- 显示板的结果/状态包返回媒体板 .3:1；媒体板再按 V1 格式向 PC 回 ACK。
+- 目的地址和端口按 mux owner 与控制类型选定，并在包发送期间保持稳定。
 
-端口约束复用了显示板已验证的以太网和时钟引脚。显示板源码增加了
-`type=0001` 命令过滤，避免将媒体数据误解析为切图命令。固定分片测试已接入
-两块板的 TD 顶层，协议见 [双板实施边界](../docs/dual_board_architecture.md)。
-它只验证单片无损传输；播放列表、ACK/重发、整图传输和 SDRAM 原子提交仍待接入。
+TD 工程入口为 board_media/td_project/media_net.al。本目录自包含所用 Ethernet RTL、厂商 IP、SD 读卡 RTL 和约束，不引用显示板目录中的 Verilog。
+
+综合和布局布线：
+
+    cd board_media/td_project/media_net_Runs/syn_1
+    run.bat
+    cd ../phy_1
+    run.bat
+
+路由选择定向仿真见 board_media/sim/tb_media_udp_route.sv。媒体与控制协议字段见 ../docs/media_link_protocol.md、../docs/dual_board_media_plan.md 和 ../docs/dual_board_architecture.md。

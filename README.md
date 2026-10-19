@@ -1,5 +1,11 @@
 # 嵌赛'2026 安路选题一 —— TF 卡 720p BMP 轮播 + 配对 WAV 伴音（单仓）
 
+> **重点：TD CLI 可从命令行综合、布局布线并下载 FPGA bit。**
+> 项目工程的 `syn_1`、`phy_1` 目录分别用 `settings.cfg` 选择综合和布局布线流程；
+> `td_commands_prompt.exe` 执行 TD 自带的 `DefaultFlow.tcl`。JTAG SRAM 下载命令为
+> `download -mode jtag -bit <bit路径>`。详细命令、步骤和模式差异见
+> [TD CLI 综合与 SRAM 下载指南](docs/td_cli_programming.md)。
+
 ## 基线来源（provenance）
 - 仿真框架 + boardtest：`anlogic` 仓 `6956e5d`（boardtest 即为 board 工程对应
   版本的 Verilator 验证台快照，两者 RTL 逐字节一致）

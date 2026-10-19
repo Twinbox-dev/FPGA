@@ -13,10 +13,9 @@
 //   tx_tog/tx_pkt：应答包入口（顶层每收到一条 ctrl_core 应答翻转一次 tx_tog，
 //   tx_pkt 在翻转前后稳定，本模块同步检测变化后锁存发送）
 //
-// 媒体板默认网络配置：IP 192.168.137.3 / MAC 02:00:00:00:00:03 / UDP 端口 1
-// （PC 侧为 192.168.137.1（笔记本静态/ICS 默认），发往板卡端口 1，监听端口 2——
-//   demo 的 DST_UDP_PORT_NUM=2 本模块未实现 PC 端口动态化，回包统一发
-//   192.168.137.1:2。板卡 IP 取同网段 .2，子网掩码 255.255.255.0）
+// Media board .3 routes PC V1 replies/probes to PC .1:2. Formal media packets
+// and display SET/status/subtitle packets go to display .2:1. The destination
+// is selected per whole UDP packet by media owner or control type and held stable.
 // 速率：TRI_SPEED 一处切换（2'b01=百兆 udp_clk=12.5M / 2'b10=千兆 udp_clk=125M，
 // 由 udp_clk_gen 自动按 tri_speed 选时钟源）。当前用**千兆**——板载 PHY 与 PC
 // 网卡自协商即 1G，且后续数据面（图/音上传）需要带宽。
@@ -33,13 +32,24 @@ module eth_subsys(
     output wire        phy1_rgmii_tx_ctl,
     output wire [3:0]  phy1_rgmii_tx_data,
     output wire        phy_reset,
+    output wire        app_clk_out, app_reset_out,
+    output wire [7:0]  app_rx_byte,
+    output wire        app_rx_valid,
+    output wire [3:0]  media_stack_status,
+    input wire         media_request, media_valid,
+    input wire [7:0]   media_data,
+    input wire [15:0]  media_length,
+    output wire        media_ack,
 
     // 应用层（跨域握手，见头注释）
     output wire [7:0]  cmd,
     output wire        cmd_pending,
     input  wire        cmd_ack_t,
     input  wire        tx_tog,
+    input  wire [15:0] tx_type,
+    input  wire [15:0] tx_payload_len,
     input  wire [63:0] tx_pkt,
+    output wire        tx_done_tog,
 
     // 写侧分叉：图像发射流旁路（tap_clk = sd_card_clk 域；sys_rst = rst_all）
     input  wire        sys_rst,
@@ -54,11 +64,14 @@ module eth_subsys(
     input  wire        tap2_end
 );
     parameter DEVICE           = "EG4";
+    parameter MAC_CAPTURE = 1;
     parameter LOCAL_UDP_PORT   = 16'h0001;
     parameter LOCAL_IP         = 32'hc0a88903;   // media board: 192.168.137.3
     parameter LOCAL_MAC        = 48'h020000000003; // media board's unique MAC
-    parameter DST_IP           = 32'hc0a88901;   // packet destination, PC by default
-    parameter DST_UDP_PORT     = 16'h0002;        // destination UDP port
+    parameter DST_IP           = 32'hc0a88901;   // PC address
+    parameter DISPLAY_IP      = 32'hc0a88902;   // display board
+    parameter PC_UDP_PORT     = 16'h0002;
+    parameter DISPLAY_UDP_PORT = 16'h0001;
     // 速率开关（2026-10-02 定）：**当前=千兆**（GIGABIT=1）。
     // 已知风险（用户明确接受）：综合时序过不了——厂商加密 UDP 栈内部（ARP 缓存）
     // 在 125MHz 下实测 Fmax 只有 44MHz（setup 差 5.3ns，281 个端点），
@@ -92,6 +105,7 @@ module eth_subsys(
     wire        temac_clk, clk_125_out, temac_clk90;
     wire        clk_12_5_out, clk_1_25_out, clk_25_out;
     wire        udp_clk;
+    assign app_clk_out=udp_clk;
 
     clk_gen_rst_gen #(.DEVICE(DEVICE)) u_clk_gen(
         .reset          (eth_rst_in),
@@ -113,6 +127,7 @@ module eth_subsys(
         else if (soft_cnt > 0) soft_cnt <= soft_cnt - 1'b1;
 
     wire reset = eth_rst_in || reset_reg || (soft_cnt != 8'd0);
+    assign app_reset_out=reset;
 
     // PHY 复位：上电后保持一段（clk_25_out 域计数），然后释放（demo 同款）
     reg [7:0] phy_rst_cnt = 8'd0;
@@ -129,97 +144,85 @@ module eth_subsys(
     wire [7:0]  app_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
     wire [15:0] udp_data_length;
-    wire [7:0]  ctrl_tx_data, chunk_tx_data;
-    wire        ctrl_tx_req, ctrl_tx_valid, ctrl_tx_ack;
-    wire        chunk_tx_req, chunk_tx_valid, chunk_tx_ack;
-    wire [15:0] ctrl_tx_length, chunk_tx_length;
-    wire ctrl_udp_ready;
-    media_tx_mux u_tx_mux (
-        .clk(udp_clk), .rst(reset),
-        .stack_ready(udp_tx_ready), .stack_ack(app_tx_ack),
-        .ctrl_req(ctrl_tx_req), .ctrl_valid(ctrl_tx_valid),
-        .ctrl_data(ctrl_tx_data), .ctrl_length(ctrl_tx_length),
-        .ctrl_ready(ctrl_udp_ready), .ctrl_ack(ctrl_tx_ack),
-        .chunk_req(chunk_tx_req), .chunk_valid(chunk_tx_valid),
-        .chunk_data(chunk_tx_data), .chunk_length(chunk_tx_length),
-        .chunk_ack(chunk_tx_ack),
-        .stack_req(app_tx_data_request), .stack_valid(app_tx_data_valid),
-        .stack_data(app_tx_data), .stack_length(udp_data_length)
+    reg [15:0] app_capture_pos;
+    always @(posedge udp_clk) begin
+        if(reset) app_capture_pos<=0;
+        else if(app_tx_data_valid) begin
+            if(app_capture_pos+1>=udp_data_length)app_capture_pos<=0;
+            else app_capture_pos<=app_capture_pos+1'b1;
+        end
+    end
+    wire app_capture_sof_n=!(app_tx_data_valid && app_capture_pos==0);
+    wire app_capture_eof_n=!(app_tx_data_valid && app_capture_pos+1>=udp_data_length);
+    assign app_rx_byte=app_rx_data;
+    assign app_rx_valid=app_rx_data_valid;
+    wire ctrl_ready,ctrl_ack,ctrl_request,ctrl_valid;
+    wire temac_tx_ready,temac_tx_valid,temac_tx_sof,temac_tx_eof;wire [7:0] temac_tx_data;
+    wire late_ack_seen,packet_active,media_in_flight,media_packet_drained;
+    wire mac_capture_val,mac_capture_end;wire [31:0] mac_capture_word;
+    wire tx_fifo_overflow;
+    reg cmd_pending_last;
+    always @(posedge udp_clk)if(reset)cmd_pending_last<=0;else cmd_pending_last<=cmd_pending;
+    wire capture_dump=cmd_pending && !cmd_pending_last && cmd==8'h58;
+    generate if(MAC_CAPTURE)begin:g_capture
+        media_mac_capture #(.HEADER_OFFSET(42)) u_capture(.clk(udp_clk),.rst(reset),.byte_data(temac_tx_data),
+            .valid_n(temac_tx_valid),.ready_n(temac_tx_ready),.sof_n(temac_tx_sof),.eof_n(temac_tx_eof),
+            .overflow(tx_fifo_overflow),.dump(capture_dump),.tap_valid(mac_capture_val),.tap_end(mac_capture_end),.tap_word(mac_capture_word));
+    end else begin:g_no_capture
+        assign mac_capture_val=tap2_val;assign mac_capture_end=tap2_end;assign mac_capture_word=tap2_word;
+    end endgenerate
+    assign media_stack_status={packet_active,media_packet_drained,app_tx_ack,udp_tx_ready};
+    wire [7:0] ctrl_data;
+    wire [15:0] ctrl_length;
+    media_udp_mux u_production_mux (
+        .clk(udp_clk),.rst(reset),.stack_ready(udp_tx_ready),.stack_ack(app_tx_ack),
+        .ctrl_request(ctrl_request),.ctrl_valid(ctrl_valid),.ctrl_data(ctrl_data),.ctrl_length(ctrl_length),
+        .ctrl_ready(ctrl_ready),.ctrl_ack(ctrl_ack),
+        .media_request(media_request),.media_valid(media_valid),.media_data(media_data),.media_length(media_length),
+        .media_ack(media_ack),.stack_request(app_tx_data_request),.stack_valid(app_tx_data_valid),
+        .stack_data(app_tx_data),.stack_length(udp_data_length),.late_ack_seen(late_ack_seen),.packet_active(packet_active),
+        .media_in_flight(media_in_flight),.media_packet_drained(media_packet_drained)
     );
-
-    eth_front #(.TX_TYPE(16'h0001)) u_eth_front (
+    wire [31:0] tx_dst_ip;
+    wire [15:0] tx_dst_port;
+    wire display_route;
+    media_udp_route #(
+        .PC_IP(DST_IP),.DISPLAY_IP(DISPLAY_IP),
+        .PC_PORT(PC_UDP_PORT),.DISPLAY_PORT(DISPLAY_UDP_PORT)
+    ) u_media_udp_route(
+        .media_active(media_in_flight),.control_type(tx_type),
+        .destination_ip(tx_dst_ip),.destination_port(tx_dst_port),.display_route(display_route)
+    );
+    eth_front u_eth_front (
         .app_rx_clk        (udp_clk),
         .app_tx_clk        (udp_clk),
         .reset             (reset),
         .app_rx_data       (app_rx_data),
         .app_rx_data_valid (app_rx_data_valid),
         .app_rx_data_length(app_rx_data_length),
-        .udp_tx_ready      (ctrl_udp_ready),
-        .app_tx_ack        (ctrl_tx_ack),
-        .app_tx_data       (ctrl_tx_data),
-        .app_tx_data_request(ctrl_tx_req),
-        .app_tx_data_valid (ctrl_tx_valid),
-        .udp_data_length   (ctrl_tx_length),
+        .udp_tx_ready      (ctrl_ready),
+        .app_tx_ack        (ctrl_ack),
+        .app_tx_data       (ctrl_data),
+        .app_tx_data_request(ctrl_request),
+        .app_tx_data_valid (ctrl_valid),
+        .udp_data_length   (ctrl_length),
         .cmd               (cmd),
         .cmd_pending       (cmd_pending),
         .cmd_ack_t         (cmd_ack_t),
         .tx_tog            (tx_tog),
+        .tx_type           (tx_type),
+        .tx_payload_len    (tx_payload_len),
         .tx_pkt            (tx_pkt),
+        .tx_done_tog       (tx_done_tog),
         .sys_rst           (sys_rst),
         .tap_clk           (tap_clk),
         .tap_val           (tap_val),
         .tap_word          (tap_word),
         .tap_end           (tap_end),
-        .tap2_clk          (tap2_clk),
-        .tap2_val          (tap2_val),
-        .tap2_word         (tap2_word),
-        .tap2_end          (tap2_end)
-    );
-
-    // PC command 'M' asks for one deterministic 7-word media chunk.  This is
-    // an on-board link probe; the normal image producer will replace it later.
-    reg cmd_pending_d;
-    reg [15:0] diag_sequence;
-    reg [7:0] diag_word_index;
-    wire diag_data_ready, diag_busy, diag_done;
-    wire diag_start = cmd_pending && !cmd_pending_d &&
-                      cmd == 8'h4d && !diag_busy;
-    always @(posedge udp_clk or posedge reset) begin
-        if (reset) begin
-            cmd_pending_d <= 1'b0;
-            diag_sequence <= 16'd0;
-            diag_word_index <= 8'd0;
-        end else begin
-            cmd_pending_d <= cmd_pending;
-            if (diag_start) begin
-                diag_sequence <= diag_sequence + 16'd1;
-                diag_word_index <= 8'd0;
-            end else if (diag_data_ready)
-                diag_word_index <= diag_word_index + 8'd1;
-        end
-    end
-    reg [31:0] diag_word;
-    always @* begin
-        case (diag_word_index)
-            8'd0: diag_word = 32'ha5c30000;
-            8'd1: diag_word = 32'ha4c10307;
-            8'd2: diag_word = 32'ha7c7060e;
-            8'd3: diag_word = 32'ha6c50915;
-            8'd4: diag_word = 32'ha1cb0c1c;
-            8'd5: diag_word = 32'ha0c90f23;
-            8'd6: diag_word = 32'ha3cf122a;
-            default: diag_word = 32'd0;
-        endcase
-    end
-    media_chunk_tx u_diag_chunk_tx (
-        .clk(udp_clk), .rst(reset), .start(diag_start),
-        .session(16'h1302), .sequence_id(diag_sequence),
-        .count(8'd7), .flags(8'h01),
-        .data_word(diag_word), .data_valid(diag_data_ready && diag_word_index < 8'd7),
-        .data_ready(diag_data_ready),
-        .tx_ack(chunk_tx_ack), .tx_request(chunk_tx_req),
-        .tx_valid(chunk_tx_valid), .tx_byte(chunk_tx_data),
-        .tx_length(chunk_tx_length), .busy(diag_busy), .done(diag_done)
+        .tap2_clk          (MAC_CAPTURE ? udp_clk : tap2_clk),
+        .tap2_val          (mac_capture_val),
+        .tap2_word         (mac_capture_word),
+        .tap2_end          (mac_capture_end)
     );
 
     // ================= UDP/IP 协议栈（官方 IP）=================
@@ -237,8 +240,6 @@ module eth_subsys(
     // 必须在 udp_ip_protocol_stack 例化之前声明：否则例化端口上的名字会被
     // 隐式声明成 1bit 线网（TD 报 HDL-7225 critical），与后面的显式声明冲突，
     // 且隐式线网会静默截断位宽。
-    wire        temac_tx_ready, temac_tx_valid, temac_tx_sof, temac_tx_eof;
-    wire [7:0]  temac_tx_data;
     wire        temac_rx_ready, temac_rx_valid_n, temac_rx_sof, temac_rx_eof;
     wire [7:0]  temac_rx_data;
     wire        tx_collision, tx_retransmit, tx_rdy_w;
@@ -271,8 +272,8 @@ module eth_subsys(
         .app_tx_data_valid     (app_tx_data_valid),
         .app_tx_data           (app_tx_data),
         .app_tx_data_length    (udp_data_length),
-        .app_tx_dst_port       (DST_UDP_PORT),
-        .ip_tx_dst_address     (DST_IP),
+        .app_tx_dst_port       (tx_dst_port),          // PC 侧端口（demo 同款）
+        .ip_tx_dst_address     (tx_dst_ip),            // PC 侧 IP
         .input_local_udp_port_num       (local_port_dyn),
         .input_local_udp_port_num_valid (local_cfg_valid),
         .input_local_ip_address         (local_ip_dyn),
@@ -425,7 +426,7 @@ module eth_subsys(
         .tx_ack        (tx_rdy_w),
         .tx_collision  (tx_collision),
         .tx_retransmit (tx_retransmit),
-        .overflow      (),
+        .overflow      (tx_fifo_overflow),
         .wr_clk        (udp_clk),
         .wr_sreset     (reset),
         .wr_data       (temac_tx_data),

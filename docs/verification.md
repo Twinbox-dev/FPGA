@@ -5,6 +5,11 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 因此开发和对照均以 100 MHz 为准。最终多分辨率修复的证据见
 [`multires_fix_postmortem.md`](multires_fix_postmortem.md)。
 
+> **重要：TD CLI 综合和 SRAM 下载命令已确认。** 可从项目 `syn_1`/`phy_1`
+> 工作目录调用 TD `DefaultFlow.tcl`，再用 `download -mode jtag -bit <bit路径>`
+> 下载到 JTAG 目标的易失 SRAM。详见
+> [TD CLI 综合与 SRAM 下载指南](td_cli_programming.md)。
+
 字幕、OSD 及控制协议修改时，先运行 `make -C boardtest osd-unit`、
 `make -C boardtest uart` 和 `python scripts/web_console/test_subtitle.py`；
 板级观察步骤见 [`osd_subtitle.md`](osd_subtitle.md)。

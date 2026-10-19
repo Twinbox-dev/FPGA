@@ -8,8 +8,7 @@
 // 应用层帧格式（APUG013，UDP payload = 8 字节应用头 + 数据）：
 //   [header0=0xAABB][header1=0xCCDD][type][length] + 数据
 //   PC→板 命令帧：type=0x0001, length=0x0002, 数据=[CMD,~CMD]（与串口同款）
-//   命令转发帧：本工程令 TX_TYPE=0x0001，length=0x0008，首两字节
-//               [CMD,~CMD]；默认 type=0x0002 仍可用于 PC 应答。
+//   板→PC 应答帧：type=0x0002, length=0x0008, 数据=ctrl_core 的 8 字节包
 //                （5A|cmd回显|vol|period|img|wav|bri|00 或 A5 状态包）
 //   板→PC 流包  ：type=0x0003, length=2+4N（写侧分叉，第二十轮）：
 //                seq[15:0]（LSB 先，每会话从 0 起）+ N×32bit 发射字
@@ -27,9 +26,7 @@
 // 注意：demo 的 udp_loopback 依赖 TD 库宏 ram_fifo（工程里无源码），本模块
 // 自带解析/组包逻辑，不依赖 ram_fifo。
 // ---------------------------------------------------------------------------
-module eth_front #(
-    parameter [15:0] TX_TYPE = 16'h0002
-)(
+module eth_front(
     input  wire        app_rx_clk,
     input  wire        app_tx_clk,
     input  wire        reset,
@@ -57,7 +54,10 @@ module eth_front #(
     // 应用入口：ctrl_core 应答包（顶层每应答一次翻转 tx_tog；tx_pkt 在翻转
     // 前后稳定）
     input  wire        tx_tog,
+    input  wire [15:0] tx_type,
+    input  wire [15:0] tx_payload_len,
     input  wire [63:0] tx_pkt,
+    output reg         tx_done_tog,
 
     // 应用入口（写侧分叉）：图像发射流旁路（tap_clk = sd_card_clk 域）
     input  wire        tap_clk,
@@ -72,8 +72,7 @@ module eth_front #(
 );
     localparam HDR0   = 16'hAABB;        // 应用头（APUG013 demo 同款）
     localparam HDR1   = 16'hCCDD;
-    localparam TYPE_ACK = TX_TYPE;       // media command relay uses type 0x0001
-    localparam [15:0] PKT_BYTES = 16'd16; // 应答帧数据长度 = 8 头 + 8 包
+    localparam TYPE_ACK = 16'h0002;      // 板→PC 应答帧类型
 
     // ================= RX：跳过 8 字节头 → [CMD,~CMD] 配对 =================
     reg [15:0] rx_cnt;
@@ -83,16 +82,14 @@ module eth_front #(
 
     always @(posedge app_rx_clk or posedge reset) begin
         if (reset) begin
-            rx_cnt <= 16'd0; rx_type <= 16'd0;
-            prev_byte <= 8'd0; prev_val <= 1'b0;
+            rx_cnt <= 16'd0; rx_type <= 16'd0; prev_byte <= 8'd0; prev_val <= 1'b0;
             cmd <= 8'd0; cmd_pending <= 1'b0;
         end else begin
             if (app_rx_data_valid) begin
                 rx_cnt <= rx_cnt + 16'd1;
-                if (rx_cnt == 16'd4) rx_type[15:8] <= app_rx_data;
-                if (rx_cnt == 16'd5) rx_type[7:0]  <= app_rx_data;
+                if(rx_cnt==4) rx_type[15:8]<=app_rx_data;
+                if(rx_cnt==5) rx_type[7:0]<=app_rx_data;
                 // 前 8 字节为应用头，其后才是命令数据
-                // 数据块可能恰好含有 [CMD,~CMD]，只解析 type=1 控制帧。
                 if (rx_cnt >= 16'd8 && rx_type == 16'h0001) begin
                     if (prev_val && (prev_byte == ~app_rx_data)) begin
                         prev_val <= 1'b0;
@@ -104,11 +101,9 @@ module eth_front #(
                         prev_byte <= app_rx_data;
                         prev_val  <= 1'b1;
                     end
-                end else if (rx_cnt >= 16'd8)
-                    prev_val <= 1'b0;
+                end
             end else begin
                 rx_cnt   <= 16'd0;       // 包尾：清配对状态，防跨包误配
-                rx_type  <= 16'd0;
                 prev_val <= 1'b0;
             end
             if (ack_seen)
@@ -239,7 +234,7 @@ module eth_front #(
     // valid+data（udp_data_length 保持）→ 发完回 WAIT。仲裁：ACK 优先
     //（人控路径延迟小），流包攒满/冲洗时补位。
     localparam TX_WAIT = 3'd0, TX_RDY  = 3'd1, TX_ACK  = 3'd2, TX_SEND = 3'd4,
-               S_BUILD = 3'd3;
+               S_BUILD = 3'd3, TX_DONE_WAIT = 3'd5;
     reg [2:0]  st;
     reg        tx_sel;                   // 0=ACK 包（tx_buf）1=流包（str_mem）
     reg        ack_pend;                 // tx_pulse 到达但总线忙 → 记账
@@ -248,7 +243,8 @@ module eth_front #(
     //   且 tx_i≥8 读越界位（=0）；PC 侧能看到 ACK 只是走了"没有头"的兜底分支。
     //   头常量按"字节 0 在最低位"写：0xAA BB CC DD 00 02 00 08 → 08_00_02_00_DD_CC_BB_AA
     reg [127:0] tx_buf;
-    reg [10:0] tx_i;                     // 当前输出字节序号（流包最大 1029）
+    reg [10:0] tx_i;
+    reg [15:0] tx_total_len;                     // 当前输出字节序号（流包最大 1029）
     reg        valid_r;                  // ACK 路径 valid
     reg        out_valid;                // 流包路径 valid（str_q 打一拍配套）
     // ---- 流包攒包区：1022 字节 = 8 头 + 2 seq + 253×4 字 ----
@@ -326,17 +322,18 @@ module eth_front #(
 
     // 应用头常量：字节序 AA BB CC DD 00 02 00 08（**低字节先发**，所以按字节
     // 从低到高拼：byte0=AA … byte7=08）。用 HDR0/HDR1/TYPE_ACK 拼装避免手写常数出错。
-    localparam [63:0] TX_HDR = {8'h08, 8'h00,                    // length = 0x0008
-                                TYPE_ACK[7:0], TYPE_ACK[15:8],   // type   = 0x0002
-                                HDR1[7:0], HDR1[15:8],           // CC DD
-                                HDR0[7:0], HDR0[15:8]};          // AA BB
+    // Legacy control envelope (type/length big endian, like app.py type 0x0001/0x0002).
+    wire [63:0] tx_header = {tx_payload_len[7:0], tx_payload_len[15:8],
+                             tx_type[7:0], tx_type[15:8],
+                             HDR1[7:0], HDR1[15:8], HDR0[7:0], HDR0[15:8]};          // AA BB
 
     always @(posedge app_tx_clk or posedge reset) begin
         if (reset || udp_rst) begin
             st <= TX_WAIT; app_tx_data_request <= 1'b0;
             valid_r <= 1'b0; out_valid <= 1'b0;
             udp_data_length <= 16'd0;
-            tx_i <= 11'd0; tx_buf <= 128'd0;
+            tx_i <= 11'd0; tx_buf <= 128'd0; tx_total_len <= 16'd16;
+            tx_done_tog <= 1'b0;
             tx_sel <= 1'b0; ack_pend <= 1'b0;
             bi <= 11'd0; pkt_words <= 9'd0;
             word_hold <= 32'd0;
@@ -374,7 +371,8 @@ module eth_front #(
                         // 两笔待发：发一笔、留一笔（ack_pend 保持）
                         ack_pend <= tx_pulse & ack_pend;
                         // 锁存整帧（toggle 到达时 tx_pkt 已稳定）
-                        tx_buf <= {tx_pkt, TX_HDR};
+                        tx_buf <= {tx_pkt, tx_header};
+                        tx_total_len <= 16'd8 + tx_payload_len;
                         tx_sel <= 1'b0;
                         tx_i   <= 11'd0;
                         if (udp_tx_ready) begin
@@ -403,7 +401,7 @@ module eth_front #(
                 TX_ACK:
                     if (app_tx_ack) begin
                         app_tx_data_request <= 1'b0;
-                        udp_data_length     <= tx_sel ? pkt_len_w : PKT_BYTES;
+                        udp_data_length     <= tx_sel ? pkt_len_w : tx_total_len;
                         tx_i <= 11'd0;
                         if (tx_sel)
                             out_valid <= 1'b1;    // 首字节由 str_rd 口预取
@@ -426,17 +424,24 @@ module eth_front #(
                             tx_i <= tx_i + 11'd1;
                     end
                     else begin
-                        if (tx_i == PKT_BYTES - 1) begin
-                            valid_r <= 1'b0; // 末字节（tx_i=15）已输出
-                            // 只清"已发出那笔"的记账；本拍恰好又有新 pulse 则保留
-                            if (!tx_pulse)
-                                ack_pend <= 1'b0;
+                        if (tx_i == tx_total_len - 1'b1) begin
+                            valid_r <= 1'b0;
                             tx_i <= 11'd0;
-                            st <= TX_WAIT;
+                            // Report completion only after the UDP mux says the
+                            // prior stack ACK has cleared and a new packet can start.
+                            st <= TX_DONE_WAIT;
                         end else begin
                             tx_i <= tx_i + 11'd1;
                         end
                     end
+                TX_DONE_WAIT: begin
+                    if (udp_tx_ready) begin
+                        tx_done_tog <= ~tx_done_tog;
+                        if (!tx_pulse)
+                            ack_pend <= 1'b0;
+                        st <= TX_WAIT;
+                    end
+                end
                 // 攒包：字节落 BRAM 由独立 str_we 口完成（bi 0..9 头+seq、
                 // bi≥11 写字数据滞后一拍）。弹字 bi≡1(mod4)、锁存 bi≡2、
                 // 末写拍 4N+10（地址 4N+9）。
