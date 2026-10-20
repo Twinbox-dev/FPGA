@@ -407,12 +407,12 @@
     <div class="card ethcard" id="ethCard" style="display:none">
       <h2>以太网连接</h2>
       <div class="conn">
-        <input id="ethIp" value="192.168.137.2" title="板卡 IP" style="min-width:150px">
+        <input id="ethIp" value="192.168.137.3" title="板卡 IP" style="min-width:150px">
         <button class="primary" id="btnEthConn">连接</button>
         <button class="ghost" id="btnEthDisc" disabled>断开</button>
       </div>
       <div class="hint" style="margin-top:12px">
-        板卡固定 <b>192.168.137.2:1</b>，回包发本机 <b>192.168.137.1:2</b>——
+        命令发媒体板 <b>192.168.137.3:1</b>，显示板回包发本机 <b>192.168.137.1:2</b>——
         本机网卡需有 <b>192.168.137.1/24</b>（子网掩码 255.255.255.0），网线直连即可。<br>
         首次连接 Windows 防火墙会询问是否放行 python 监听 UDP 端口 2，选「允许」。<br>
         命令帧与串口同款 <code>[CMD,~CMD]</code>，UDP 载荷 = 8 字节应用头 + 2 字节命令。
@@ -683,7 +683,7 @@ async function conn() {
 }
 
 async function ethConn() {
-  const board = document.getElementById("ethIp").value.trim() || "192.168.137.2";
+  const board = document.getElementById("ethIp").value.trim() || "192.168.137.3";
   const j = await post("/api/eth/connect", {board});
   if (j.ok) toast(`以太网 ${board}:1 已连接`);
   else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }

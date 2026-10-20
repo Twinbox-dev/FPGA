@@ -21,7 +21,7 @@
 | 类型 | 载荷 | 长度/行为 |
 | --- | --- | --- |
 | 0x0020 READY | 查询载荷为空；显示板应答 1 字节 01 | 媒体板等待显示板 ready 后才读卡发送 |
-| 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32 | 8 字节；total_words=460800；flags bit0=上一张方向，bit2:1=特效，bit3=有同名 WAV 候选 |
+| 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32 | 8 字节；total_words=460800；flags bit0=上一张方向，bit2:1=特效，bit3=有同名 WAV 候选; bit4=自动轮播状态快照 |
 | 0x0022 DATA | frame_id:u16, sequence:u16, N×u32 words | N 从 LEN 计算，1–253；序号从 0 连续递增 |
 | 0x0023 END | frame_id:u16, checksum:u32, reserved:u16=0 | 8 字节；前一数据包后等待 1 ms 再发 |
 | 0x0024 RESULT | frame_id:u16, result:u8 | 0 图像验收并开始音频；1 整图重传；2 图音提交完成 |
@@ -86,3 +86,30 @@ PC 到媒体板的 V1 字幕仍用 T 字节流：0x54、length XOR 0x80、各 AS
 D 的 type 0x0003 原始 BMP 调试流独立于正式媒体类型；显示侧 type 0x0004 读回也不作为正式帧。媒体 UDP mux 按整包仲裁。
 
 eth_front 的 tx_done_tog 在控制包全部通过 UDP mux 且 mux 再次 ready 后才翻转；mux 空闲时等旧 stack_ack 拉低。核心收到该完成沿后才启动同一事务的下一包。此握手使 A5/5A 和字幕多包事务都可靠串行。
+## PC 媒体模拟器对接显示板
+
+`scripts/pc_display_media_probe.py` 可临时替代媒体板，向显示板发送正式 `0x20–0x33` 图像/PCM 包，并在 PC 侧检查 RESULT、控制回包与 SDRAM D 探针采样。测试 bit 的显示板参数为 `MEDIA_PEER_IP=192.168.137.1`、`MEDIA_PEER_PORT=2`、`PC_RETURN_PORT=3`；PC 接收 formal replies 于 `.1:2`、D 读回于 `.1:3`。发送 IMG1/WAV、无 WAV 的 IMG3 的示例：
+
+```powershell
+python scripts/pc_display_media_probe.py --bmp img/golden/IMG1.BMP --wav img/wav/IMG001.WAV
+python scripts/pc_display_media_probe.py --bmp img/golden/IMG3.BMP --wav img/wav/no-paired-file.wav --frame-id 0x2402 --capture-prefix boardtest/captures/display_pc_probe_nowav
+```
+
+PC 单板验证完成后，显示板正式双板参数须恢复为 `MEDIA_PEER_IP=192.168.137.3`、`MEDIA_PEER_PORT=1`、`PC_RETURN_PORT=2`。正式网络地址与端口见本文前表。
+## PC 模拟显示端测试媒体板
+
+`scripts/pc_media_display_stub.py` 在单板验收时模拟显示端，接收媒体板发送到 PC UDP 端口。测试媒体 bit 将 `DISPLAY_IP` 临时设为 `.1`、`DISPLAY_UDP_PORT` 设为 `2`；PC stub 在 `.1:2` 监听，响应 READY，并在图像/PCM 完成后回复 RESULT。
+
+```powershell
+python scripts/pc_media_display_stub.py --card-image img/card_user_real.img --frames 1
+```
+
+`--card-image` 从 raw MBR/FAT32 卡镜像读取 WAV 并比较 PCM 字节。IMG1 实测发送 460,800 个图像字及 720,000 个 PCM 样本，与 IMG1.BMP 和卡镜像中的 IMG1.WAV 完全一致，事务以 RESULT=2 提交。测试后必须将媒体板正式目标恢复为显示板 `.2:1`。
+
+D 命令继续使用 V1 原始 BMP 调试流 `type=0x0003`，可单独抓取并对比：
+
+```powershell
+python scripts/pc_media_d_probe.py --board-ip 192.168.137.3 --pc-ip 192.168.137.1
+```
+
+实测收到 1,822 个包、460,800 个字、序号缺口 0，重组像素与 IMG1 原始 RGB565 完全一致。D 是媒体侧诊断通路，不替代显示板 HDMI 上的图像提交。

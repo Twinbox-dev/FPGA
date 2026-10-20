@@ -11,6 +11,7 @@ module media_image_tx #(
     input wire [7:0] cmd,
     input wire cmd_pending,
     input wire auto_next,
+    input wire auto_status,
     input wire local_next,
     input wire local_prev,
     input wire prepared_toggle,done_toggle,
@@ -59,7 +60,7 @@ module media_image_tx #(
     reg [10:0] byte_index;
     reg read_pending;
     reg prepared_ref,done_ref,cmd_d;
-    reg receiver_ready,boot_loaded,previous,image_has_audio;
+    reg receiver_ready,boot_loaded,previous,image_has_audio,image_auto_status;
     reg [1:0] attempts,audio_attempts;
     reg [27:0] wait_count;
 
@@ -154,7 +155,7 @@ module media_image_tx #(
                     case(byte_index)
                         8:tx_data=frame_id[7:0];9:tx_data=frame_id[15:8];
                         10:tx_data={3'd0,source_index};
-                        11:tx_data={4'd0,image_has_audio,2'b00,previous};
+                        11:tx_data={3'd0,image_auto_status,image_has_audio,2'b00,previous};
                         12:tx_data=FRAME_WORDS[7:0];13:tx_data=FRAME_WORDS[15:8];
                         14:tx_data=FRAME_WORDS[23:16];15:tx_data=FRAME_WORDS[31:24];
                         default:;
@@ -192,6 +193,7 @@ module media_image_tx #(
             frame_id<=0;sequence_id<=0;packet_words<=0;loaded<=0;target_words<=0;
             total_words<=0;sum<=0;audio_sum<=0;byte_index<=0;read_pending<=0;word_hold<=0;
             prepared_ref<=0;done_ref<=0;cmd_d<=0;receiver_ready<=0;boot_loaded<=0;previous<=0;
+            image_auto_status<=0;
             attempts<=0;audio_attempts<=0;wait_count<=0;start_toggle<=0;source_index<=0;
             audio_start_toggle<=0;audio_file_index<=0;image_has_audio<=0;
             committed_index<=0;committed_valid<=0;committed_wav<=0;error_code<=0;
@@ -217,6 +219,7 @@ module media_image_tx #(
                 WAIT_READY: begin
                     if(mounted && receiver_ready && !source_busy && !boot_loaded) begin
                         source_index<=first_bmp[4:0];frame_id<=frame_id+1'b1;previous<=0;
+                        image_auto_status<=auto_status;
                         start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
                         attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;state<=WAIT_HEADER;
                     end else if(!receiver_ready && wait_count>=CLK_HZ/2) begin
@@ -228,6 +231,7 @@ module media_image_tx #(
                     else if(local_prev || (cmd_new && cmd==8'h50)) source_index<=bmp_prev[6*base_index+:6];
                     else source_index<=base_index;
                     previous<=local_prev || (cmd_new && cmd==8'h50);frame_id<=frame_id+1'b1;
+                    image_auto_status<=auto_status;
                     start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
                     attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;error_code<=0;state<=WAIT_HEADER;
                 end

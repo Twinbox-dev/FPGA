@@ -142,7 +142,7 @@ module top (
     );
     media_image_tx u_formal_tx (
         .clk(app_clk),.rst(app_rst),.mounted(mounted_sync[2]),.source_busy(busy_sync[1]),.source_error(error_sync[1]),
-        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.cmd(cmd),.cmd_pending(cmd_pending),.auto_next(auto_next_pulse),
+        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.cmd(cmd),.cmd_pending(cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
         .local_next(local_next_pulse || key_next_app_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse),
         .prepared_toggle(prepared_sync[1]),.done_toggle(done_sync[1]),.source_has_wav_async(source_has_wav),
         .source_wav_index_async(source_wav_index),.audio_prepared_toggle(audio_prepared_toggle),

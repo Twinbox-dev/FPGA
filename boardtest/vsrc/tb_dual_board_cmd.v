@@ -15,6 +15,7 @@ module tb_dual_board_cmd;
     wire [7:0] media_cmd;
     wire media_pending, media_ack_t, media_tx_tog;
     wire [63:0] media_tx_pkt;
+    localparam [47:0] DIAG = 48'hcc33ee11a55a;
     wire [7:0] media_tx_data;
     wire media_tx_req, media_tx_valid;
     wire [15:0] media_tx_len;
@@ -23,6 +24,7 @@ module tb_dual_board_cmd;
     media_probe_bridge bridge (
         .clk(media_clk), .rst(rst), .cmd(media_cmd),
         .cmd_pending(media_pending), .cmd_ack_t(media_ack_t),
+        .media_diag(DIAG),
         .tx_tog(media_tx_tog), .tx_pkt(media_tx_pkt)
     );
 
@@ -113,7 +115,8 @@ module tb_dual_board_cmd;
                 capture[8]!=command || capture[9]!=(~command))
                 $fatal(1, "inter-board command frame/byte order error");
             for (i=10; i<16; i=i+1)
-                if (capture[i]!=8'h00) $fatal(1, "unexpected payload byte %0d",i);
+                if (capture[i] != DIAG[8*(i-10) +: 8])
+                    $fatal(1, "diagnostic payload byte %0d",i);
 
             for (i=0; i<16; i=i+1) begin
                 @(negedge display_udp_clk);

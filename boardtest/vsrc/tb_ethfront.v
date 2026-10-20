@@ -54,6 +54,8 @@ module tb_ethfront;
     // ---- 应用侧：命令握手 / 应答包 ----
     wire [7:0]  cmd;
     wire        cmd_pending;
+    wire [47:0] media_diag_data;
+    wire media_diag_toggle;
     reg         cmd_ack_t = 1'b0;
     reg         tx_tog    = 1'b0;
     reg  [63:0] tx_pkt    = 64'd0;
@@ -73,6 +75,8 @@ module tb_ethfront;
         .udp_data_length   (tx_len),
         .cmd               (cmd),
         .cmd_pending       (cmd_pending),
+        .media_diag_data   (media_diag_data),
+        .media_diag_toggle (media_diag_toggle),
         .cmd_ack_t         (cmd_ack_t),
         .tx_tog            (tx_tog),
         .tx_pkt            (tx_pkt),
@@ -117,6 +121,26 @@ module tb_ethfront;
     task send_cmd(input [7:0] c);
         begin
             send_payload(c, ~c, 2);
+        end
+    endtask
+
+    task send_forwarded_status;
+        reg [7:0] bytes [0:15];
+        integer i;
+        begin
+            bytes[0]=8'haa; bytes[1]=8'hbb; bytes[2]=8'hcc; bytes[3]=8'hdd;
+            bytes[4]=0; bytes[5]=1; bytes[6]=0; bytes[7]=8;
+            bytes[8]="S"; bytes[9]=~8'h53;
+            // Three complementary pairs must remain diagnostic data.
+            bytes[10]=8'h5a; bytes[11]=8'ha5;
+            bytes[12]=8'h11; bytes[13]=8'hee;
+            bytes[14]=8'h33; bytes[15]=8'hcc;
+            rx_len=16;
+            for (i=0; i<16; i=i+1) begin
+                @(negedge clk);
+                rx_data=bytes[i]; rx_valid=1;
+            end
+            @(negedge clk); rx_data=0; rx_valid=0;
         end
     endtask
 
@@ -487,6 +511,19 @@ module tb_ethfront;
         if (cap[4] !== 8'h04 || cap[8] !== 8'h01)
             fail_msg("T20 B 尾包 type/seq 错");
         if (errors == 0) $display("T20 双写口诊断流并发与独立收口: PASS");
+
+        // The forwarded S command becomes visible only after all six source
+        // diagnostic bytes have arrived. Payload complement pairs are data.
+        send_forwarded_status();
+        if (cmd_pending) fail_msg("T21 forwarded command released before diagnostics");
+        repeat (12) @(negedge clk);
+        if (!cmd_pending || cmd != "S" ||
+            media_diag_data != 48'hcc33ee11a55a || !media_diag_toggle)
+            fail_msg("T21 forwarded diagnostic payload/command mismatch");
+        take_cmd();
+        repeat (8) @(negedge clk);
+        if (cmd_pending) fail_msg("T21 diagnostic complement pair created extra command");
+        if (errors == 0) $display("T21 forwarded media diagnostics: PASS");
 
         if (errors == 0) $display("==== ALL PASS ====");
         else             $display("==== %0d FAILED ====", errors);

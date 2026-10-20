@@ -33,6 +33,9 @@ module eth_subsys(
     output wire        phy1_rgmii_tx_ctl,
     output wire [3:0]  phy1_rgmii_tx_data,
     output wire        phy_reset,
+    output wire        app_clk_out,
+    output wire [7:0]  app_rx_data_out,
+    output wire        app_rx_data_valid_out,
 
     // 应用层（跨域握手，见头注释）
     output wire [7:0]  cmd,
@@ -40,8 +43,12 @@ module eth_subsys(
     input  wire        cmd_ack_t,
     input  wire        tx_tog,
     input  wire [63:0] tx_pkt,
-    output reg         media_chunk_ok_tog,
-    output reg         media_chunk_err_tog,
+    input  wire        media_packet_request,
+    input  wire        media_packet_valid,
+    input  wire [7:0]  media_packet_data,
+    input  wire [15:0] media_packet_length,
+    output wire        media_packet_ack,
+    output wire        media_packet_ready,
 
     // 写侧分叉：图像发射流旁路（tap_clk = sd_card_clk 域；sys_rst = rst_all）
     input  wire        sys_rst,
@@ -60,6 +67,9 @@ module eth_subsys(
     parameter LOCAL_IP         = 32'hc0a88902;   // 192.168.137.2（板卡）
     parameter LOCAL_MAC        = 48'h0123456789ab;
     parameter DST_IP           = 32'hc0a88901;   // 192.168.137.1（PC 侧）
+    parameter DST_UDP_PORT     = 16'h0002;        // 目标 UDP 端口，原显示板回包端口
+    parameter MEDIA_PEER_IP    = 32'hc0a88903;    // 正式媒体板；PC 仿真时覆写为 .1
+    parameter MEDIA_PEER_UDP_PORT = 16'h0001;     // 双板媒体端口；PC WebTransport 模拟时可覆写为 2
     // 速率开关（2026-10-02 定）：**当前=千兆**（GIGABIT=1）。
     // 已知风险（用户明确接受）：综合时序过不了——厂商加密 UDP 栈内部（ARP 缓存）
     // 在 125MHz 下实测 Fmax 只有 44MHz（setup 差 5.3ns，281 个端点），
@@ -93,6 +103,7 @@ module eth_subsys(
     wire        temac_clk, clk_125_out, temac_clk90;
     wire        clk_12_5_out, clk_1_25_out, clk_25_out;
     wire        udp_clk;
+    assign app_clk_out = udp_clk;
 
     clk_gen_rst_gen #(.DEVICE(DEVICE)) u_clk_gen(
         .reset          (eth_rst_in),
@@ -127,9 +138,27 @@ module eth_subsys(
     wire        app_rx_data_valid;
     wire [15:0] app_rx_data_length;
     wire        udp_tx_ready, app_tx_ack;
-    wire [7:0]  app_tx_data;
+    wire [7:0]  app_tx_data, ctrl_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
-    wire [15:0] udp_data_length;
+    wire [15:0] udp_data_length, ctrl_tx_length;
+    wire        ctrl_udp_ready, ctrl_tx_ack, ctrl_tx_req, ctrl_tx_valid;
+    wire        media_tx_chunk_active;
+    wire [31:0] tx_dst_ip = media_tx_chunk_active ? MEDIA_PEER_IP : DST_IP;
+    wire [15:0] tx_dst_port = media_tx_chunk_active ? MEDIA_PEER_UDP_PORT : DST_UDP_PORT;
+
+    media_tx_mux u_tx_mux (
+        .clk          (udp_clk), .rst(reset),
+        .stack_ready  (udp_tx_ready), .stack_ack(app_tx_ack),
+        .ctrl_req     (ctrl_tx_req), .ctrl_valid(ctrl_tx_valid),
+        .ctrl_data    (ctrl_tx_data), .ctrl_length(ctrl_tx_length),
+        .ctrl_ready   (ctrl_udp_ready), .ctrl_ack(ctrl_tx_ack),
+        .chunk_req    (media_packet_request), .chunk_valid(media_packet_valid),
+        .chunk_data   (media_packet_data), .chunk_length(media_packet_length),
+        .chunk_ack    (media_packet_ack), .chunk_ready(media_packet_ready),
+        .chunk_active(media_tx_chunk_active),
+        .stack_req    (app_tx_data_request), .stack_valid(app_tx_data_valid),
+        .stack_data   (app_tx_data), .stack_length(udp_data_length)
+    );
 
     eth_front u_eth_front (
         .app_rx_clk        (udp_clk),
@@ -138,14 +167,16 @@ module eth_subsys(
         .app_rx_data       (app_rx_data),
         .app_rx_data_valid (app_rx_data_valid),
         .app_rx_data_length(app_rx_data_length),
-        .udp_tx_ready      (udp_tx_ready),
-        .app_tx_ack        (app_tx_ack),
-        .app_tx_data       (app_tx_data),
-        .app_tx_data_request(app_tx_data_request),
-        .app_tx_data_valid (app_tx_data_valid),
-        .udp_data_length   (udp_data_length),
+        .udp_tx_ready      (ctrl_udp_ready),
+        .app_tx_ack        (ctrl_tx_ack),
+        .app_tx_data       (ctrl_tx_data),
+        .app_tx_data_request(ctrl_tx_req),
+        .app_tx_data_valid (ctrl_tx_valid),
+        .udp_data_length   (ctrl_tx_length),
         .cmd               (cmd),
         .cmd_pending       (cmd_pending),
+        .local_cmd         (),
+        .local_cmd_valid   (),
         .cmd_ack_t         (cmd_ack_t),
         .tx_tog            (tx_tog),
         .tx_pkt            (tx_pkt),
@@ -160,63 +191,8 @@ module eth_subsys(
         .tap2_end          (tap2_end)
     );
 
-    // Diagnostic media receiver.  A full packet must pass the length and CRC
-    // checks before any word is drained.  Until the SDRAM writer is attached,
-    // consume the seven known probe words and report completion to the top.
-    wire        media_pkt_error, media_chunk_done, media_chunk_valid;
-    wire [15:0] media_session, media_sequence;
-    wire [7:0]  media_count, media_flags;
-    wire [31:0] media_word_data;
-    wire        media_word_valid;
-    media_chunk_rx u_media_chunk_rx (
-        .clk(udp_clk), .rst(reset),
-        .rx_byte(app_rx_data), .rx_valid(app_rx_data_valid),
-        .chunk_valid(media_chunk_valid), .chunk_session(media_session),
-        .chunk_sequence(media_sequence), .chunk_count(media_count),
-        .chunk_flags(media_flags), .packet_error(media_pkt_error),
-        .busy(), .word_data(media_word_data), .word_valid(media_word_valid),
-        .word_ready(1'b1), .chunk_done(media_chunk_done)
-    );
-    reg [2:0] media_word_index;
-    reg       media_word_bad;
-    reg [31:0] media_expected_word;
-    always @* begin
-        case (media_word_index)
-            3'd0: media_expected_word = 32'ha5c30000;
-            3'd1: media_expected_word = 32'ha4c10307;
-            3'd2: media_expected_word = 32'ha7c7060e;
-            3'd3: media_expected_word = 32'ha6c50915;
-            3'd4: media_expected_word = 32'ha1cb0c1c;
-            3'd5: media_expected_word = 32'ha0c90f23;
-            3'd6: media_expected_word = 32'ha3cf122a;
-            default: media_expected_word = 32'd0;
-        endcase
-    end
-    always @(posedge udp_clk or posedge reset) begin
-        if (reset) begin
-            media_chunk_ok_tog <= 1'b0;
-            media_chunk_err_tog <= 1'b0;
-            media_word_index <= 3'd0;
-            media_word_bad <= 1'b0;
-        end else begin
-            if (media_chunk_valid) begin
-                media_word_index <= 3'd0;
-                media_word_bad <= 1'b0;
-            end else if (media_word_valid) begin
-                media_word_index <= media_word_index + 3'd1;
-                if (media_word_data != media_expected_word)
-                    media_word_bad <= 1'b1;
-            end
-            if (media_chunk_done) begin
-                if (media_session == 16'h1302 && media_count == 8'd7 &&
-                    media_flags == 8'h01 && !media_word_bad)
-                    media_chunk_ok_tog <= ~media_chunk_ok_tog;
-                else
-                    media_chunk_err_tog <= ~media_chunk_err_tog;
-            end else if (media_pkt_error)
-                media_chunk_err_tog <= ~media_chunk_err_tog;
-        end
-    end
+    assign app_rx_data_out = app_rx_data;
+    assign app_rx_data_valid_out = app_rx_data_valid;
 
     // ================= UDP/IP 协议栈（官方 IP）=================
     // 静态 IP/端口：地址/端口给常量，**valid 必须"复位期间 0、释放后 1"**——
@@ -267,8 +243,8 @@ module eth_subsys(
         .app_tx_data_valid     (app_tx_data_valid),
         .app_tx_data           (app_tx_data),
         .app_tx_data_length    (udp_data_length),
-        .app_tx_dst_port       (16'h0002),          // PC 侧端口（demo 同款）
-        .ip_tx_dst_address     (DST_IP),            // PC 侧 IP
+        .app_tx_dst_port       (tx_dst_port),          // PC 侧端口（demo 同款）
+        .ip_tx_dst_address     (tx_dst_ip),            // PC 侧 IP
         .input_local_udp_port_num       (local_port_dyn),
         .input_local_udp_port_num_valid (local_cfg_valid),
         .input_local_ip_address         (local_ip_dyn),

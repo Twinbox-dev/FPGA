@@ -50,6 +50,11 @@ module eth_front(
     // 清除 pending。pending 未清期间新命令被丢弃（人手速度不可能）。
     output reg  [7:0]  cmd,
     output reg         cmd_pending,
+    output reg  [7:0]  local_cmd,
+    output reg         local_cmd_valid,
+    // Six media-board diagnostic bytes piggyback on forwarded commands.
+    output reg  [47:0] media_diag_data,
+    output reg         media_diag_toggle,
     input  wire        cmd_ack_t,
     // 应用入口：ctrl_core 应答包（顶层每应答一次翻转 tx_tog；tx_pkt 在翻转
     // 前后稳定）
@@ -75,38 +80,83 @@ module eth_front(
     // ================= RX：跳过 8 字节头 → [CMD,~CMD] 配对 =================
     reg [15:0] rx_cnt;
     reg [15:0] rx_type;
+    reg [15:0] rx_declared_len;
     reg [7:0]  prev_byte;
     reg        prev_val;
+    reg [7:0]  forwarded_cmd;
+    reg        forwarded_valid;
+    reg [3:0]  forwarded_delay;
 
     always @(posedge app_rx_clk or posedge reset) begin
         if (reset) begin
-            rx_cnt <= 16'd0; rx_type <= 16'd0;
+            rx_cnt <= 16'd0; rx_type <= 16'd0; rx_declared_len <= 16'd0;
             prev_byte <= 8'd0; prev_val <= 1'b0;
             cmd <= 8'd0; cmd_pending <= 1'b0;
+            local_cmd <= 8'd0; local_cmd_valid <= 1'b0;
+            media_diag_data <= 48'd0;
+            media_diag_toggle <= 1'b0;
+            forwarded_cmd <= 8'd0;
+            forwarded_valid <= 1'b0;
+            forwarded_delay <= 4'd0;
         end else begin
+            local_cmd_valid <= 1'b0;
+            if (forwarded_delay != 0) begin
+                forwarded_delay <= forwarded_delay - 4'd1;
+                if (forwarded_delay == 4'd1 && !cmd_pending) begin
+                    cmd <= forwarded_cmd;
+                    cmd_pending <= 1'b1;
+                end
+            end
             if (app_rx_data_valid) begin
                 rx_cnt <= rx_cnt + 16'd1;
                 if (rx_cnt == 16'd4) rx_type[15:8] <= app_rx_data;
                 if (rx_cnt == 16'd5) rx_type[7:0]  <= app_rx_data;
+                if (rx_cnt == 16'd6) rx_declared_len[15:8] <= app_rx_data;
+                if (rx_cnt == 16'd7) rx_declared_len[7:0] <= app_rx_data;
                 // 前 8 字节为应用头，其后才是命令数据
                 // 数据块可能恰好含有 [CMD,~CMD]，只解析 type=1 控制帧。
-                if (rx_cnt >= 16'd8 && rx_type == 16'h0001) begin
-                    if (prev_val && (prev_byte == ~app_rx_data)) begin
-                        prev_val <= 1'b0;
-                        if (!cmd_pending) begin   // 上条未取走则丢弃（防阻塞）
-                            cmd        <= prev_byte;
-                            cmd_pending <= 1'b1;
-                        end
-                    end else begin
-                        prev_byte <= app_rx_data;
-                        prev_val  <= 1'b1;
-                    end
-                end else if (rx_cnt >= 16'd8)
+                if (rx_cnt == 16'd8 &&
+                    (rx_type == 16'h0001 || rx_type == 16'h0005)) begin
+                    prev_byte <= app_rx_data;
+                    prev_val <= 1'b1;
+                end else if (rx_cnt == 16'd9) begin
                     prev_val <= 1'b0;
+                    if (prev_val && prev_byte == ~app_rx_data) begin
+                        if (rx_type == 16'h0001 && rx_declared_len == 16'd8) begin
+                            forwarded_cmd <= prev_byte;
+                            forwarded_valid <= 1'b1;
+                        end else if (rx_type == 16'h0001 && !cmd_pending) begin
+                            cmd <= prev_byte;
+                            cmd_pending <= 1'b1;
+                        end else if (rx_type == 16'h0005) begin
+                            local_cmd <= prev_byte;
+                            local_cmd_valid <= 1'b1;
+                        end
+                    end
+                end else if (rx_type == 16'h0001 &&
+                             rx_declared_len == 16'd8 &&
+                             rx_cnt >= 16'd10 && rx_cnt <= 16'd15) begin
+                    case (rx_cnt)
+                        16'd10: media_diag_data[7:0]   <= app_rx_data;
+                        16'd11: media_diag_data[15:8]  <= app_rx_data;
+                        16'd12: media_diag_data[23:16] <= app_rx_data;
+                        16'd13: media_diag_data[31:24] <= app_rx_data;
+                        16'd14: media_diag_data[39:32] <= app_rx_data;
+                        16'd15: media_diag_data[47:40] <= app_rx_data;
+                        default: ;
+                    endcase
+                    if (rx_cnt == 16'd15 && forwarded_valid) begin
+                        media_diag_toggle <= ~media_diag_toggle;
+                        forwarded_delay <= 4'd8;
+                        forwarded_valid <= 1'b0;
+                    end
+                end
             end else begin
                 rx_cnt   <= 16'd0;       // 包尾：清配对状态，防跨包误配
                 rx_type  <= 16'd0;
+                rx_declared_len <= 16'd0;
                 prev_val <= 1'b0;
+                forwarded_valid <= 1'b0;
             end
             if (ack_seen)
                 cmd_pending <= 1'b0;     // 顶层已取走命令

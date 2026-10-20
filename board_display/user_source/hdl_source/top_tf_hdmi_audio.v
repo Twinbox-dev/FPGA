@@ -1,12 +1,7 @@
 
-// Comment out this macro and resynthesize to restore UART 'L' playlist dumps.
-`define FPGA_LEAN_LIST_DIAG
 module top(
     input                       clk,
     input                       rst_n,
-    input                       key1,           // 手动下一张
-    input                       key2,           // 自动播放 开/关
-    input                       key3,           // 手动上一张
     input                       uart_rx,        // CH340G USB-UART（1Mbaud 8N1）
     output                      uart_tx,
 
@@ -34,13 +29,7 @@ module top(
 
     // GT911 touch panel on J1 pins 31/32 (open-drain I2C)
     inout                       gt911_scl,
-    inout                       gt911_sda,
-
-    // TF card SPI
-    output                      sd_ncs,
-    output                      sd_dclk,
-    output                      sd_mosi,
-    input                       sd_miso
+    inout                       gt911_sda
 );
 
 parameter MEM_DATA_BITS = 32;
@@ -54,18 +43,13 @@ parameter BUF0_ADDR     = 24'd0;
 parameter BUF1_ADDR     = 24'd460800;
 parameter BUF2_ADDR     = 24'd921600;
 parameter BUF3_ADDR     = 24'd1509376;
+parameter MEDIA_PEER_IP = 32'hc0a88903;  // 媒体板 UDP 目标地址
+parameter MEDIA_PEER_PORT = 16'h0001;    // 媒体板正式应用端口
+parameter PC_RETURN_PORT = 16'h0002;     // PC 预览与诊断回包端口
 // D 的采样时钟：1=mem_clk 域（返回数据或请求地址），0=视频 FIFO 读出口。
-localparam DUMP_AT_SDRAM_OUTPUT = 1'b1;
 // 1=图像写口双流诊断（A 数据/B 地址）；0=正常写侧 A + D 触发的读侧 B。
-localparam DUMP_WRITE_PORT = 1'b0;
 // 在 mem_clk 域下，D 的 B 源：1=送进 SDRAM IP 的读地址，0=控制器返回数据。
 localparam DUMP_READ_REQUEST_ADDR = 1'b0;
-// The lean build omits UART 'L' snapshots; all playback and pixel paths stay on.
-`ifdef FPGA_LEAN_LIST_DIAG
-localparam ENABLE_LIST_DIAG_BUILD = 1'b0;
-`else
-localparam ENABLE_LIST_DIAG_BUILD = 1'b1;
-`endif
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -99,15 +83,18 @@ wire signed [11:0] subtitle_ox;
 wire [9:0] subtitle_oy;
 wire [7:0] subtitle_char_index, subtitle_char_data, subtitle_active_len;
 wire subtitle_text_changed;
-wire subtitle_consume, subtitle_wr_en, subtitle_commit_toggle;
-wire subtitle_ack_pulse, subtitle_ack_ok, subtitle_swap_ack;
-wire [7:0] subtitle_wr_index, subtitle_wr_char, subtitle_commit_len;
+wire subtitle_consume = 1'b0;
+wire subtitle_ack_pulse = 1'b0;
+wire subtitle_ack_ok = 1'b0;
+reg subtitle_wr_en, subtitle_commit_toggle;
+wire subtitle_swap_ack;
+reg [7:0] subtitle_wr_index, subtitle_wr_char, subtitle_commit_len;
 wire        display_valid;
 
 wire [3:0]  state_code;
 wire [4:0]  img_idx_w;        // UART 遥测：当前图索引
 wire        img_wav_w;        // UART 遥测：该图是否配同名 WAV
-wire        auto_play_w;      // 遥测：自动轮播开关当前状态
+reg         auto_play_w;      // 通过远端媒体元数据同步的自动轮播状态
 // ---- 板级调试面板（数码管 6 位，只读，不影响功能）----
 wire [7:0]  dbg_fat_state;   // fat32_ro FSM 状态（0=RST 1=ISSUE 2=STREAM 3=MOUNT
                              //  4=BPBDEC 5=FATDEC 6=DIRDONE 7=DATADONE 8=MOUNTED
@@ -143,11 +130,11 @@ wire [20:0] line_base;
 wire        line_rd_bank, line_wr_bank, line_wr_en;
 wire [31:0] line_rd_data, line_wr_data;
 
-wire        sd_card_write_en;
-wire [31:0] sd_card_write_data;
-wire        sd_card_write_req;
-wire        sd_card_write_req_ack;
-wire [20:0] sd_card_write_len;
+wire        media_write_en;
+wire [31:0] media_write_data;
+wire        media_write_req;
+wire        media_write_req_ack;
+wire [20:0] media_write_len;
 wire        frame_write_finish;
 reg         frame_write_toggle_mem;
 
@@ -162,14 +149,15 @@ wire [23:0] aud_r;
 wire        aud_play_done;
 wire        aud_underrun;
 wire        aud_pair_on;
-wire        sd_aud_rd_req;
-wire        sd_aud_rd_en;
-wire [1:0]  sd_aud_rd_addr_idx;
-wire [20:0] sd_aud_rd_len;
-wire        sd_aud_rd_req_ack;
-wire        sd_aud_rd_finish;
-wire [31:0] sd_aud_rd_data;
-
+wire [9:0] audio_read_fifo_words;
+wire audio_source_toggle;
+wire [1:0] audio_buffer_index;
+wire [20:0] audio_buffer_length;
+wire [31:0] audio_sample_count_out;
+wire audio_read_req, audio_read_req_ack, audio_read_finish, audio_read_en;
+wire [1:0] audio_read_index;
+wire [20:0] audio_read_length;
+wire [31:0] audio_read_data;
 wire App_rd_en;
 wire [ADDR_BITS-1:0] App_rd_addr;
 wire Sdr_rd_en;
@@ -244,7 +232,7 @@ assign rst_all = rst_all_reg | wd_rst;
 // 自愈 = 自动替用户按复位键：rst_all 释放后 display_valid 迟迟不来，则
 // 重新拉高 rst_all 一段时间（整体重跑，与手动复位等效；以太网不受影响
 // ——eth_subsys 只上电复位一次）。限 3 次，防止真坏卡无限循环重置 UART。
-reg [27:0] wd_cnt;             // 5s @ 50MHz = 250_000_000
+reg [30:0] wd_cnt;             // 30s allowance for media-board scan and first frame transfer
 reg [1:0]  wd_att;             // 已重试次数
 reg        wd_rst = 1'b0;
 reg        wd_armed = 1'b0;    // rst_all 释放后开始值守
@@ -265,16 +253,16 @@ always @(posedge clk or posedge rst_n) begin
     end else if (wd_rst) begin
         // 复位脉冲保持 1ms（50_000 拍）后释放，系统整体重跑
         wd_cnt <= wd_cnt + 1'b1;
-        if (wd_cnt >= 28'd50_000) begin
+        if (wd_cnt >= 31'd50_000) begin
             wd_rst  <= 1'b0;
-            wd_cnt  <= 28'd0;
+            wd_cnt  <= 31'd0;
         end
     end else if (rst_all_reg && !wd_armed) begin
         wd_armed <= 1'b1;                  // rst_all（基线部分）释放 → 开始值守
         wd_cnt   <= 28'd0;
     end else if (wd_armed && !display_valid_clk) begin
-        if (wd_cnt >= 28'd250_000_000) begin
-            wd_cnt <= 28'd0;
+        if (wd_cnt >= 31'd1_500_000_000) begin
+            wd_cnt <= 31'd0;
             if (wd_att < 2'd2) begin       // 最多 3 次尝试
                 wd_att  <= wd_att + 1'b1;
                 wd_rst  <= 1'b1;
@@ -341,17 +329,23 @@ wire        cmd_val_w, tx_req_w;
 wire [63:0] tx_pkt_w;
 wire [7:0]  uart_cmd;        // UART 前端命令出口
 wire        uart_cmd_val;
+reg [7:0]   media_cmd_byte;
+reg         media_cmd_toggle;
 // 以太网（RGMII ↔ 板载 RTL8211 PHY）
 // ⚠ 这些名字**已经是模块端口（ANSI 端口自带线网）**，不能再 wire 声明一遍
 //（TD 报 HDL-5372 "redeclaration of ANSI port"）。
 wire [3:0]  vol_gain;
+wire [3:0]  brightness_value, contrast_value;
+wire [1:0]  sensitivity_value;
+reg         set_valid_sd;
+reg [7:0]   set_op_sd, set_value_sd;
 wire [3:0]  auto_period_s;   // 轮播周期（秒），ctrl_core 可调
 wire [3:0]  bri_gray;        // 亮度档位（格雷码，跨时钟域到 video_clk）
 wire [3:0]  ct_gray;         // 对比度档位（格雷码，跨时钟域到 video_clk）
 wire        bar_en;          // 音频脉动条开关（pulse_bar）
-wire [19:0] sd_card_vrow_off;// 信箱行偏移（sd_card_bmp → frame_read_write）
+wire [19:0] media_row_offset; // Full-frame network transfer uses row offset zero.
 wire [1:0]  bar_sens_gray;   // 脉动灵敏度 0..3（格雷码，跨时钟域）
-wire        pl_dump_start_w; // 'L' 播放列表转储：ctrl_core 发起 → sd_card_bmp 吐包
+wire        pl_dump_start_w; // Legacy playlist dump command has no source on the display board.
 wire [63:0] pl_pkt_w;
 wire        pl_pkt_val_w;
 wire [7:0]  ld_diag_w;       // 装载诊断快照 → ACK pkt[5]
@@ -368,12 +362,15 @@ wire        rdump_start_w;   // 'D' 手动读回触发（ctrl_core）
 wire        dmp_trig_w;      // 读回捕获触发（sd_card_clk 域脉冲，'D' 或装载自动）
 
 ctrl_core #(
-    .VK_PULSE_CYC   (10_000_000)       // 100ms，须明显大于 sd_card_bmp 的 50ms 去抖窗
+    .VK_PULSE_CYC   (10_000_000)
 ) ctrl_core_m0(
     .clk            (sd_card_clk),
     .rst            (rst_all),
     .cmd            (cmd_byte),
     .cmd_val        (cmd_val_w),
+    .set_valid      (set_valid_sd),
+    .set_op         (set_op_sd),
+    .set_value      (set_value_sd),
     .touch_next     (touch_swipe_next),
     .touch_prev     (touch_swipe_prev),
     .subtitle_consume (subtitle_consume),
@@ -385,6 +382,9 @@ ctrl_core #(
     .tx_req         (tx_req_w),
     .tx_pkt         (tx_pkt_w),
     .vol_gain       (vol_gain),
+    .brightness_value (brightness_value),
+    .contrast_value (contrast_value),
+    .sensitivity_value (sensitivity_value),
     .auto_period_s  (auto_period_s),
     .transition_mode (transition_mode_cfg),
     .osd_mode       (osd_mode_cfg),
@@ -423,20 +423,99 @@ uart_link #(
     .tx_pkt         (tx_pkt_w)
 );
 
+always @(posedge sd_card_clk or posedge rst_all) begin
+    if (rst_all) begin
+        media_cmd_byte <= 8'd0;
+        media_cmd_toggle <= 1'b0;
+    end else if (uart_cmd_val &&
+                 (uart_cmd == 8'h4e || uart_cmd == 8'h41 || uart_cmd == 8'h50)) begin
+        media_cmd_byte <= uart_cmd;
+        media_cmd_toggle <= ~media_cmd_toggle;
+    end else if (touch_swipe_next) begin
+        media_cmd_byte <= 8'h4e;
+        media_cmd_toggle <= ~media_cmd_toggle;
+    end else if (touch_swipe_prev) begin
+        media_cmd_byte <= 8'h50;
+        media_cmd_toggle <= ~media_cmd_toggle;
+    end
+end
+
 // ===================== 以太网前端（官方 TEMAC + UDP 栈，RGMII PHY）=====================
 // 子系统内 udp_clk（千兆 125M / 百兆 12.5M，见 eth_subsys 的 GIGABIT）与
 // ctrl_core(sd_card_clk) 的命令/应答用握手/toggle 跨域。
 wire        eth_cmd_pending;
 wire [7:0]  eth_cmd;
-// ⚠ 这些信号都必须在例化**之前**声明（否则端口上的名字会被隐式声明成 1bit 线网，
-// 与后面的声明冲突：HDL-7225 critical）。eth_cmd_ack_t 由 cmd_arb 驱动（wire）；
-// eth_tx_tog 在下面的 always 块里赋值（reg）。
 wire        eth_cmd_ack_t;
 reg         eth_tx_tog;
-wire        media_chunk_ok_tog;
-wire        media_chunk_err_tog;
+wire        eth_app_clk;
+wire [7:0]  eth_rx_data;
+wire        eth_rx_valid;
+wire        media_packet_request, media_packet_valid, media_packet_ack, media_packet_ready;
+wire [7:0]  media_packet_data;
+wire [15:0] media_packet_length;
+wire        media_ready_request;
+wire        media_frame_begin_valid;
+wire [15:0] media_frame_id;
+wire [4:0]  media_source_index;
+wire [7:0]  media_image_flags;
+wire [20:0] media_total_words;
+wire        media_stream_start, media_stream_is_audio;
+wire [8:0]  media_stream_word_count;
+wire [31:0] media_stream_word_data;
+wire        media_stream_word_valid, media_stream_word_ready, media_stream_done;
+wire        media_frame_end_valid, media_frame_end_ok;
+wire [15:0] media_frame_end_id;
+wire        media_audio_begin_valid;
+wire [15:0] media_audio_frame_id;
+wire [31:0] media_audio_sample_count;
+wire        media_audio_end_valid, media_audio_end_ok;
+wire [15:0] media_audio_end_id;
+wire        media_protocol_error_toggle;
+wire        media_image_result_valid, media_audio_result_valid;
+wire [7:0]  media_image_result_code, media_audio_result_code;
+wire        media_auto_play_status;
+wire        media_control_ack_valid;
+wire [7:0]  media_control_ack_sequence, media_control_ack_op;
+wire [7:0]  media_control_ack_status, media_control_ack_value;
+wire        media_status_valid;
+wire [63:0] media_status_payload;
+wire        media_set_toggle_eth;
+wire [7:0]  media_set_op_eth, media_set_value_eth;
+wire        media_status_req_valid_eth;
+wire [7:0]  media_status_sequence_eth;
+reg         status_req_toggle_eth;
+wire        media_control_ack_valid_rx;
+wire [7:0]  media_control_ack_sequence_rx, media_control_ack_op_rx;
+wire [7:0]  media_control_ack_status_rx, media_control_ack_value_rx;
+wire        subtitle_write_toggle_eth;
+wire [7:0]  subtitle_write_index_eth, subtitle_write_char_eth;
+wire        subtitle_commit_toggle_eth;
+wire [7:0]  subtitle_commit_length_eth, subtitle_commit_sequence_eth;
+reg [2:0]   set_toggle_sync_sd, status_req_sync_sd;
+reg [2:0]   subtitle_write_sync_sd, subtitle_commit_sync_sd, subtitle_store_ack_sync;
+reg         set_toggle_seen_sd, status_req_seen_sd;
+reg         subtitle_write_seen_sd, subtitle_commit_seen_sd, subtitle_store_ack_seen;
+reg [7:0]   set_op_s0, set_op_s1, set_value_s0, set_value_s1;
+reg [7:0]   status_sequence_s0, status_sequence_s1;
+reg [7:0]   subtitle_index_s0, subtitle_index_s1, subtitle_char_s0, subtitle_char_s1;
+reg [7:0]   subtitle_length_s0, subtitle_length_s1;
+reg [7:0]   subtitle_sequence_s0, subtitle_sequence_s1;
+reg         subtitle_waiting_ack;
+reg [7:0]   subtitle_pending_sequence, subtitle_pending_length;
+reg         subtitle_ack_toggle_sd;
+reg [7:0]   subtitle_ack_sequence_sd, subtitle_ack_value_sd;
+reg [2:0]   subtitle_ack_sync_eth, status_snapshot_sync_eth;
+reg         subtitle_ack_seen_eth, status_snapshot_seen_eth;
+reg [7:0]   subtitle_ack_seq_e0, subtitle_ack_seq_e1;
+reg [7:0]   subtitle_ack_value_e0, subtitle_ack_value_e1;
+reg [63:0]  status_snapshot_data_sd, status_data_e0, status_data_e1;
+reg         status_snapshot_toggle_sd;
+reg         subtitle_ack_valid_eth, status_valid_eth;
+reg [7:0]   subtitle_ack_seq_eth, subtitle_ack_value_eth;
+reg [63:0]  status_payload_eth;
 
-eth_subsys u_eth_subsys(
+eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT),
+             .DST_UDP_PORT(PC_RETURN_PORT)) u_eth_subsys(
     .clk_50              (clk),
     .rst_all             (rst_all),
     .phy1_rgmii_rx_clk   (eth_rgmii_rxc),
@@ -446,13 +525,20 @@ eth_subsys u_eth_subsys(
     .phy1_rgmii_tx_ctl   (eth_rgmii_tx_ctl),
     .phy1_rgmii_tx_data  (eth_rgmii_txd),
     .phy_reset           (eth_phy_reset),
+    .app_clk_out         (eth_app_clk),
+    .app_rx_data_out     (eth_rx_data),
+    .app_rx_data_valid_out(eth_rx_valid),
     .cmd                 (eth_cmd),
     .cmd_pending         (eth_cmd_pending),
     .cmd_ack_t           (eth_cmd_ack_t),
     .tx_tog              (eth_tx_tog),
     .tx_pkt              (eth_tx_pkt_r),
-    .media_chunk_ok_tog  (media_chunk_ok_tog),
-    .media_chunk_err_tog (media_chunk_err_tog),
+    .media_packet_request(media_packet_request),
+    .media_packet_valid  (media_packet_valid),
+    .media_packet_data   (media_packet_data),
+    .media_packet_length (media_packet_length),
+    .media_packet_ack    (media_packet_ack),
+    .media_packet_ready  (media_packet_ready),
     .sys_rst             (rst_all),
     .tap_clk             (tap_clk_eth),
     .tap_val             (tap_val_eth),
@@ -464,10 +550,6 @@ eth_subsys u_eth_subsys(
     .tap2_end            (tap2_end_w)
 );
 
-// 命令仲裁 + 以太网命令握手 → 抽成 cmd_arb 模块（在 ctrl_core.v 里）。
-// 抽出来的原因：这段胶水原先只在顶层、不在任何仿真范围内，"命令晚一拍"的 bug
-// 只能上板发现；现在由 boardtest 的 tb_cmd_arb 覆盖。
-// ⚠ 模块内部必须**组合取用** eth_cmd（pending 期间稳定），给数据打拍就会晚一拍。
 cmd_arb u_cmd_arb (
     .clk          (sd_card_clk),
     .eth_pending  (eth_cmd_pending),
@@ -479,185 +561,303 @@ cmd_arb u_cmd_arb (
     .cmd_byte     (cmd_byte)
 );
 
-subtitle_cmd u_subtitle_cmd (
-    .clk (sd_card_clk), .rst (rst_all),
-    .cmd (cmd_byte), .cmd_val (cmd_val_w),
-    .swap_ack_toggle_raw (subtitle_swap_ack),
-    .consume_cmd (subtitle_consume),
-    .wr_en (subtitle_wr_en), .wr_index (subtitle_wr_index),
-    .wr_char (subtitle_wr_char),
-    .commit_toggle (subtitle_commit_toggle),
-    .commit_len (subtitle_commit_len),
-    .ack_pulse (subtitle_ack_pulse), .ack_ok (subtitle_ack_ok)
-);
-
-// 应答 toggle：每条 ctrl_core 应答翻转一次（eth_front 检测变化取包）。
-// 发送数据与 toggle 同拍锁存并**保持**：tx_req/tx_pkt 是 1 拍脉冲，eth_front 的
-// toggle 跨域同步晚 ~3 拍才锁存——直接给 tx_pkt_w 会在脉冲回落后锁到 ACK 兜底
-// 包（'L' 转储 11 条全变 ACK 的根因；串口同域立即取用从未暴露）。
-reg  [63:0] eth_tx_pkt_r;
-always @(posedge sd_card_clk)
-    if (tx_req_w) begin
-        eth_tx_tog   <= ~eth_tx_tog;
-        eth_tx_pkt_r <= tx_pkt_w;    // tx_req_w=1 时 tx_pkt_w 恰好有效，同域无竞争
-    end
-
-// 音量增益（ctrl_core 的 vol_gain：0..8，8=原始，0=静音）：24bit 有符号 ×gain>>3。
-// gain=8 时 ≡ 原值（现有字节级音频比对用例不受影响）
-wire signed [23:0] aud_l_s = $signed(aud_l);
-wire signed [23:0] aud_r_s = $signed(aud_r);
-wire signed [27:0] aud_l_g = (aud_l_s * $signed({1'b0, vol_gain})) >>> 3;  // 24×4=28bit
-wire signed [27:0] aud_r_g = (aud_r_s * $signed({1'b0, vol_gain})) >>> 3;
-wire [23:0] aud_l_v = aud_l_g[23:0];
-wire [23:0] aud_r_v = aud_r_g[23:0];
-
-// 保持你原来的 TF / SDRAM / video 时钟
-sys_pll sys_pll_m0(
-    .refclk     (clk),
-    .reset      (1'b0),
-    .extlock    (sys_pll_lock),
-    .clk0_out   (sd_card_clk),
-    .clk1_out   (ext_mem_clk),
-    .clk2_out   (ext_mem_clk_sft)
-);
-
-video_pll video_pll_m0(
-    .refclk     (clk),
-    .reset      (1'b0),
-    .extlock    (video_pll_lock),
-    .clk0_out   (video_clk),
-    .clk1_out   (hdmi_5x_clk)
-);
-
-// GT911: discover 0x5D/0x14, move a relative pointer and translate a quick
-// horizontal release swipe into the existing next/previous virtual keys.
-// INT/RST and touch-screen pseudo-buttons are not used yet.
-gt911_trackpad u_gt911_trackpad (
-    .clk (sd_card_clk), .rst (rst_all),
-    .scl (gt911_scl), .sda (gt911_sda),
-    .cursor_ack_toggle (cursor_ack_toggle),
-    .cursor_req_toggle (cursor_req_toggle),
-    .cursor_mailbox_x (cursor_mailbox_x),
-    .cursor_mailbox_y (cursor_mailbox_y),
-    .online (cursor_online),
-    .touch_report (), .touch_down (),
-    .swipe_next (touch_swipe_next), .swipe_prev (touch_swipe_prev),
-    .cursor_x (), .cursor_y ()
-);
-
-// mem_clk 域把 write_finish 单拍转成 toggle，供 sd_card_clk 域可靠同步
-always @(posedge ext_mem_clk or posedge rst_all) begin
+always @(posedge sd_card_clk or posedge rst_all) begin
     if (rst_all)
-        frame_write_toggle_mem <= 1'b0;
-    else if (frame_write_finish)
-        frame_write_toggle_mem <= ~frame_write_toggle_mem;
+        auto_play_w <= 1'b0;
+    else if (frame_commit_pulse)
+        auto_play_w <= media_auto_play_status;
+    else if (cmd_val_w && cmd_byte == 8'h41)
+        auto_play_w <= ~auto_play_w;
 end
 
-// ===================== TF 多图扫描与缓存（双缓冲）+ 同名 WAV 音画同步（S4） =====================
-sd_card_bmp #(
-    .CLK_FREQ_HZ       (100_000_000),
-    .SCAN_START_SECTOR (32'd0),
-    .SCAN_MAX_SECTOR   (32'd131071),
-    .SCAN_TARGET_COUNT (3'd4),
-    .ENABLE_LIST_DIAG  (ENABLE_LIST_DIAG_BUILD)
-) sd_card_bmp_m0(
-    .clk               (sd_card_clk),
-    .rst               (rst_all),
-    .key_next          (key1 & vk_next_n),   // 物理按键与 UART 虚拟键相与（均低有效）
-    .key_auto          (key2 & vk_auto_n),
-    .key_prev          (key3 & vk_prev_n),
-    .auto_period_s     (auto_period_s),
-    .img_idx_out       (img_idx_w),
-    .img_wav_out       (img_wav_w),
-    .auto_play_out     (auto_play_w),   // 自动轮播开关状态 → ctrl_core 打进遥测包
-    .state_code        (state_code),
-    .bmp_width         (16'd1280),
-    .bmp_height        (16'd720),
-    .display_valid     (display_valid),
+media_protocol_rx u_media_protocol_rx (
+    .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
+    .ready_request (media_ready_request),
+    .frame_begin_valid (media_frame_begin_valid), .frame_id (media_frame_id),
+    .image_index (media_source_index), .image_flags (media_image_flags),
+    .image_total_words (media_total_words),
+    .stream_start (media_stream_start), .stream_is_audio (media_stream_is_audio),
+    .stream_word_count (media_stream_word_count), .stream_word_data (media_stream_word_data),
+    .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_stream_word_ready),
+    .stream_done (media_stream_done),
+    .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
+    .frame_end_id (media_frame_end_id),
+    .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
+    .audio_sample_count (media_audio_sample_count),
+    .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
+    .audio_end_id (media_audio_end_id), .protocol_error_toggle (media_protocol_error_toggle)
+);
 
-    .write_finish_toggle(frame_write_toggle_mem),
-    .write_buf_idx     (write_buf_idx),
-    .disp_buf_idx      (disp_buf_idx),
-    .effect_mode       (transition_mode_cfg),
+media_display_control_rx u_media_display_control_rx (
+    .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
+    .set_toggle (media_set_toggle_eth), .set_op (media_set_op_eth),
+    .set_value (media_set_value_eth),
+    .status_req_valid (media_status_req_valid_eth),
+    .status_sequence (media_status_sequence_eth),
+    .control_ack_valid (media_control_ack_valid_rx),
+    .control_ack_sequence (media_control_ack_sequence_rx),
+    .control_ack_op (media_control_ack_op_rx),
+    .control_ack_status (media_control_ack_status_rx),
+    .control_ack_value (media_control_ack_value_rx),
+    .subtitle_write_toggle (subtitle_write_toggle_eth),
+    .subtitle_write_index (subtitle_write_index_eth),
+    .subtitle_write_char (subtitle_write_char_eth),
+    .subtitle_commit_toggle (subtitle_commit_toggle_eth),
+    .subtitle_commit_length (subtitle_commit_length_eth),
+    .subtitle_commit_sequence (subtitle_commit_sequence_eth)
+);
+
+media_transaction_writer u_media_transaction_writer (
+    .udp_clk (eth_app_clk), .udp_rst (rst_all),
+    .frame_begin_valid (media_frame_begin_valid), .frame_id (media_frame_id),
+    .image_index (media_source_index), .image_flags (media_image_flags),
+    .image_total_words (media_total_words),
+    .stream_start (media_stream_start), .stream_is_audio (media_stream_is_audio),
+    .stream_word_count (media_stream_word_count), .stream_word_data (media_stream_word_data),
+    .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_stream_word_ready),
+    .stream_done (media_stream_done),
+    .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
+    .frame_end_id (media_frame_end_id),
+    .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
+    .audio_sample_count (media_audio_sample_count),
+    .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
+    .audio_end_id (media_audio_end_id),
+    .write_clk (sd_card_clk), .write_rst (rst_all),
+    .frame_finish_toggle (frame_write_toggle_mem), .effect_mode (transition_mode_cfg),
+    .transition_done_toggle (transition_done_toggle),
+    .display_valid (display_valid), .image_index_out (img_idx_w),
+    .image_has_wav (img_wav_w), .auto_play_status (media_auto_play_status),
+    .display_buffer_index (disp_buf_idx),
     .transition_start_toggle (transition_start_toggle),
     .transition_target_buf (transition_target_buf),
     .transition_mode_latched (transition_mode_latched),
     .transition_prev_latched (transition_prev_latched),
-    .transition_done_toggle (transition_done_toggle),
+    .frame_commit_pulse (frame_commit_pulse),
+    .write_req (media_write_req), .write_req_ack (media_write_req_ack),
+    .write_buffer_index (write_buf_idx), .write_length (media_write_len),
+    .write_row_offset (media_row_offset), .write_en (media_write_en),
+    .write_data (media_write_data),
+    .image_result_valid (media_image_result_valid),
+    .image_result_code (media_image_result_code),
+    .audio_result_valid (media_audio_result_valid),
+    .audio_result_code (media_audio_result_code),
+    .audio_pair_on (aud_pair_on), .audio_buffer_index (audio_buffer_index),
+    .audio_buffer_length (audio_buffer_length),
+    .audio_sample_count_out (audio_sample_count_out), .audio_source_toggle (audio_source_toggle)
+);
 
-    .write_req         (sd_card_write_req),
-    .write_req_ack     (sd_card_write_req_ack),
-    .write_en          (sd_card_write_en),
-    .write_data        (sd_card_write_data),
-    .write_len         (sd_card_write_len),
-    .o_wr_vrow_off     (sd_card_vrow_off),
-    // 音频观测/播放口
-    .aud_smp           (),
-    .aud_sval          (),
-    .aud_item_done     (),
-    .aud_scan_done     (),
-    .wav_hdr_ok        (),
-    .wav_fmt_err      (),
-    .wav_data_bytes   (),
-    .aud_valid         (aud_valid),
-    .aud_l             (aud_l),
-    .aud_r             (aud_r),
-    .aud_play_done     (aud_play_done),
-    .aud_underrun      (aud_underrun),
-    .aud_tick          (aud_tick),
-    .aud_pair_on       (aud_pair_on),
-    // 音频读口（frame_read_write 音频通道）
-    .rd_req            (sd_aud_rd_req),
-    .rd_en             (sd_aud_rd_en),
-    .rd_addr_idx       (sd_aud_rd_addr_idx),
-    .rd_len            (sd_aud_rd_len),
-    .rd_req_ack        (sd_aud_rd_req_ack),
-    .rd_finish         (sd_aud_rd_finish),
-    .rd_data           (sd_aud_rd_data),
-    .SD_nCS            (sd_ncs),
-    .SD_DCLK           (sd_dclk),
-    .SD_MOSI           (sd_mosi),
-    .SD_MISO           (sd_miso),
-    .dbg_fat_state     (dbg_fat_state),
-    .dbg_fat_err       (dbg_fat_err),
-    .pl_dump_start     (pl_dump_start_w),
-    .pl_pkt            (pl_pkt_w),
-    .pl_pkt_val        (pl_pkt_val_w),
-    .ld_diag           (ld_diag_w),
-    .tap_word          (tap_word_w),
-    .tap_val           (tap_val_w),
-    .tap_end           (tap_end_w),
-    .rdump_start       (rdump_start_w),
-    .dmp_trig          (dmp_trig_w)
+wire [7:0] media_local_cmd_byte = media_cmd_byte;
+media_display_tx u_media_display_tx (
+    .clk (eth_app_clk), .rst (rst_all),
+    .tx_ready (media_packet_ready),
+    .local_cmd_toggle_async (media_cmd_toggle), .local_cmd_async (media_local_cmd_byte),
+    .ready_valid (media_ready_request),
+    .image_result_valid (media_image_result_valid), .image_result_code (media_image_result_code),
+    .image_result_frame (media_frame_id),
+    .audio_result_valid (media_audio_result_valid), .audio_result_code (media_audio_result_code),
+    .audio_result_frame (media_frame_id),
+    .control_ack_valid (media_control_ack_valid),
+    .control_ack_sequence (media_control_ack_sequence), .control_ack_op (media_control_ack_op),
+    .control_ack_status (media_control_ack_status), .control_ack_value (media_control_ack_value),
+    .status_valid (media_status_valid), .status_payload (media_status_payload),
+    .tx_request (media_packet_request), .tx_valid (media_packet_valid),
+    .tx_data (media_packet_data), .tx_length (media_packet_length), .tx_ack (media_packet_ack)
+);
+
+assign media_control_ack_valid = media_control_ack_valid_rx | subtitle_ack_valid_eth;
+assign media_control_ack_sequence = subtitle_ack_valid_eth ? subtitle_ack_seq_eth :
+                                    media_control_ack_sequence_rx;
+assign media_control_ack_op = subtitle_ack_valid_eth ? 8'd8 : media_control_ack_op_rx;
+assign media_control_ack_status = subtitle_ack_valid_eth ? 8'd0 : media_control_ack_status_rx;
+assign media_control_ack_value = subtitle_ack_valid_eth ? subtitle_ack_value_eth :
+                                  media_control_ack_value_rx;
+assign media_status_valid = status_valid_eth;
+assign media_status_payload = status_payload_eth;
+
+always @(posedge eth_app_clk or posedge rst_all) begin
+    if (rst_all) begin
+        status_req_toggle_eth <= 1'b0;
+        subtitle_ack_sync_eth <= 3'b000;
+        status_snapshot_sync_eth <= 3'b000;
+        subtitle_ack_seen_eth <= 1'b0;
+        status_snapshot_seen_eth <= 1'b0;
+        subtitle_ack_seq_e0 <= 8'd0; subtitle_ack_seq_e1 <= 8'd0;
+        subtitle_ack_value_e0 <= 8'd0; subtitle_ack_value_e1 <= 8'd0;
+        status_data_e0 <= 64'd0; status_data_e1 <= 64'd0;
+        subtitle_ack_valid_eth <= 1'b0; status_valid_eth <= 1'b0;
+        subtitle_ack_seq_eth <= 8'd0; subtitle_ack_value_eth <= 8'd0;
+        status_payload_eth <= 64'd0;
+    end else begin
+        if (media_status_req_valid_eth)
+            status_req_toggle_eth <= ~status_req_toggle_eth;
+        subtitle_ack_sync_eth <= {subtitle_ack_sync_eth[1:0], subtitle_ack_toggle_sd};
+        status_snapshot_sync_eth <= {status_snapshot_sync_eth[1:0], status_snapshot_toggle_sd};
+        subtitle_ack_seq_e0 <= subtitle_ack_sequence_sd;
+        subtitle_ack_seq_e1 <= subtitle_ack_seq_e0;
+        subtitle_ack_value_e0 <= subtitle_ack_value_sd;
+        subtitle_ack_value_e1 <= subtitle_ack_value_e0;
+        status_data_e0 <= status_snapshot_data_sd;
+        status_data_e1 <= status_data_e0;
+        subtitle_ack_valid_eth <= 1'b0;
+        status_valid_eth <= 1'b0;
+        if (subtitle_ack_sync_eth[2] != subtitle_ack_seen_eth) begin
+            subtitle_ack_seen_eth <= subtitle_ack_sync_eth[2];
+            subtitle_ack_seq_eth <= subtitle_ack_seq_e1;
+            subtitle_ack_value_eth <= subtitle_ack_value_e1;
+            subtitle_ack_valid_eth <= 1'b1;
+        end
+        if (status_snapshot_sync_eth[2] != status_snapshot_seen_eth) begin
+            status_snapshot_seen_eth <= status_snapshot_sync_eth[2];
+            status_payload_eth <= status_data_e1;
+            status_valid_eth <= 1'b1;
+        end
+    end
+end
+
+always @(posedge sd_card_clk or posedge rst_all) begin
+    if (rst_all) begin
+        set_toggle_sync_sd <= 3'b000; status_req_sync_sd <= 3'b000;
+        subtitle_write_sync_sd <= 3'b000; subtitle_commit_sync_sd <= 3'b000;
+        subtitle_store_ack_sync <= 3'b000;
+        set_toggle_seen_sd <= 1'b0; status_req_seen_sd <= 1'b0;
+        subtitle_write_seen_sd <= 1'b0; subtitle_commit_seen_sd <= 1'b0;
+        subtitle_store_ack_seen <= 1'b0; subtitle_waiting_ack <= 1'b0;
+        set_op_s0 <= 8'd0; set_op_s1 <= 8'd0;
+        set_value_s0 <= 8'd0; set_value_s1 <= 8'd0;
+        status_sequence_s0 <= 8'd0; status_sequence_s1 <= 8'd0;
+        subtitle_index_s0 <= 8'd0; subtitle_index_s1 <= 8'd0;
+        subtitle_char_s0 <= 8'd0; subtitle_char_s1 <= 8'd0;
+        subtitle_length_s0 <= 8'd0; subtitle_length_s1 <= 8'd0;
+        subtitle_sequence_s0 <= 8'd0; subtitle_sequence_s1 <= 8'd0;
+        set_valid_sd <= 1'b0; set_op_sd <= 8'd0; set_value_sd <= 8'd0;
+        status_snapshot_data_sd <= 64'd0; status_snapshot_toggle_sd <= 1'b0;
+        subtitle_wr_en <= 1'b0; subtitle_wr_index <= 8'd0; subtitle_wr_char <= 8'h20;
+        subtitle_commit_toggle <= 1'b0; subtitle_commit_len <= 8'd0;
+        subtitle_pending_sequence <= 8'd0; subtitle_pending_length <= 8'd0;
+        subtitle_ack_toggle_sd <= 1'b0; subtitle_ack_sequence_sd <= 8'd0;
+        subtitle_ack_value_sd <= 8'd0;
+    end else begin
+        set_toggle_sync_sd <= {set_toggle_sync_sd[1:0], media_set_toggle_eth};
+        status_req_sync_sd <= {status_req_sync_sd[1:0], status_req_toggle_eth};
+        subtitle_write_sync_sd <= {subtitle_write_sync_sd[1:0], subtitle_write_toggle_eth};
+        subtitle_commit_sync_sd <= {subtitle_commit_sync_sd[1:0], subtitle_commit_toggle_eth};
+        subtitle_store_ack_sync <= {subtitle_store_ack_sync[1:0], subtitle_swap_ack};
+        set_op_s0 <= media_set_op_eth; set_op_s1 <= set_op_s0;
+        set_value_s0 <= media_set_value_eth; set_value_s1 <= set_value_s0;
+        status_sequence_s0 <= media_status_sequence_eth; status_sequence_s1 <= status_sequence_s0;
+        subtitle_index_s0 <= subtitle_write_index_eth; subtitle_index_s1 <= subtitle_index_s0;
+        subtitle_char_s0 <= subtitle_write_char_eth; subtitle_char_s1 <= subtitle_char_s0;
+        subtitle_length_s0 <= subtitle_commit_length_eth; subtitle_length_s1 <= subtitle_length_s0;
+        subtitle_sequence_s0 <= subtitle_commit_sequence_eth; subtitle_sequence_s1 <= subtitle_sequence_s0;
+        set_valid_sd <= 1'b0;
+        subtitle_wr_en <= 1'b0;
+
+        if (set_toggle_sync_sd[2] != set_toggle_seen_sd) begin
+            set_toggle_seen_sd <= set_toggle_sync_sd[2];
+            set_op_sd <= set_op_s1; set_value_sd <= set_value_s1;
+            set_valid_sd <= 1'b1;
+        end
+        if (status_req_sync_sd[2] != status_req_seen_sd) begin
+            status_req_seen_sd <= status_req_sync_sd[2];
+            status_snapshot_data_sd <= {
+                {6'd0, sensitivity_value}, {7'd0, bar_en},
+                {6'd0, osd_mode_cfg}, {6'd0, transition_mode_cfg},
+                {4'd0, contrast_value}, {4'd0, brightness_value},
+                {4'd0, vol_gain}, status_sequence_s1
+            };
+            status_snapshot_toggle_sd <= ~status_snapshot_toggle_sd;
+        end
+        if (subtitle_write_sync_sd[2] != subtitle_write_seen_sd) begin
+            subtitle_write_seen_sd <= subtitle_write_sync_sd[2];
+            subtitle_wr_index <= subtitle_index_s1;
+            subtitle_wr_char <= subtitle_char_s1;
+            subtitle_wr_en <= 1'b1;
+        end
+        if (subtitle_commit_sync_sd[2] != subtitle_commit_seen_sd) begin
+            subtitle_commit_seen_sd <= subtitle_commit_sync_sd[2];
+            subtitle_commit_len <= subtitle_length_s1;
+            subtitle_pending_sequence <= subtitle_sequence_s1;
+            subtitle_pending_length <= subtitle_length_s1;
+            subtitle_commit_toggle <= ~subtitle_commit_toggle;
+            subtitle_waiting_ack <= 1'b1;
+        end
+        if (subtitle_store_ack_sync[2] != subtitle_store_ack_seen) begin
+            subtitle_store_ack_seen <= subtitle_store_ack_sync[2];
+            if (subtitle_waiting_ack) begin
+                subtitle_ack_sequence_sd <= subtitle_pending_sequence;
+                subtitle_ack_value_sd <= subtitle_pending_length;
+                subtitle_ack_toggle_sd <= ~subtitle_ack_toggle_sd;
+                subtitle_waiting_ack <= 1'b0;
+            end
+        end
+    end
+end
+
+assign state_code = 4'd0;
+assign dbg_fat_state = 8'd0;
+assign dbg_fat_err = 1'b0;
+assign pl_pkt_w = 64'd0;
+assign pl_pkt_val_w = 1'b0;
+assign ld_diag_w = 8'd0;
+assign dmp_trig_w = rdump_start_w | frame_commit_pulse;
+assign tap_word_w = 32'd0;
+assign tap_val_w = 1'b0;
+assign tap_end_w = 1'b0;
+assign aud_play_done = 1'b0;
+
+wire signed [23:0] aud_l_s = $signed(aud_l);
+wire signed [23:0] aud_r_s = $signed(aud_r);
+wire signed [27:0] aud_l_g = (aud_l_s * $signed({1'b0, vol_gain})) >>> 3;
+wire signed [27:0] aud_r_g = (aud_r_s * $signed({1'b0, vol_gain})) >>> 3;
+wire [23:0] aud_l_v = aud_l_g[23:0];
+wire [23:0] aud_r_v = aud_r_g[23:0];
+
+sys_pll sys_pll_m0(
+    .refclk(clk), .reset(1'b0), .extlock(sys_pll_lock),
+    .clk0_out(sd_card_clk), .clk1_out(ext_mem_clk), .clk2_out(ext_mem_clk_sft)
+);
+
+video_pll video_pll_m0(
+    .refclk(clk), .reset(1'b0), .extlock(video_pll_lock),
+    .clk0_out(video_clk), .clk1_out(hdmi_5x_clk)
+);
+
+gt911_trackpad u_gt911_trackpad (
+    .clk(sd_card_clk), .rst(rst_all), .scl(gt911_scl), .sda(gt911_sda),
+    .cursor_ack_toggle(cursor_ack_toggle), .cursor_req_toggle(cursor_req_toggle),
+    .cursor_mailbox_x(cursor_mailbox_x), .cursor_mailbox_y(cursor_mailbox_y),
+    .online(cursor_online), .touch_report(), .touch_down(),
+    .swipe_next(touch_swipe_next), .swipe_prev(touch_swipe_prev),
+    .cursor_x(), .cursor_y()
+);
+
+always @(posedge ext_mem_clk or posedge rst_all) begin
+    if (rst_all) frame_write_toggle_mem <= 1'b0;
+    else if (frame_write_finish) frame_write_toggle_mem <= ~frame_write_toggle_mem;
+end
+
+media_audio_playback u_media_audio_playback (
+    .clk (sd_card_clk), .rst (rst_all), .source_toggle (audio_source_toggle),
+    .pair_on (aud_pair_on), .source_buffer (audio_buffer_index),
+    .source_length (audio_buffer_length), .source_samples (audio_sample_count_out),
+    .read_req (audio_read_req), .read_req_ack_async (audio_read_req_ack),
+    .read_index (audio_read_index), .read_length (audio_read_length),
+    .read_en (audio_read_en), .read_data (audio_read_data),
+    .read_fifo_words (audio_read_fifo_words),
+    .audio_tick (aud_tick), .audio_valid (aud_valid),
+    .audio_left (aud_l), .audio_right (aud_r), .audio_underrun (aud_underrun)
 );
 
 // ===================== 双板分片诊断数码管 ======================
 // 左侧 db 为标记，后四位为错误计数和完整分片计数（各 8 位十六进制）。
 // ETH 域的完成事件以 toggle 同步到 50 MHz，避免跨域传递多位计数器。
-reg [2:0] media_ok_sync, media_err_sync;
-reg [7:0] media_ok_count, media_err_count;
-always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        media_ok_sync <= 3'd0;
-        media_err_sync <= 3'd0;
-        media_ok_count <= 8'd0;
-        media_err_count <= 8'd0;
-    end else begin
-        media_ok_sync <= {media_ok_sync[1:0], media_chunk_ok_tog};
-        media_err_sync <= {media_err_sync[1:0], media_chunk_err_tog};
-        if (media_ok_sync[2] ^ media_ok_sync[1])
-            media_ok_count <= media_ok_count + 8'd1;
-        if (media_err_sync[2] ^ media_err_sync[1])
-            media_err_count <= media_err_count + 8'd1;
-    end
-end
 wire [6:0] seg0, seg1, seg2, seg3, seg4, seg5;
-seg_decoder u_seg0 (.bin_data(media_ok_count[3:0]), .seg_data(seg0));
-seg_decoder u_seg1 (.bin_data(media_ok_count[7:4]), .seg_data(seg1));
-seg_decoder u_seg2 (.bin_data(media_err_count[3:0]), .seg_data(seg2));
-seg_decoder u_seg3 (.bin_data(media_err_count[7:4]), .seg_data(seg3));
-seg_decoder u_seg4 (.bin_data(4'hb), .seg_data(seg4));
-seg_decoder u_seg5 (.bin_data(4'hd), .seg_data(seg5));
+seg_decoder u_seg0 (.bin_data(img_idx_w[3:0]), .seg_data(seg0));
+seg_decoder u_seg1 (.bin_data({3'd0,img_idx_w[4]}), .seg_data(seg1));
+seg_decoder u_seg2 (.bin_data({3'd0,aud_pair_on}), .seg_data(seg2));
+seg_decoder u_seg3 (.bin_data({3'd0,display_valid}), .seg_data(seg3));
+seg_decoder u_seg4 (.bin_data(4'hd), .seg_data(seg4));
+seg_decoder u_seg5 (.bin_data(4'h2), .seg_data(seg5));
 seg_scan seg_scan_m0(
     .clk               (clk),
     .rst_n             (rst_n),
@@ -889,14 +1089,14 @@ gt911_cursor_overlay u_gt911_cursor (
 
 // ================== 读侧 dump 捕获窗（video_clk 域，第二十一轮）==================
 // 触发（'D' 或装载提交自动）后捕获一帧。保留 video FIFO 出口的旧探针；
-// DUMP_AT_SDRAM_OUTPUT=1 时取 mem_clk 域，具体选控制器返回或读请求地址
+// D-command capture reads the display board local SDRAM return path.
 // 由 DUMP_READ_REQUEST_ADDR 决定；上轮的 FIFO 出口探针仍保留。
 reg         cap_tog;                    // sd_card_clk 脉冲 → toggle
 // display_valid 门控：装载提交瞬间显示流水线尚未起帧（首图提交拍上还是旧值
 // 0），那时开窗只能抓到启动期零星几个字（105 字黑帧的根因）
 always @(posedge sd_card_clk or posedge rst_all)
     if (rst_all) cap_tog <= 1'b0;
-    else if (dmp_trig_w && display_valid) cap_tog <= ~cap_tog;
+    else if (dmp_trig_w && (display_valid || frame_commit_pulse)) cap_tog <= ~cap_tog;
 reg  cap_s0, cap_s1, cap_s2;            // video_clk 域同步 + 边沿
 always @(posedge video_clk or posedge rst_all) begin
     if (rst_all) begin
@@ -948,31 +1148,17 @@ mem_return_dump #(.WORDS(FRAME_WORDS)) u_mem_return_dump (
     .tap_word     (mem_tap_word),
     .tap_end      (mem_tap_end)
 );
-wire app_img_val, app_img_end;
-wire [31:0] app_img_data, app_img_addr;
-write_port_probe u_write_port_probe (
-    .src_clk   (sd_card_clk), .mem_clk  (ext_mem_clk), .rst(rst_all),
-    .src_val   (tap_val_w),   .src_end  (tap_end_w),
-    .wr_en     (App_wr_en),   .wr_data  (App_wr_din),
-    .wr_addr   (App_wr_addr), .tap_val  (app_img_val),
-    .tap_data  (app_img_data), .tap_addr(app_img_addr),
-    .tap_end   (app_img_end)
-);
-assign tap_clk_eth  = DUMP_WRITE_PORT ? ext_mem_clk : sd_card_clk;
-assign tap_val_eth  = DUMP_WRITE_PORT ? app_img_val : tap_val_w;
-assign tap_word_eth = DUMP_WRITE_PORT ? app_img_data : tap_word_w;
-assign tap_end_eth  = DUMP_WRITE_PORT ? app_img_end : tap_end_w;
-assign tap2_clk_w  = DUMP_WRITE_PORT ? ext_mem_clk :
-                     (DUMP_AT_SDRAM_OUTPUT ? ext_mem_clk : video_clk);
-assign tap2_val_w  = DUMP_WRITE_PORT ? app_img_val :
-                     (DUMP_AT_SDRAM_OUTPUT ? mem_tap_val : tap2_val_r);
-assign tap2_word_w = DUMP_WRITE_PORT ? app_img_addr :
-                     (DUMP_AT_SDRAM_OUTPUT ? mem_tap_word : video_read_data);
-assign tap2_end_w  = DUMP_WRITE_PORT ? app_img_end :
-                     (DUMP_AT_SDRAM_OUTPUT ? mem_tap_end : cap_end_r);
+assign tap_clk_eth = sd_card_clk;
+assign tap_val_eth = 1'b0;
+assign tap_word_eth = 32'd0;
+assign tap_end_eth = 1'b0;
+assign tap2_clk_w = ext_mem_clk;
+assign tap2_val_w = mem_tap_val;
+assign tap2_word_w = mem_tap_word;
+assign tap2_end_w = mem_tap_end;
 
 frame_read_write #(
-    .WRITE_V_FLIP     (1),
+    .WRITE_V_FLIP     (0),
     .FRAME_WIDTH      (640),   // 每行字数（RGB565 两像素/字：1280 像素/行 = 640 字）
     .FRAME_HEIGHT     (720)
 ) frame_read_write_m0(
@@ -1012,26 +1198,27 @@ frame_read_write #(
     .App_wr_dm         (App_wr_dm),
 
     .write_clk         (sd_card_clk),
-    .write_req         (sd_card_write_req),
-    .write_req_ack     (sd_card_write_req_ack),
+    .write_req         (media_write_req),
+    .write_req_ack     (media_write_req_ack),
     .write_finish      (frame_write_finish),
     .write_addr_0      (BUF0_ADDR),
     .write_addr_1      (BUF1_ADDR),
     .write_addr_2      (BUF2_ADDR),
     .write_addr_3      (BUF3_ADDR),
     .write_addr_index  (write_buf_idx),
-    .write_len         (sd_card_write_len),
-    .vrow_off          (sd_card_vrow_off),
-    .write_en          (sd_card_write_en),
-    .write_data        (sd_card_write_data),
+    .write_len         (media_write_len),
+    .vrow_off          (media_row_offset),
+    .write_en          (media_write_en),
+    .write_data        (media_write_data),
 
-    .aud_read_req      (sd_aud_rd_req),
-    .aud_read_req_ack  (sd_aud_rd_req_ack),
-    .aud_read_finish   (sd_aud_rd_finish),
-    .aud_read_addr_index(sd_aud_rd_addr_idx),
-    .aud_read_len      ({1'b0, sd_aud_rd_len}),
-    .aud_rd_en         (sd_aud_rd_en),
-    .aud_rd_data       (sd_aud_rd_data)
+    .aud_read_req      (audio_read_req),
+    .aud_read_req_ack  (audio_read_req_ack),
+    .aud_read_finish   (audio_read_finish),
+    .aud_read_addr_index(audio_read_index),
+    .aud_read_len      (audio_read_length),
+    .aud_rd_en         (audio_read_en),
+    .aud_rd_data       (audio_read_data),
+    .o_aud_fifo_words  (audio_read_fifo_words)
 );
 
 transition_line_read transition_line_read_m0 (

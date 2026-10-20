@@ -132,7 +132,26 @@ def decode_pkt(pkt: bytes) -> str:
     osd_s = {0: "关闭", 1: "调节后 3 秒", 2: "始终显示"}.get((und >> 4) & 3, "未知")
     ct      = (fa >> 4) & 0xF            # flagA 字节空出的高 4 位 = 对比度档位
 
-    return (f"state=0x{state:X} fat=0x{fat:02X} buf={fb & 3} img={img & 0x1F}"
+    if und & 1:
+        source_state = (f"源帧={'就绪' if state & 0x80 else '未就绪'} "
+                        f"源音频={'播放' if und & 0x80 else '静音'} "
+                        f"发送={'已完成' if state & 0x40 else '未完成'} "
+                        f"显示接收={'进行中' if state & 0x20 else '空闲'} "
+                        f"写入={'进行中' if und & 2 else '空闲'} "
+                        f"包校验={'曾出错' if und & 0x40 else '无记录'}")
+        if state & 0x10:
+            recv_detail = (f"期望分片={((img >> 5) & 7) << 8 | fat} "
+                           f"最近收到分片低8位={wav:02X}")
+        else:
+            recv_detail = (f"FAT=0x{fat:02X} 源图={(wav >> 3) & 0x1F} "
+                           f"音频序列={'异常' if wav & 4 else '正常'} "
+                           f"发送计数低位={(wav >> 1) & 1}")
+        source = (f"媒体: 装载状态={state & 0xF} {recv_detail} | "
+                  f"{source_state} | ")
+    else:
+        source = "媒体诊断=未收到 | "
+
+    return (f"{source}buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
             f"对比度={ct}/6 特效={effect_s} 面板={osd_s} 自动轮播={'开' if auto_on else '关'} | "
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
@@ -481,7 +500,8 @@ class LoopbackLink:
 class EthTransport:
     """以太网传输：UDP socket 直连板卡（板载官方 UDP 栈，无连接、无握手）。
 
-    板卡侧（eth_subsys.v）：本地 192.168.137.2:1，回包固定发 PC 192.168.137.1:2
+    双板控制入口为媒体板 192.168.137.3:1；显示板 192.168.137.2:1
+    负责最终 ACK/状态回包，固定发 PC 192.168.137.1:2。
     （目的端口/IP 在 FPGA 里写死，不做动态学习）。
     PC 侧：bind :2 收包，发往板卡 :1。命令帧与串口同款 [CMD,~CMD]，
     UDP 载荷 = 8 字节应用头 [AA BB CC DD type length] + 数据（APUG013）。
@@ -491,7 +511,7 @@ class EthTransport:
     """
 
     mode = "eth"
-    BOARD_DEFAULT = os.environ.get("WEB_ETH_BOARD", "192.168.137.2")
+    BOARD_DEFAULT = os.environ.get("WEB_ETH_BOARD", "192.168.137.3")
     BOARD_PORT = int(os.environ.get("WEB_ETH_PORT", "1"))
     LOCAL_PORT = int(os.environ.get("WEB_ETH_LOCAL_PORT", "2"))
 

@@ -58,6 +58,7 @@ module frame_read_write
     input[ADDR_BITS - 1:0]           aud_read_len,               // 字数（256 整数倍）
     input                            aud_rd_en,                  // 音频消费侧取字（下一拍有效并保持到下次取）
     output[READ_DATA_BITS - 1:0]     aud_rd_data,
+    output [9:0]                     o_aud_fifo_words,
 	/*
 	output                           wr_burst_req,               // to external memory controller,send out a burst write request
 	output[BURST_BITS - 1:0]         wr_burst_len,               // to external memory controller,data length of the burst write request, not bytes
@@ -91,6 +92,7 @@ wire[BURST_BITS - 1:0]                           wrusedw;                    // 
 wire[BURST_BITS - 1:0]                           rdusedw;                    // read used words
 wire[BURST_BITS - 1:0]                           vid_rdusedw;                // 视频 FIFO 读侧已用字（下溢诊断）
 wire[9:0]                                        aud_wrusedw;                // 音频 FIFO 写侧已用字
+wire[9:0]                                        aud_rdusedw;                // 音频 FIFO 读侧可用字
 wire                                             aud_fifo_aclr;              // 音频 FIFO 异步清
 wire                                             aud_ch_active;              // 读数据归属：1=音频
 
@@ -108,6 +110,7 @@ assign App_rd_busy = O_rd_busy | line_hold;
 assign o_mem_rd_busy = O_rd_busy;
 assign o_mem_wr_busy = O_wr_busy;
 assign o_vid_fifo_words = wrusedw;
+assign o_aud_fifo_words = aud_rdusedw;
 assign App_wr_dm = 4'b0000;
 
 //instantiate an asynchronous FIFO 
@@ -195,7 +198,7 @@ rfifo_32_32_512 aud_read_buf
 	.empty_flag					(                           ),          // Read side Empty flag
 	.full_flag					(                           ),          // Write side Full flag
 	.wrusedw                	(aud_wrusedw                ),          // Write Used Words
-	.rdusedw                	(                  			 ),          // Read Used Words
+	.rdusedw (aud_rdusedw),          // Read Used Words
 	.dout						(aud_rd_data                )
 );
 

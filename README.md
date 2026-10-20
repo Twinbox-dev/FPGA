@@ -36,7 +36,7 @@ GT911 触控板的单指相对移动、角色光标和左右横划切图已上�
 
 ## 目录
 - `board_display/` —— 当前已验证的显示板 TD 工程（`user_source` 源 + `td_project` 工程文件）
-- `board_media/` —— 第二块板卡的媒体与控制工程（建设中）；分工见 `docs/dual_board_architecture.md`
+- `board_media/` —— 媒体板正式 SD/解析/控制与图像/PCM 发送工程；分工见 `docs/dual_board_architecture.md`
 - `boardtest/` —— 板级 RTL 的 Verilator 验证台（SD 引脚级卡模型 + 帧写口 C++ 模型）
   - `make -C boardtest regress`：7 卡全量回归
   - `make -C boardtest smoke`：单卡首图/BMP/WAV 扫描快速集成检查

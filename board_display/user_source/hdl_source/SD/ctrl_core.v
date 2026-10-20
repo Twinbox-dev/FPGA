@@ -42,6 +42,9 @@ module ctrl_core #(
     // 来自传输前端：已校验的命令字节（单拍有效）
     input  [7:0]        cmd,
     input               cmd_val,
+    input               set_valid,
+    input  [7:0]        set_op,
+    input  [7:0]        set_value,
     input               touch_next,
     input               touch_prev,
     input               subtitle_consume,
@@ -57,6 +60,9 @@ module ctrl_core #(
     output [63:0]       tx_pkt,
     // 控制参数
     output reg [3:0]    vol_gain,            // 0..8：8=原始音量，0=静音
+    output [3:0]        brightness_value,
+    output [3:0]        contrast_value,
+    output [1:0]        sensitivity_value,
     output reg [3:0]    auto_period_s,       // 轮播周期（秒，1..10）
     output reg [1:0]    transition_mode,     // 0=直接切，1=交叉溶解，2=柔边替换
     output reg [1:0]    osd_mode,            // 0=off, 1=3s after adjustment, 2=always
@@ -100,6 +106,8 @@ module ctrl_core #(
     // Explicit mode commands are idempotent across UART and Ethernet retries.
     always @(posedge clk or posedge rst) begin
         if (rst) transition_mode <= 2'd0;
+        else if (set_valid && set_op == 8'd4 && set_value <= 8'd2)
+            transition_mode <= set_value[1:0];
         else if (normal_cmd_val) begin
             case (cmd)
                 8'h30: transition_mode <= 2'd0; // '0' direct cut
@@ -112,6 +120,8 @@ module ctrl_core #(
 
     always @(posedge clk or posedge rst) begin
         if (rst) osd_mode <= 2'd1;
+        else if (set_valid && set_op == 8'd5 && set_value <= 8'd2)
+            osd_mode <= set_value[1:0];
         else if (normal_cmd_val) begin
             case (cmd)
                 8'h33: osd_mode <= 2'd0; // '3' off
@@ -177,6 +187,15 @@ module ctrl_core #(
             ct_level      <= 4'd2;         // 对比度 7 档：2=原始
             bar_en_r      <= 1'b0;         // 脉动条默认关
             bar_sens      <= 2'd1;         // 灵敏度上电 = 1（shift 17）
+        end else if (set_valid) begin
+            case (set_op)
+                8'd1: vol_gain <= (set_value > 8'd8) ? 4'd8 : set_value[3:0];
+                8'd2: bri_level <= (set_value > 8'd8) ? 4'd8 : set_value[3:0];
+                8'd3: ct_level <= (set_value > 8'd6) ? 4'd6 : set_value[3:0];
+                8'd6: bar_en_r <= set_value[0];
+                8'd7: bar_sens <= (set_value > 8'd3) ? 2'd3 : set_value[1:0];
+                default: ;
+            endcase
         end else begin
             if (cmd_vup)
                 vol_gain <= (vol_gain == 4'd8) ? 4'd8 : vol_gain + 1'b1;
@@ -204,6 +223,9 @@ module ctrl_core #(
     end
 
     assign bar_en = bar_en_r;
+    assign brightness_value = bri_level;
+    assign contrast_value = ct_level;
+    assign sensitivity_value = bar_sens;
 
     // 亮度/对比度跨时钟域（sd_card_clk → video_clk）：格雷码每次步进只变 1 位，
     // 多位 2FF 同步后恒为合法旧值或新值（二进制多位直传会出现过渡混合值）

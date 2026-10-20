@@ -43,7 +43,7 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediachunk mediamux cmdarb pulsebar
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -106,12 +106,8 @@ dualboardcmd:
 	./build_dual_board_cmd/sim_dual_board_cmd
 
 # 媒体分片编解码：边界 253 字、CRC、损坏/截断包拒收。
-mediachunk:
-	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_chunk vsrc/tb_media_chunk.v ../board_media/user_source/hdl_source/media_chunk_tx.v ../board_display/user_source/hdl_source/ETH/media_chunk_rx.v -o sim_media_chunk --Mdir build_media_chunk
-	./build_media_chunk/sim_media_chunk
-
 mediamux:
-	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_tx_mux vsrc/tb_media_tx_mux.v ../board_media/user_source/hdl_source/media_tx_mux.v -o sim_media_tx_mux --Mdir build_media_tx_mux
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_tx_mux vsrc/tb_media_tx_mux.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v -o sim_media_tx_mux --Mdir build_media_tx_mux
 	./build_media_tx_mux/sim_media_tx_mux
 
 # 命令仲裁自检（cmd_arb：多传输前端 → ctrl_core 的唯一汇合点）。
@@ -211,3 +207,30 @@ gt911-unit: build_gt911_trackpad/sim_gt911_trackpad build_gt911_cursor/sim_gt911
 	./build_gt911_trackpad/sim_gt911_trackpad
 	./build_gt911_cursor/sim_gt911_cursor
 
+
+
+.PHONY: media-protocol media-writer media-control media-tx media-audio-playback media-display-path media-image-tx ctrlset
+media-protocol:
+	$(VERILATOR) --binary --timing --top-module tb_media_protocol_rx vsrc/tb_media_protocol_rx.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v --Mdir build_media_protocol -o sim_media_protocol_rx
+	./build_media_protocol/sim_media_protocol_rx
+media-writer:
+	$(VERILATOR) --binary --timing --top-module tb_media_transaction_writer vsrc/tb_media_transaction_writer.sv ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_media_writer -o sim_media_transaction_writer
+	./build_media_writer/sim_media_transaction_writer
+media-control:
+	$(VERILATOR) --binary --timing --top-module tb_media_display_control_rx vsrc/tb_media_display_control_rx.sv ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_media_control -o sim_media_display_control_rx
+	./build_media_control/sim_media_display_control_rx
+media-tx:
+	$(VERILATOR) --binary --timing --top-module tb_media_display_tx vsrc/tb_media_display_tx.sv ../board_display/user_source/hdl_source/ETH/media_display_tx.v --Mdir build_media_tx -o sim_media_display_tx
+	./build_media_tx/sim_media_display_tx
+media-audio-playback:
+	$(VERILATOR) --binary --timing --top-module tb_media_audio_playback vsrc/tb_media_audio_playback.sv ../board_display/user_source/hdl_source/SD/media_audio_playback.v --Mdir build_media_audio_playback -o sim_media_audio_playback
+	./build_media_audio_playback/sim_media_audio_playback
+media-display-path:
+	$(VERILATOR) --binary --timing --top-module tb_media_display_path vsrc/tb_media_display_path.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_media_display_path -o sim_media_display_path
+	./build_media_display_path/sim_media_display_path
+media-image-tx:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_image_tx_flags vsrc/tb_media_image_tx_flags.sv ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_media_image_tx_flags -o sim_media_image_tx_flags
+	./build_media_image_tx_flags/sim_media_image_tx_flags
+ctrlset:
+	$(VERILATOR) --binary --timing --top-module tb_ctrl_core_set vsrc/tb_ctrl_core_set.sv ../board_display/user_source/hdl_source/SD/ctrl_core.v --Mdir build_ctrlset -o sim_ctrl_core_set
+	./build_ctrlset/sim_ctrl_core_set

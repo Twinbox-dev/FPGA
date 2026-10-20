@@ -89,3 +89,13 @@ SDRAM 阻塞时整行回退及真实帧 FIFO 与行预取同时工作，共六�
 
 尚未实现的增强验证包括厂商 SDRAM IP 等价模型、完整 TMDS 接收器和可听音频
 golden；旧文档曾将这些规划写成已存在的测试结构，此处明确标为未来工作。
+
+## 双板媒体路径验证
+
+显示板与媒体板的协议级 RTL 回归：
+
+```sh
+make -C boardtest mediamux media-protocol media-writer media-control media-tx media-audio-playback media-display-path media-image-tx ctrlset uart ethfront
+```
+
+`media-display-path` 覆盖正式媒体包接收、像素/PCM SDRAM 写入、提交回包；`media-image-tx` 检查媒体发送 BEGIN 的自动轮播 bit4 与 WAV 配对 bit3。实网 PC 对端模拟及最终 TD 资源/时序报告见 [`dual_board_media_plan.md`](dual_board_media_plan.md) 和 [`media_link_protocol.md`](media_link_protocol.md)。
