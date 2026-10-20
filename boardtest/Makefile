@@ -276,6 +276,11 @@ media-subtitle-roundtrip:
 media-eth-subtitle-rx:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_eth_subtitle_rx vsrc/tb_media_eth_subtitle_rx.sv ../board_media/user_source/hdl_source/ETH/eth_front.v ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_eth_subtitle_rx -o sim_media_eth_subtitle_rx
 	./build_media_eth_subtitle_rx/sim_media_eth_subtitle_rx
+
+.PHONY: touch-command-path
+touch-command-path:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_touch_command_path vsrc/tb_touch_command_path.sv ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_media/user_source/hdl_source/ETH/eth_front.v --Mdir build_touch_command_path -o sim_touch_command_path
+	./build_touch_command_path/sim_touch_command_path
 ctrlset:
 	$(VERILATOR) --binary --timing --top-module tb_ctrl_core_set vsrc/tb_ctrl_core_set.sv ../board_display/user_source/hdl_source/SD/ctrl_core.v --Mdir build_ctrlset -o sim_ctrl_core_set
 	./build_ctrlset/sim_ctrl_core_set

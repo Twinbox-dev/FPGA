@@ -888,8 +888,9 @@ async function showFrame(m) {
       }
     }
     ctx.putImageData(img, 0, 0);
+    // D can be the first frame received in this page session; reveal its parent card too.
+    document.getElementById("frameCard").style.display = "";
     if (kind === "wr") {
-      document.getElementById("frameCard").style.display = "";
       document.getElementById("frameHint").textContent =
         `#${m.id} ${m.ts}：${words} 字（1280×${h}），seq 缺口 ${gaps}` +
         (gaps ? "；包丢失，本帧不参与像素比较" : "");

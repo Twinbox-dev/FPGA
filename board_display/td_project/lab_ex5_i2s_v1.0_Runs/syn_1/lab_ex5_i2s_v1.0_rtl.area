@@ -12,24 +12,24 @@ IO Statistics
   #inout                    0
 
 Gate Statistics
-#Basic gates            23410
-  #and                   5256
+#Basic gates            23403
+  #and                   5250
   #nand                     0
-  #or                    4451
+  #or                    4450
   #nor                      0
   #xor                    275
   #xnor                     0
   #buf                      0
-  #not                   1016
+  #not                   1014
   #bufif1                  35
-  #MX21                  2238
+  #MX21                  2239
   #FADD                     0
-  #DFF                  10139
+  #DFF                  10140
   #LATCH                    0
 #MACRO_ADD                518
 #MACRO_EQ                 331
 #MACRO_MULT                15
-#MACRO_MUX               5422
+#MACRO_MUX               5424
 #MACRO_OTHERS              42
 
 LUT Statistics
@@ -44,7 +44,7 @@ Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |13271  |10139  |906    |
+|top                                       |top                                               |13263  |10140  |906    |
 |  U3                                      |sdram                                             |104    |534    |9      |
 |    u2_ram                                |sdr_as_ram                                        |104    |534    |9      |
 |      u1_init_ref                         |sdr_init_ref                                      |24     |96     |4      |
@@ -72,7 +72,7 @@ Report Hierarchy Area:
 |  transition_line_buf_m0                  |transition_line_buf                               |0      |0      |1      |
 |  transition_line_read_m0                 |transition_line_read                              |89     |62     |13     |
 |  u_cmd_arb                               |cmd_arb                                           |4      |4      |0      |
-|  u_eth_subsys                            |eth_subsys                                        |7878   |3847   |170    |
+|  u_eth_subsys                            |eth_subsys                                        |7879   |3847   |170    |
 |    u_clk_gen                             |clk_gen_rst_gen                                   |1      |0      |1      |
 |      u_pll_0                             |pll_gen                                           |0      |0      |1      |
 |    u_eth_front                           |eth_front                                         |352    |304    |53     |
@@ -99,7 +99,7 @@ Report Hierarchy Area:
 |      ramgen_l                            |RAMB16_S9_S9                                      |0      |0      |1      |
 |      ramgen_u                            |RAMB16_S9_S9                                      |0      |0      |1      |
 |    u_tx_mux                              |media_tx_mux                                      |39     |13     |2      |
-|    u_udp_stack                           |udp_ip_protocol_stack                             |7313   |2513   |68     |
+|    u_udp_stack                           |udp_ip_protocol_stack                             |7314   |2513   |68     |
 |      arp_layer                           |arp_layer                                         |781    |1042   |16     |
 |        arp_receive_module                |arp_receive                                       |474    |320    |3      |
 |        arp_send_module                   |arp_send                                          |274    |266    |4      |
@@ -112,7 +112,7 @@ Report Hierarchy Area:
 |        ip_send_module                    |ip_send                                           |3223   |450    |20     |
 |          icmp_packet_send_module         |icmp_packet_send                                  |310    |121    |4      |
 |          ip_shift_register               |shift_top                                         |0      |160    |0      |
-|      receive_buffer                      |receive_buffer                                    |18     |18     |2      |
+|      receive_buffer                      |receive_buffer                                    |19     |18     |2      |
 |      send_buffer                         |send_buffer                                       |1856   |217    |6      |
 |      temac_data_process                  |temac_data_process                                |426    |272    |2      |
 |        mac_shift_register                |shift_top                                         |0      |144    |0      |
@@ -155,7 +155,7 @@ Report Hierarchy Area:
 |        u_w24_d1024_fifo                  |w24_d1024_fifo                                    |0      |0      |1      |
 |  u_media_audio_playback                  |media_audio_playback                              |146    |175    |14     |
 |  u_media_display_control_rx              |media_display_control_rx                          |162    |194    |39     |
-|  u_media_display_tx                      |media_display_tx                                  |274    |180    |9      |
+|  u_media_display_tx                      |media_display_tx                                  |268    |181    |9      |
 |  u_media_protocol_rx                     |media_protocol_rx                                 |809    |535    |54     |
 |  u_media_transaction_writer              |media_transaction_writer                          |235    |608    |28     |
 |    u_audio_rx_fifo                       |tap_afifo                                         |20     |80     |5      |
@@ -176,7 +176,7 @@ Report Hierarchy Area:
 |  u_subtitle_scroll                       |subtitle_scroll                                   |16     |11     |3      |
 |  u_subtitle_store                        |subtitle_store                                    |5      |30     |1      |
 |  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |5      |28     |0      |
-|  uart_link_m0                            |uart_link                                         |64     |148    |13     |
+|  uart_link_m0                            |uart_link                                         |63     |148    |13     |
 |    u_tx                                  |uart_tx_byte                                      |20     |34     |4      |
 |  video_delay_m0                          |video_delay                                       |18     |59     |0      |
 |  video_pll_m0                            |video_pll                                         |0      |0      |1      |

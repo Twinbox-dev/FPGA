@@ -57,7 +57,7 @@ module tb_media_display_tx;
         begin
             if (packet_lengths[n] != ({16'd0,len}+32'd8) || packets[n][0]!=8'haa ||
                 packets[n][1]!=8'hbb || packets[n][2]!=8'hcc || packets[n][3]!=8'hdd ||
-                ((kind==8'h41 || kind==8'h43) ?
+                ((kind==8'h01 || kind==8'h41 || kind==8'h43) ?
                     (packets[n][4]!=0 || packets[n][5]!=kind ||
                      packets[n][6]!=len[15:8] || packets[n][7]!=len[7:0]) :
                     (packets[n][4]!=kind || packets[n][5]!=0 ||
@@ -93,7 +93,7 @@ module tb_media_display_tx;
 
         @(negedge clk); local_cmd_async=8'h4e; local_cmd_toggle_async=~local_cmd_toggle_async;
         wait(packet_count==9);
-        check_header(8,8'h05,2);
+        check_header(8,8'h01,2);
         if(packets[8][8]!=8'h4e || packets[8][9]!=8'hb1) $fatal(1,"local next command");
         $display("PASS: READY/results ordering, repeated commit result, control/status, local touch command");
         $finish;

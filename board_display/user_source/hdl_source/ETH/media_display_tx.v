@@ -58,10 +58,10 @@ module media_display_tx #(
         begin
             packet[0] <= 8'haa; packet[1] <= 8'hbb;
             packet[2] <= 8'hcc; packet[3] <= 8'hdd;
-            if (kind == 8'h41 || kind == 8'h43) begin
-                // 0x0041/0x0043 are V1 display-control replies. The image
-                // stream (0x0020-0x0033) keeps its documented little-endian
-                // header, so only these two reply types use V1 byte order.
+            if (kind == 8'h01 || kind == 8'h41 || kind == 8'h43) begin
+                // 0x0001 touch commands and 0x0041/0x0043 control replies use
+                // the V1 big-endian TYPE/LEN envelope. The image stream
+                // (0x0020-0x0033) keeps its documented little-endian header.
                 packet[4] <= 8'h00; packet[5] <= kind;
                 packet[6] <= payload_len[15:8]; packet[7] <= payload_len[7:0];
             end else begin
@@ -176,7 +176,9 @@ module media_display_tx #(
                         packet[15] <= status_pending_data[63:56];
                         status_pending <= 1'b0;
                     end else if (local_cmd_pending) begin
-                        header(8'h05, 16'd2);
+                        // The media board eth_front accepts V1 type 0x0001
+                        // [CMD, ~CMD]. Private type 0x0005 is silently ignored.
+                        header(8'h01, 16'd2);
                         packet[8] <= local_cmd_latched;
                         packet[9] <= ~local_cmd_latched;
                         local_cmd_pending <= 1'b0;

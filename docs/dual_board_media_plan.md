@@ -95,7 +95,7 @@ PC 行为级对端已分别验证过媒体板发送到显示板、显示板接�
 
 | 板卡 | bit 文件 | SHA-256 | LUT / FF | BRAM9K / BRAM32K | DSP / PLL | Setup WNS / Hold WNS |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | BC027D50F8A0246180E14F531315201C452DD920B6462B476F505E55BAAB865C | 14,310 / 10,370 | 55 / 2 | 10 / 4 | −5.699 ns / −2.935 ns |
+| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | D18320D95667E626A5822A2F8A1AE9D51D510C3556B54DFD8EAA1410961EB8F6 | 14,255 / 10,364 | 55 / 2 | 10 / 4 | −5.699 ns / −2.924 ns |
 | 媒体板 | board_media/td_project/media_net_Runs/phy_1/media_net.bit | 0DE75D333FE0D0FE85A0C375B7502B75DAB86782B7247BB43689CA36568B72AB | 12,411 / 8,500 | 22 / 2 | 2 / 2 | −3.560 ns / −3.056 ns |
 
 2026-10-20 的黑边图、单步命令、按键启动和最终 RESULT 重试修复及逐图验收见 [双板实时联调记录](dual_board_live_debug_20261020.md)。

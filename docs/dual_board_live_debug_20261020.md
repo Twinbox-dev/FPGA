@@ -76,3 +76,16 @@ make media-display-path media-protocol media-image-tx media-tx
 2026-10-20 19:27（本机时间）重新确认 PC 网卡恢复后，媒体板 `192.168.137.3` ping 2/2 成功。通过网页 `D` 对当前已提交的 IMG4 重新取完整快照：frame_id `0x0013`，460,800 个 32-bit 像素字，序号缺口 0。与 `img/golden/IMG4.BMP`（571×720、24-bit）按 BMP 原始行序转换后的期望数据逐字比较，差异 0；接收数据与期望数据 SHA-256 均为 `d8610077ad27555fa977a9021ccbf80c3d9eeb98751d24ffc253a230d448cd06`。
 
 同轮重跑的定向 Verilator 用例通过：协议接收、事务写入、显示发送、填充格式、IMG0/3/4/5 BMP 解析、显示提交路径、媒体快照入口、图像包间隔、包排空、单步切图、实体按键上电防误触、控制命令及回复解析。网页快照接收/ACK 单测、Python 编译检查和前端底到顶 D 图像渲染测试也通过。
+## GT911 切图与 D 预览复核
+
+显示板原先将 GT911 手势封装成私有 UDP TYPE `0x0005`，但媒体板生产命令入口 `eth_front` 只解析 V1 TYPE `0x0001` 的 `[CMD, ~CMD]`。所以 RGMII 有发送活动，媒体板却没有产生切图命令。现在触控下一张/上一张改为 V1 大端 TYPE/LEN，包体仍是 `N/~N` 或 `P/~P`。
+
+新增 `make -C boardtest touch-command-path`：用生产 `media_display_tx` 发包，再把字节直接送入媒体板生产 `eth_front`；N 和 P 都被解析为对应命令。`media-tx` 回归也通过。
+
+PC D 快照此前已经下载到 `frameCvRb`，但预览父卡 `frameCard` 初始为隐藏；只有写侧帧事件会显示父卡。现在任何成功渲染的帧都会显示父卡。`node scripts/web_console/test_frame_view.js` 从 D-only、父卡初始隐藏的条件验证了这一点。Python 快照/ACK 测试和语法检查通过。
+
+显示板新 bit 已用 TD CLI 下载到 SRAM cable 0；SHA-256 为 `D18320D95667E626A5822A2F8A1AE9D51D510C3556B54DFD8EAA1410961EB8F6`。最终 P&R 为 14,255 LUT、10,364 FF、BRAM9K/32K 为 55/2、DSP 10，Setup/Hold WNS 为 −5.699/−2.924 ns。下载后显示板 `.2` 和媒体板 `.3` 均 ping 2/2 成功。
+
+网页服务重新启动并连接媒体板后，D 收到 460,800 字、缺口 0；该快照逐字匹配 IMG5 的 720 行显示顺序反转数据，前端按 BMP bottom-up 映射后显示正确。用户刷新页面并按 D 后确认能看到图像。
+
+用户在新显示板 bit 上向左划一次，HDMI 成功切到下一张。随后通过 V1 `S` 回读确认媒体状态为 `img=9+wav`、`media-TX=idle error=0`。GT911 触发、媒体板切图和网页 D 预览均完成板级验收。

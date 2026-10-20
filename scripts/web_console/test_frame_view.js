@@ -22,7 +22,7 @@ function canvas() {
 const wr = canvas(), rb = canvas();
 const elements = {
   frameCv: wr, frameCvRb: rb,
-  frameCard: {style: {}}, frameHint: {textContent: ''},
+  frameCard: {style: {display: 'none'}}, frameHint: {textContent: ''},
   frameHintRb: {textContent: ''}, diffHint: {textContent: ''},
   diffHintRb: {textContent: ''},
 };
@@ -72,7 +72,9 @@ vm.runInContext(html.slice(begin, end), env);
     elements.diffHintRb.textContent);
   assert(elements.diffHintRb.textContent.includes('黑边差异 2/307198'),
     elements.diffHintRb.textContent);
+  elements.frameCard.style.display = 'none'; // D may be the first frame this page receives.
   await vm.runInContext('bmpImg=null; showFrame({kind:"rb", source:"snapshot", id:1, ts:"snapshot"})', env);
+  assert.equal(elements.frameCard.style.display, '');
   const snap = rb.ctx.image.data;
   assert.equal(snap[(719 * 1280) * 4], 255); // BMP source row 0 is the bottom display row
   assert.equal(snap[(719 * 1280) * 4 + 3], 255);

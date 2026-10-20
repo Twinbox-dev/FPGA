@@ -45,23 +45,24 @@ TD 从当前 `settings.cfg` 读取本轮工程名、顶层、起止步骤、约�
 ```powershell
 $tdRoot = "C:\Program Files\Anlogic\TD_6.2.1_Engineer_6.2.168.116"
 $tdCli = Join-Path $tdRoot "bin\td_commands_prompt.exe"
-$defaultFlow = Join-Path $tdRoot "doc\scripts\DefaultFlow.tcl"
 $runRoot = "C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs"
 
 Push-Location (Join-Path $runRoot "syn_1")
-& $tdCli $defaultFlow
+cmd.exe /c run.bat
 $synExitCode = $LASTEXITCODE
 Pop-Location
 if ($synExitCode -ne 0) { throw "TD synthesis failed: $synExitCode" }
 
 Push-Location (Join-Path $runRoot "phy_1")
-& $tdCli $defaultFlow
+cmd.exe /c run.bat
 $phyExitCode = $LASTEXITCODE
 Pop-Location
 if ($phyExitCode -ne 0) { throw "TD place/route or bitgen failed: $phyExitCode" }
 ```
 
-这是主仓库 TD 工程实际调用的 CLI 与 flow；现有 `run.bat` 也调用同一个 TD flow。
+这是主仓库 TD 工程实际调用的 CLI 与 flow。工程生成的 `run.bat` 会向 CLI 输入
+`source {C:/.../DefaultFlow.tcl}` 和 `exit`；不要把 Tcl 路径直接作为 CLI 参数传入。
+直接调用 `$tdCli $defaultFlow` 会停在 `td >` 并报 `wrong # args: source ...`，并不会运行综合。
 检查结束状态时查看本轮日志、`flow.status`、最新时序/资源报告和 bit 文件时间，
 不要只看目录中是否存在旧的成功标记。
 
@@ -78,7 +79,16 @@ download -mode jtag -bit "C:/path/to/current_project.bit"
 将 Tcl 文件交给同一个 TD 命令提示程序：
 
 ```powershell
-& $tdCli "C:/path/to/program_sram.tcl"
+$programTcl = "C:/path/to/program_sram.tcl"
+$cliBatch = Join-Path $PWD "program_sram_cli.bat"
+@"
+@echo off
+(
+  echo source {$programTcl}
+  echo exit
+) | "$tdCli"
+"@ | Set-Content -LiteralPath $cliBatch -Encoding ascii
+cmd.exe /c $cliBatch
 ```
 
 传给 CLI 的 Tcl 脚本路径也应使用正斜杠。若路径来自 Windows 文件 API，先用
