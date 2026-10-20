@@ -31,6 +31,7 @@ module media_control_core #(
     input wire fat_error,
     input wire [3:0] media_state,
     output reg debug_request,
+    output reg pc_snapshot_request,
     output reg auto_on,
     output reg [3:0] auto_period_s,
     output reg [3:0] volume,
@@ -201,10 +202,10 @@ module media_control_core #(
             subtitle_checksum<=0;subtitle_offset<=0;subtitle_attempts<=0;
             tx_done_ref<=0;timeout_count<=0;request_attempts<=0;
             cmd_ack_t<=0;tx_tog<=0;tx_type<=16'h0002;tx_payload_len<=8;tx_pkt<=0;
-            debug_request<=0;auto_on<=0;auto_period_s<=1;volume<=8;brightness<=4;
+            debug_request<=0;pc_snapshot_request<=0;auto_on<=0;auto_period_s<=1;volume<=8;brightness<=4;
             contrast<=2;effect<=0;osd_mode<=1;spectrum_on<=0;spectrum_sensitivity<=1;last_control_error<=0;
         end else begin
-            debug_request<=0;uart_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
+            debug_request<=0;pc_snapshot_request<=0;uart_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
             if(local_auto_toggle)auto_on<=~auto_on;
             if(!cmd_pending)cmd_seen<=0;
             if(state==WAIT_SET_REPLY || state==WAIT_STATUS_REPLY || state==WAIT_REQ_TX) begin
@@ -262,7 +263,11 @@ module media_control_core #(
                         8'h3C:begin auto_period_s<=(auto_period_s > 4'd1) ? (auto_period_s-4'd1) : 4'd1;state<=PREP_ACK;end
                         8'h41:begin auto_on<=~auto_on;state<=PREP_ACK;end
                         8'h53:start_status_request(event_cmd);
-                        8'h44:begin debug_request<=event_from_uart;state<=PREP_ACK;end
+                        8'h44:begin
+                            debug_request<=event_from_uart;
+                            if(!event_from_uart)pc_snapshot_request<=1'b1;
+                            state<=PREP_ACK;
+                        end
                         8'h4C:begin if(!event_from_uart)cmd_ack_t<=~cmd_ack_t;state<=IDLE;end // V1 lean diagnostic: no response packet
                         8'h4E:begin image_next_pulse<=1;state<=PREP_ACK;end
                         8'h50:begin image_prev_pulse<=1;state<=PREP_ACK;end

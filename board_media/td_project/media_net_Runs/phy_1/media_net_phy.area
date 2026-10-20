@@ -12,12 +12,12 @@ IO Statistics
   #inout                    0
 
 Utilization Statistics
-#lut                    12303   out of  19600   62.77%
-#reg                     8433   out of  19600   43.03%
-#le                     13364
-  #lut only              4931   out of  13364   36.90%
-  #reg only              1061   out of  13364    7.94%
-  #lut&reg               7372   out of  13364   55.16%
+#lut                    12416   out of  19600   63.35%
+#reg                     8423   out of  19600   42.97%
+#le                     13510
+  #lut only              5087   out of  13510   37.65%
+  #reg only              1094   out of  13510    8.10%
+  #lut&reg               7329   out of  13510   54.25%
 #bram                      21   out of     64   32.81%
   #bram9k                  21
   #fifo9k                   0
@@ -63,17 +63,17 @@ Report Clock Domain Luts:
 -----------------------------------------------------------------------------------------------------------------------------------------------
   Index   |  Name                                      |  Frequency   |  LUT As Logic   |  LUT As Shifter   |  LUT As Dram   |  BRAM   |  DSP
 -----------------------------------------------------------------------------------------------------------------------------------------------
-  #1      |  clk                                       |  50MHz       |  1687           |  0                |  194           |  7      |  2
-  #2      |  u_eth/g_gig$u_rx_pll.clkc[1]              |  125MHz      |  212            |  0                |  0             |  4      |  0
-  #3      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  125MHz      |  4095           |  0                |  88            |  20     |  0
-  #4      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[3]  |  25MHz       |  1              |  0                |  0             |  0      |  0
+  #1      |  clk                                       |  50MHz       |  1697           |  0                |  194           |  7      |  2
+  #2      |  u_eth/g_gig$u_rx_pll.clkc[1]              |  125MHz      |  197            |  0                |  0             |  4      |  0
+  #3      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  125MHz      |  4168           |  0                |  88            |  20     |  0
+  #4      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  125MHz      |  2              |  0                |  0             |  0      |  0
 -----------------------------------------------------------------------------------------------------------------------------------------------
 
 Clock Resource Statistics
 Index     ClockNet                                                    Type               DriverType         Driver                                    Fanout
-#1        u_eth/u_temac_block/trimac_core/tx_mac_clk                  Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc1    3513
-#2        clk_dup_3                                                   Global             io                 clk_syn_4.di                              1560
-#3        u_eth/u_temac_block/trimac_core/rx_mac_clk                  Global             pll                u_eth/g_gig$u_rx_pll.clkc1                273
+#1        u_eth/u_temac_block/trimac_core/tx_mac_clk                  Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc1    3447
+#2        clk_dup_3                                                   Global             io                 clk_syn_4.di                              1573
+#3        u_eth/u_temac_block/trimac_core/rx_mac_clk                  Global             pll                u_eth/g_gig$u_rx_pll.clkc1                299
 #4        u_eth/clk_25_out                                            Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc3    5
 #5        eth_rgmii_rxc_dup_1                                         GeneralRouting     io                 eth_rgmii_rxc_syn_2.di                    1
 #6        u_eth/u_temac_block/u1_rgmii_interface/rgmii_txc_ddr/clk    Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc4    1
@@ -84,85 +84,81 @@ Report Hierarchy Area:
 +-----------------------------------------------------------------------------------------------------------------------+
 |Instance                                |Module                  |le      |lut     |ripple  |seq     |bram    |dsp     |
 +-----------------------------------------------------------------------------------------------------------------------+
-|top                                     |top                     |13364   |11007   |1296    |8452    |23      |2       |
-|  u_autoplay_timer                      |media_autoplay_timer    |76      |66      |10      |36      |0       |0       |
-|  u_control                             |media_control_core      |1106    |1003    |83      |491     |0       |0       |
-|    u_subtitle_cmd                      |subtitle_cmd            |159     |124     |35      |80      |0       |0       |
-|  u_eth                                 |eth_subsys              |5777    |4959    |439     |4038    |16      |0       |
-|    g_capture$u_capture                 |media_mac_capture       |271     |210     |35      |158     |1       |0       |
+|top                                     |top                     |13510   |11120   |1296    |8442    |23      |2       |
+|  u_autoplay_timer                      |media_autoplay_timer    |67      |57      |10      |36      |0       |0       |
+|  u_control                             |media_control_core      |1114    |1022    |83      |502     |0       |0       |
+|    u_subtitle_cmd                      |subtitle_cmd            |151     |114     |35      |82      |0       |0       |
+|  u_eth                                 |eth_subsys              |5782    |4932    |439     |4027    |16      |0       |
+|    g_capture$u_capture                 |media_mac_capture       |232     |162     |35      |150     |1       |0       |
 |    u_clk_gen                           |clk_gen_rst_gen         |0       |0       |0       |0       |0       |0       |
 |      u_pll_0                           |pll_gen                 |0       |0       |0       |0       |0       |0       |
-|    u_eth_front                         |eth_front               |804     |621     |147     |446     |5       |0       |
-|      u_tap2_afifo                      |tap_afifo               |96      |60      |12      |83      |2       |0       |
-|      u_tap_afifo                       |tap_afifo               |94      |68      |18      |86      |2       |0       |
-|    u_production_mux                    |media_udp_mux           |48      |32      |14      |20      |0       |0       |
-|    u_rx_fifo                           |rx_client_fifo          |277     |249     |26      |149     |4       |0       |
+|    u_eth_front                         |eth_front               |826     |647     |147     |435     |5       |0       |
+|      u_tap2_afifo                      |tap_afifo               |98      |61      |12      |82      |2       |0       |
+|      u_tap_afifo                       |tap_afifo               |95      |76      |18      |86      |2       |0       |
+|    u_production_mux                    |media_udp_mux           |54      |29      |14      |29      |0       |0       |
+|    u_rx_fifo                           |rx_client_fifo          |266     |235     |26      |150     |4       |0       |
 |      ramgen_l                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
 |      ramgen_u                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
-|    u_temac_block                       |temac_block             |804     |691     |34      |561     |0       |0       |
-|      trimac_core                       |TEMAC_CORE              |747     |644     |26      |532     |0       |0       |
-|      u1_rgmii_interface                |rgmii_interface         |9       |9       |0       |0       |0       |0       |
-|        ctl_output                      |ODDR                    |2       |2       |0       |0       |0       |0       |
+|    u_temac_block                       |temac_block             |792     |666     |34      |570     |0       |0       |
+|      trimac_core                       |TEMAC_CORE              |740     |629     |26      |539     |0       |0       |
+|      u1_rgmii_interface                |rgmii_interface         |6       |6       |0       |1       |0       |0       |
+|        ctl_output                      |ODDR                    |4       |4       |0       |1       |0       |0       |
 |        txdata_out_bus[0]$rgmii_txd_out |ODDR                    |2       |2       |0       |0       |0       |0       |
-|        txdata_out_bus[1]$rgmii_txd_out |ODDR                    |2       |2       |0       |0       |0       |0       |
-|        txdata_out_bus[2]$rgmii_txd_out |ODDR                    |2       |2       |0       |0       |0       |0       |
-|        txdata_out_bus[3]$rgmii_txd_out |ODDR                    |1       |1       |0       |0       |0       |0       |
-|      u_tx_clk_en_gen                   |tx_clk_en_gen           |40      |31      |8       |22      |0       |0       |
-|    u_tx_fifo                           |tx_client_fifo          |236     |181     |26      |185     |4       |0       |
+|      u_tx_clk_en_gen                   |tx_clk_en_gen           |37      |25      |8       |22      |0       |0       |
+|    u_tx_fifo                           |tx_client_fifo          |248     |185     |26      |190     |4       |0       |
 |      ramgen_l                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
 |      ramgen_u                          |RAMB16_S9_S9            |0       |0       |0       |0       |2       |0       |
-|    u_udp_stack                         |udp_ip_protocol_stack   |3302    |2956    |142     |2501    |2       |0       |
-|      arp_layer                         |arp_layer               |1234    |1075    |0       |1038    |0       |0       |
-|        arp_receive_module              |arp_receive             |349     |273     |0       |330     |0       |0       |
-|        arp_send_module                 |arp_send                |276     |242     |0       |255     |0       |0       |
-|        ip_mac_addr_pairs_cache_module  |ip_mac_addr_pairs_cache |533     |484     |0       |377     |0       |0       |
-|      ip_layer                          |ip_layer                |1095    |949     |101     |778     |2       |0       |
-|        icmp_echo_data_fifo             |ram_fifo                |116     |80      |11      |90      |2       |0       |
-|          u_anlogic_soft_async_fifo     |generic_async_fifo      |116     |80      |11      |90      |2       |0       |
-|        ip_receive_module               |ip_receive              |296     |246     |30      |242     |0       |0       |
-|          icmp_packet_process_module    |icmp_packet_process     |213     |168     |30      |160     |0       |0       |
-|        ip_send_module                  |ip_send                 |683     |623     |60      |446     |0       |0       |
-|          icmp_packet_send_module       |icmp_packet_send        |160     |147     |13      |113     |0       |0       |
-|          ip_shift_register             |shift_top               |155     |155     |0       |155     |0       |0       |
-|      receive_buffer                    |receive_buffer          |17      |17      |0       |17      |0       |0       |
-|      send_buffer                       |send_buffer             |276     |259     |17      |217     |0       |0       |
-|      temac_data_process                |temac_data_process      |292     |292     |0       |245     |0       |0       |
-|        mac_shift_register              |shift_top               |134     |134     |0       |134     |0       |0       |
-|        temac_shift_register            |shift_top               |26      |26      |0       |26      |0       |0       |
-|      udp_layer                         |udp_layer               |388     |364     |24      |206     |0       |0       |
-|        udp_receive_module              |udp_receive             |81      |67      |14      |52      |0       |0       |
-|        udp_send_module                 |udp_send                |307     |297     |10      |154     |0       |0       |
-|          udp_shfit_register            |shift_top               |199     |199     |0       |96      |0       |0       |
-|  u_formal_tx                           |media_image_tx          |1238    |931     |238     |571     |2       |0       |
-|  u_key_auto                            |media_button_debounce   |61      |42      |18      |28      |0       |0       |
-|  u_key_next                            |media_button_debounce   |61      |42      |18      |29      |0       |0       |
-|  u_key_prev                            |media_button_debounce   |56      |38      |18      |21      |0       |0       |
-|  u_probe                               |media_probe_bridge      |2       |2       |0       |2       |0       |0       |
-|  u_production_fifo                     |tap_afifo               |101     |77      |18      |83      |2       |0       |
-|  u_source                              |media_image_source      |3973    |3213    |444     |2296    |3       |2       |
-|    u_bmp_dec                           |bmp_dec                 |407     |326     |67      |233     |0       |0       |
-|    u_fat32                             |fat32_ro                |2158    |1767    |186     |1136    |2       |2       |
-|    u_format                            |media_frame_format      |281     |172     |88      |154     |1       |0       |
-|    u_sd_adapter                        |sd_adapter              |36      |27      |0       |36      |0       |0       |
-|    u_sd_card                           |sd_card_top             |293     |267     |24      |190     |0       |0       |
-|      sd_card_cmd_m0                    |sd_card_cmd             |133     |112     |19      |63      |0       |0       |
-|      sd_card_sec_read_write_m0         |sd_card_sec_read_write  |88      |88      |0       |80      |0       |0       |
-|      spi_master_m0                     |spi_master              |72      |67      |5       |47      |0       |0       |
-|    u_wav_reader                        |wav_reader              |446     |352     |75      |262     |0       |0       |
-|  u_uart                                |uart_link               |189     |167     |10      |139     |0       |0       |
-|    u_tx                                |uart_tx_byte            |82      |77      |5       |47      |0       |0       |
+|    u_udp_stack                         |udp_ip_protocol_stack   |3332    |2991    |142     |2487    |2       |0       |
+|      arp_layer                         |arp_layer               |1277    |1153    |0       |1038    |0       |0       |
+|        arp_receive_module              |arp_receive             |318     |287     |0       |305     |0       |0       |
+|        arp_send_module                 |arp_send                |273     |253     |0       |253     |0       |0       |
+|        ip_mac_addr_pairs_cache_module  |ip_mac_addr_pairs_cache |601     |528     |0       |398     |0       |0       |
+|      ip_layer                          |ip_layer                |1082    |914     |101     |769     |2       |0       |
+|        icmp_echo_data_fifo             |ram_fifo                |104     |68      |11      |85      |2       |0       |
+|          u_anlogic_soft_async_fifo     |generic_async_fifo      |104     |68      |11      |85      |2       |0       |
+|        ip_receive_module               |ip_receive              |294     |222     |30      |239     |0       |0       |
+|          icmp_packet_process_module    |icmp_packet_process     |210     |158     |30      |157     |0       |0       |
+|        ip_send_module                  |ip_send                 |684     |624     |60      |445     |0       |0       |
+|          icmp_packet_send_module       |icmp_packet_send        |172     |159     |13      |119     |0       |0       |
+|          ip_shift_register             |shift_top               |149     |149     |0       |149     |0       |0       |
+|      send_buffer                       |send_buffer             |261     |243     |17      |208     |0       |0       |
+|      temac_data_process                |temac_data_process      |310     |303     |0       |267     |0       |0       |
+|        mac_shift_register              |shift_top               |137     |137     |0       |137     |0       |0       |
+|        temac_shift_register            |shift_top               |30      |30      |0       |30      |0       |0       |
+|      udp_layer                         |udp_layer               |388     |364     |24      |191     |0       |0       |
+|        udp_receive_module              |udp_receive             |83      |69      |14      |48      |0       |0       |
+|        udp_send_module                 |udp_send                |305     |295     |10      |143     |0       |0       |
+|          udp_shfit_register            |shift_top               |203     |203     |0       |83      |0       |0       |
+|      receive_buffer                    |receive_buffer          |14      |14      |0       |14      |0       |0       |
+|  u_formal_tx                           |media_image_tx          |1349    |1042    |238     |577     |2       |0       |
+|  u_key_auto                            |media_button_debounce   |59      |41      |18      |26      |0       |0       |
+|  u_key_next                            |media_button_debounce   |58      |40      |18      |23      |0       |0       |
+|  u_key_prev                            |media_button_debounce   |59      |41      |18      |25      |0       |0       |
+|  u_production_fifo                     |tap_afifo               |114     |95      |18      |83      |2       |0       |
+|  u_source                              |media_image_source      |4051    |3310    |444     |2301    |3       |2       |
+|    u_bmp_dec                           |bmp_dec                 |403     |319     |67      |230     |0       |0       |
+|    u_fat32                             |fat32_ro                |2117    |1756    |186     |1134    |2       |2       |
+|    u_format                            |media_frame_format      |283     |175     |88      |151     |1       |0       |
+|    u_sd_adapter                        |sd_adapter              |38      |31      |0       |38      |0       |0       |
+|    u_sd_card                           |sd_card_top             |306     |276     |24      |180     |0       |0       |
+|      sd_card_cmd_m0                    |sd_card_cmd             |148     |129     |19      |51      |0       |0       |
+|      sd_card_sec_read_write_m0         |sd_card_sec_read_write  |93      |87      |0       |86      |0       |0       |
+|      spi_master_m0                     |spi_master              |65      |60      |5       |43      |0       |0       |
+|    u_wav_reader                        |wav_reader              |465     |350     |75      |266     |0       |0       |
+|  u_uart                                |uart_link               |169     |147     |10      |145     |0       |0       |
+|    u_tx                                |uart_tx_byte            |49      |44      |5       |37      |0       |0       |
 +-----------------------------------------------------------------------------------------------------------------------+
 
 
 DataNet Average Fanout:
 
    Index     Fanout     Nets  
-    #1          1       9909  
-    #2          2       3674  
-    #3          3       1149  
-    #4          4       716   
-    #5        5-10      1130  
-    #6        11-50     703   
-    #7       51-100      66   
+    #1          1       9799  
+    #2          2       3839  
+    #3          3       1102  
+    #4          4       703   
+    #5        5-10      1143  
+    #6        11-50     697   
+    #7       51-100      74   
     #8       101-500     5    
-  Average     3.01            
+  Average     3.03            

@@ -8,6 +8,7 @@ module tb_media_image_tx_flags;
     reg [191:0] bmp_next=0, bmp_prev=0;
     reg [7:0] cmd=0;
     reg cmd_pending=0, auto_next=0, auto_status=1;
+    reg pc_snapshot_request=0;
     reg local_next=0, local_prev=0;
     reg prepared_toggle=0, done_toggle=0;
     reg source_has_wav_async=1;
@@ -30,6 +31,7 @@ module tb_media_image_tx_flags;
     wire committed_valid, committed_wav;
     wire [7:0] error_code;
     wire [3:0] state_code;
+    wire media_to_pc;
     reg [7:0] got [0:15];
     reg [7:0] ready_bytes [0:8];
     integer i;
@@ -40,6 +42,7 @@ module tb_media_image_tx_flags;
         .mounted(mounted), .source_busy(source_busy), .source_error(source_error),
         .first_bmp(first_bmp), .bmp_next(bmp_next), .bmp_prev(bmp_prev),
         .cmd(cmd), .cmd_pending(cmd_pending), .auto_next(auto_next), .auto_status(auto_status),
+        .pc_snapshot_request(pc_snapshot_request), .media_to_pc(media_to_pc),
         .local_next(local_next), .local_prev(local_prev),
         .prepared_toggle(prepared_toggle), .done_toggle(done_toggle),
         .source_has_wav_async(source_has_wav_async),
@@ -87,9 +90,34 @@ module tb_media_image_tx_flags;
         if (got[10]!=8'd3) $fatal(1,"image index not preserved");
         if (!got[11][4] || !got[11][3] || got[11][0])
             $fatal(1,"BEGIN flags mismatch: %02x",got[11]);
+        if (media_to_pc) $fatal(1,"normal display transaction routed to PC");
         if ({got[15],got[14],got[13],got[12]}!=32'd1)
             $fatal(1,"bad frame word count");
-        $display("PASS: BEGIN carries auto-on bit4 and paired-WAV bit3");
+        $display("PASS: display BEGIN carries auto-on bit4 and paired-WAV bit3");
+
+        // Complete setup enough to make a committed image available, then
+        // request D while idle. Hierarchical state setup avoids simulating a
+        // full initial image transfer in this focused scheduler test.
+        @(negedge clk);
+        dut.state=4'd9; dut.receiver_ready=1; dut.committed_valid=1;
+        dut.committed_index=5'd4; dut.pc_snapshot_pending=0; dut.pc_snapshot_active=0;
+        old_start=start_toggle; pc_snapshot_request=1;
+        @(negedge clk); pc_snapshot_request=0;
+        wait(start_toggle!=old_start);
+        if(!media_to_pc || source_index!=5'd4)
+            $fatal(1,"PC snapshot did not select the committed image/PC route");
+        @(negedge clk); prepared_toggle=~prepared_toggle;
+        wait(tx_request);
+        @(negedge clk); tx_ack=1;
+        @(negedge clk); tx_ack=0;
+        for (i=0;i<16;i=i+1) begin
+            if (!tx_valid) $fatal(1,"PC BEGIN packet ended early at byte %0d",i);
+            got[i]=tx_data;
+            @(negedge clk);
+        end
+        if(got[10]!=8'd4 || got[11][3] || !media_to_pc)
+            $fatal(1,"PC snapshot changed image index, included audio, or lost PC route");
+        $display("PASS: D snapshot rereads committed image and suppresses paired audio");
         $finish;
     end
 

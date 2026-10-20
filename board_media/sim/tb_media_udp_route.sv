@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module tb_media_udp_route;
-    reg media_active=0;reg [15:0] control_type=16'h0002;
+    reg media_active=0,media_to_pc=0;reg [15:0] control_type=16'h0002;
     wire [31:0] destination_ip;wire [15:0] destination_port;wire display_route;
     media_udp_route dut(.*);
     task automatic expect_pc;
@@ -22,7 +22,11 @@ module tb_media_udp_route;
         control_type=16'h0041;expect_pc();
         control_type=16'h0043;expect_pc();
         control_type=16'h0002;media_active=1;expect_display();
-        $display("PASS: media/display-control traffic routes to .2; V1 ACK and D probe route to PC .1");
+        media_to_pc=1;expect_pc();
+        control_type=16'h0040;expect_display();
+        control_type=16'h0022;expect_pc();
+        media_to_pc=0;expect_display();
+        $display("PASS: display traffic, PC snapshot traffic, and control packet routes");
         $finish;
     end
 endmodule

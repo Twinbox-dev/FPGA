@@ -91,10 +91,12 @@ def read_fat32_wavs(image_path: Path) -> dict[str, bytes]:
 
 class DisplayStub:
     def __init__(self, sock: socket.socket, board_ip: str, golden_dir: Path,
-                 wav_dir: Path, frames: int, card_image: Path | None):
+                 wav_dir: Path, frames: int, card_image: Path | None,
+                 request_snapshot: bool):
         self.sock = sock
         self.board_ip = board_ip
         self.frames_goal = frames
+        self.request_snapshot = request_snapshot
         self.frames_done = 0
         self.peer: tuple[str, int] | None = None
         self.golden = {path.name: bmp_words(path) for path in sorted(golden_dir.glob("*.BMP"))}
@@ -150,6 +152,11 @@ class DisplayStub:
 
     def receive(self, data: bytes, peer: tuple[str, int]) -> None:
         if peer[0] != self.board_ip or len(data) < 8 or data[:4] != MAGIC:
+            return
+        if data[4:6] == b"\x00\x02":
+            declared = int.from_bytes(data[6:8], "big")
+            if declared == len(data) - 8 and declared == 8:
+                print(f"V1 control ACK payload={data[8:].hex()}", flush=True)
             return
         kind = int.from_bytes(data[4:6], "little")
         length = int.from_bytes(data[6:8], "little")
@@ -231,6 +238,13 @@ class DisplayStub:
                 self.send(0x24, struct.pack("<HB", frame_id, 2))
                 self.frames_done += 1
                 print("COMMIT -> RESULT=2", flush=True)
+                if self.request_snapshot and self.frames_done == 1:
+                    request = MAGIC + struct.pack(">HH", 1, 2) + b"D\xbb"
+                    self.sock.sendto(request, (self.board_ip, 1))
+                    print("PC requested a formal snapshot with V1 D", flush=True)
+        elif kind == 0x02:
+            # V1 media-board ACK to the PC's D command.
+            print(f"PC command ACK payload={payload.hex()}", flush=True)
         elif kind == 0x40 and length == 4:
             seq, op, value, _ = payload
             self.send(0x41, bytes((seq, op, 0, value)))
@@ -258,6 +272,8 @@ def main() -> None:
                     help="also compare PCM against WAV files in a raw MBR/FAT32 SD image")
     ap.add_argument("--frames", type=int, default=1)
     ap.add_argument("--timeout-seconds", type=float, default=60.0)
+    ap.add_argument("--request-snapshot", action="store_true",
+                    help="after the first commit, send V1 D and verify a formal PC snapshot")
     args = ap.parse_args()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
@@ -265,7 +281,7 @@ def main() -> None:
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 16 * 1024 * 1024)
     sock.bind((args.pc_ip, args.port))
     stub = DisplayStub(sock, args.board_ip, args.golden_dir, args.wav_dir,
-                       args.frames, args.card_image)
+                       args.frames, args.card_image, args.request_snapshot)
     print(f"PC display stub listening on {args.pc_ip}:{args.port}; waiting for media READY", flush=True)
     deadline = time.monotonic() + args.timeout_seconds
     try:

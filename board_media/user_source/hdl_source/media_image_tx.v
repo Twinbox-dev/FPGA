@@ -12,6 +12,7 @@ module media_image_tx #(
     input wire cmd_pending,
     input wire auto_next,
     input wire auto_status,
+    input wire pc_snapshot_request,
     input wire local_next,
     input wire local_prev,
     input wire prepared_toggle,done_toggle,
@@ -38,7 +39,8 @@ module media_image_tx #(
     output reg committed_valid,
     output reg committed_wav,
     output reg [7:0] error_code,
-    output wire [3:0] state_code
+    output wire [3:0] state_code,
+    output wire media_to_pc
 );
     localparam [3:0] WAIT_READY=0,WAIT_HEADER=1,LOAD_IMAGE=2,ISSUE=3,SEND=4,
         WAIT_SOURCE=5,IMAGE_END_GAP=6,WAIT_RESULT=7,WAIT_COMMIT=8,IDLE=9,
@@ -61,6 +63,7 @@ module media_image_tx #(
     reg read_pending;
     reg prepared_ref,done_ref,cmd_d;
     reg receiver_ready,boot_loaded,previous,image_has_audio,image_auto_status;
+    reg pc_snapshot_pending,pc_snapshot_active,pending_next,pending_prev;
     reg [1:0] attempts,audio_attempts;
     reg [27:0] wait_count;
 
@@ -74,8 +77,13 @@ module media_image_tx #(
     reg [1:0] audio_prep_phase;
     wire [4:0] base_index=committed_valid?committed_index:first_bmp[4:0];
     wire cmd_new=cmd_pending && !cmd_d;
-    wire request_new=(cmd_new && (cmd==8'h4e || cmd==8'h50 || cmd==8'h4d)) || auto_next || local_next || local_prev;
+    wire next_request=(cmd_new && cmd==8'h4e) || auto_next || local_next;
+    wire prev_request=(cmd_new && cmd==8'h50) || local_prev;
+    wire request_new=next_request || prev_request || (cmd_new && cmd==8'h4d);
     assign busy=state!=IDLE && state!=WAIT_READY;
+    // When this transaction is an on-demand PC snapshot, the UDP route sends
+    // its formal frame to the PC. Idle/switching traffic keeps the display route.
+    assign media_to_pc=pc_snapshot_active && state!=IDLE && state!=WAIT_READY;
     assign fifo_read=(state==LOAD_IMAGE || (state==AUDIO_LOAD && audio_prep_phase==2)) &&
                      !fifo_empty && !read_pending && loaded<target_words;
     assign tx_request=state==ISSUE;
@@ -193,7 +201,8 @@ module media_image_tx #(
             frame_id<=0;sequence_id<=0;packet_words<=0;loaded<=0;target_words<=0;
             total_words<=0;sum<=0;audio_sum<=0;byte_index<=0;read_pending<=0;word_hold<=0;
             prepared_ref<=0;done_ref<=0;cmd_d<=0;receiver_ready<=0;boot_loaded<=0;previous<=0;
-            image_auto_status<=0;
+            image_auto_status<=0;pc_snapshot_pending<=0;pc_snapshot_active<=0;
+            pending_next<=0;pending_prev<=0;
             attempts<=0;audio_attempts<=0;wait_count<=0;start_toggle<=0;source_index<=0;
             audio_start_toggle<=0;audio_file_index<=0;image_has_audio<=0;
             committed_index<=0;committed_valid<=0;committed_wav<=0;error_code<=0;
@@ -205,6 +214,9 @@ module media_image_tx #(
         end else begin
             cmd_d<=cmd_pending;
             read_pending<=fifo_read;
+            if(pc_snapshot_request)pc_snapshot_pending<=1'b1;
+            if(next_request)pending_next<=1'b1;
+            if(prev_request)pending_prev<=1'b1;
             prepared_sync<={prepared_sync[1:0],prepared_toggle};
             done_sync<={done_sync[1:0],done_toggle};
             audio_prepared_sync<={audio_prepared_sync[1:0],audio_prepared_toggle};
@@ -220,24 +232,37 @@ module media_image_tx #(
                     if(mounted && receiver_ready && !source_busy && !boot_loaded) begin
                         source_index<=first_bmp[4:0];frame_id<=frame_id+1'b1;previous<=0;
                         image_auto_status<=auto_status;
+                        pc_snapshot_active<=0;
                         start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
                         attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;state<=WAIT_HEADER;
                     end else if(!receiver_ready && wait_count>=CLK_HZ/2) begin
                         kind<=READY;tx_length<=8;return_state<=WAIT_READY;state<=ISSUE;wait_count<=0;
                     end else wait_count<=wait_count+1'b1;
                 end
-                IDLE: if(request_new && receiver_ready && !source_busy) begin
-                    if(auto_next || local_next || (cmd_new && cmd==8'h4e)) source_index<=bmp_next[6*base_index+:6];
-                    else if(local_prev || (cmd_new && cmd==8'h50)) source_index<=bmp_prev[6*base_index+:6];
-                    else source_index<=base_index;
-                    previous<=local_prev || (cmd_new && cmd==8'h50);frame_id<=frame_id+1'b1;
-                    image_auto_status<=auto_status;
-                    start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
-                    attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;error_code<=0;state<=WAIT_HEADER;
+                IDLE: begin
+                    if((request_new || pending_next || pending_prev) && receiver_ready && !source_busy) begin
+                        if(pending_next || next_request) source_index<=bmp_next[6*base_index+:6];
+                        else if(pending_prev || prev_request) source_index<=bmp_prev[6*base_index+:6];
+                        else source_index<=base_index;
+                        previous<=!(pending_next || next_request) && (pending_prev || prev_request);
+                        frame_id<=frame_id+1'b1;
+                        image_auto_status<=auto_status;pc_snapshot_active<=0;
+                        pending_next<=0;pending_prev<=0;
+                        start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
+                        attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;error_code<=0;state<=WAIT_HEADER;
+                    end else if((pc_snapshot_pending || pc_snapshot_request) && receiver_ready &&
+                                !source_busy && committed_valid) begin
+                        source_index<=base_index;previous<=0;frame_id<=frame_id+1'b1;
+                        image_auto_status<=auto_status;pc_snapshot_active<=1;
+                        pc_snapshot_pending<=0;
+                        start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
+                        attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;error_code<=0;state<=WAIT_HEADER;
+                    end
                 end
                 WAIT_HEADER: begin
                     if(prepared_sync[2]!=prepared_ref) begin
-                        image_has_audio<=has_wav_sync[1];audio_file_index<=wav_index_sync1;
+                        image_has_audio<=pc_snapshot_active ? 1'b0 : has_wav_sync[1];
+                        audio_file_index<=wav_index_sync1;
                         kind<=BEGIN_IMAGE;tx_length<=16;return_state<=LOAD_IMAGE;
                         loaded<=0;target_words<=FRAME_WORDS>253?253:FRAME_WORDS;state<=ISSUE;wait_count<=0;
                     end else if(done_sync[2]!=done_ref && source_error) begin error_code<=1;state<=IDLE;end
@@ -285,7 +310,10 @@ module media_image_tx #(
                 WAIT_RESULT: begin
                     if(result_pulse && rx_frame==frame_id) begin
                         if(rx_result==2) begin
-                            committed_index<=source_index;committed_valid<=1;committed_wav<=image_has_audio;boot_loaded<=1;state<=IDLE;wait_count<=0;
+                            if(!pc_snapshot_active) begin
+                                committed_index<=source_index;committed_valid<=1;committed_wav<=image_has_audio;boot_loaded<=1;
+                            end
+                            pc_snapshot_active<=0;state<=IDLE;wait_count<=0;
                         end else if(rx_result==0) begin
                             wait_count<=0;
                             audio_attempts<=1;audio_total_samples<=0;audio_samples_remaining<=0;
@@ -310,7 +338,10 @@ module media_image_tx #(
                 end
                 WAIT_COMMIT: begin
                     if(result_pulse && rx_frame==frame_id && rx_result==2) begin
-                        committed_index<=source_index;committed_valid<=1;committed_wav<=image_has_audio;boot_loaded<=1;state<=IDLE;wait_count<=0;
+                        if(!pc_snapshot_active) begin
+                            committed_index<=source_index;committed_valid<=1;committed_wav<=image_has_audio;boot_loaded<=1;
+                        end
+                        pc_snapshot_active<=0;state<=IDLE;wait_count<=0;
                     end else if(wait_count>=CLK_HZ*2-1) begin error_code<=4;state<=IDLE;end
                     else wait_count<=wait_count+1'b1;
                 end

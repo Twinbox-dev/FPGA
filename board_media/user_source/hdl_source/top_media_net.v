@@ -18,7 +18,7 @@ module top (
     wire sd_init_done,fat_mounted,fat_error,source_busy,source_error;
     wire [5:0] file_count,bmp_count,wav_count,first_bmp;
     wire [191:0] bmp_next,bmp_prev;wire [7:0] fat_state;
-    wire debug_req,unused_next,unused_prev,tap_val,tap_end;wire [31:0] tap_word;
+    wire tap_val,tap_end;wire [31:0] tap_word;
     wire prepared_toggle,done_toggle,frame_clear;
     wire audio_prepared_toggle,audio_done_toggle,audio_source_error,source_has_wav;
     wire [31:0] audio_sample_count;
@@ -29,11 +29,11 @@ module top (
     wire [9:0] production_available;
     reg [1:0] audio_pause_sync;
     wire start_toggle;wire [4:0] source_index,committed_index;
-    wire tx_busy,committed_valid;wire [7:0] tx_error,source_status;wire [3:0] tx_state;
+    wire tx_busy,committed_valid;wire [7:0] tx_error;wire [3:0] tx_state;
     wire committed_wav;reg [7:0] fat_state_s0,fat_state_s1;reg fat_error_s0,fat_error_s1;
     wire auto_on;wire [3:0] auto_period_s,auto_next_pulse;
     wire uart_cmd_valid;wire [7:0] uart_cmd;wire uart_tx_ready,uart_tx_req;wire [63:0] uart_tx_pkt;
-    wire control_debug_request;reg [1:0] control_debug_sync;
+    wire control_debug_request,pc_snapshot_request,media_to_pc;reg [1:0] control_debug_sync;
     wire local_next_pulse,local_prev_pulse;
     wire key_next_press,key_auto_press,key_prev_press;
     reg key_next_toggle,key_auto_toggle,key_prev_toggle;
@@ -42,7 +42,6 @@ module top (
     wire key_next_app_pulse=key_next_cdc[2]^key_next_cdc_d;
     wire key_auto_app_pulse=key_auto_cdc[2]^key_auto_cdc_d;
     wire key_prev_app_pulse=key_prev_cdc[2]^key_prev_cdc_d;
-    reg [23:0] diag_s0,diag_s1;
     media_button_debounce u_key_next(.clk(clk),.rst(boot_rst),.button_n(key1),.press_pulse(key_next_press));
     media_button_debounce u_key_auto(.clk(clk),.rst(boot_rst),.button_n(key2),.press_pulse(key_auto_press));
     media_button_debounce u_key_prev(.clk(clk),.rst(boot_rst),.button_n(key3),.press_pulse(key_prev_press));
@@ -68,8 +67,6 @@ module top (
         if(boot_rst) audio_pause_sync<=0;
         else audio_pause_sync<={audio_pause_sync[0],production_available>=10'd256};
     end
-    always @(posedge clk) if(boot_rst)begin diag_s0<=0;diag_s1<=0;end
-    else begin diag_s0<={source_status,tx_error,media_stack_status,tx_state};diag_s1<=diag_s0;end
     reg [2:0] start_sync;
     reg [4:0] source_index_s0,source_index_s1,committed_s0,committed_s1;
     reg [1:0] committed_valid_sync,tx_busy_sync;
@@ -94,7 +91,7 @@ module top (
         if(boot_rst)control_debug_sync<=0;
         else control_debug_sync<={control_debug_sync[0],control_debug_request};
     end
-    wire debug_launch=(debug_req || control_debug_sync[1]) && !tx_busy_sync[1] && !formal_start;
+    wire debug_launch=control_debug_sync[1] && !tx_busy_sync[1] && !formal_start;
     wire [4:0] file_index=debug_launch ? (committed_valid_sync[1]?committed_s1:first_bmp[4:0]) : source_index_s1;
     media_image_source u_source (
         .clk(clk),.rst(boot_rst),.start(formal_start),.debug_start(debug_launch),.abort(1'b0),.file_index(file_index),
@@ -109,7 +106,7 @@ module top (
         .audio_source_error(audio_source_error),.paired_wav_valid(source_has_wav),
         .paired_wav_index(source_wav_index),.frame_clear(frame_clear),
         .image_width(image_width),.image_height(image_height),.frame_data(frame_data),.frame_valid(frame_valid),
-        .frame_ready(frame_ready),.source_status(source_status),.tap_val(tap_val),.tap_end(tap_end),.tap_word(tap_word)
+        .frame_ready(frame_ready),.source_status(),.tap_val(tap_val),.tap_end(tap_end),.tap_word(tap_word)
     );
     reg [1:0] clear_sync,busy_sync,error_sync,prepared_sync,done_sync;
     reg [2:0] mounted_sync;
@@ -143,6 +140,7 @@ module top (
     media_image_tx u_formal_tx (
         .clk(app_clk),.rst(app_rst),.mounted(mounted_sync[2]),.source_busy(busy_sync[1]),.source_error(error_sync[1]),
         .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.cmd(cmd),.cmd_pending(cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
+        .pc_snapshot_request(pc_snapshot_request),.media_to_pc(media_to_pc),
         .local_next(local_next_pulse || key_next_app_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse),
         .prepared_toggle(prepared_sync[1]),.done_toggle(done_sync[1]),.source_has_wav_async(source_has_wav),
         .source_wav_index_async(source_wav_index),.audio_prepared_toggle(audio_prepared_toggle),
@@ -168,27 +166,23 @@ module top (
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),
         .first_bmp(first_s1),.committed_index(committed_s1),.committed_valid(committed_valid_sync[1]),
         .paired_wav(committed_wav),.fat_state(fat_state_s1),.fat_error(fat_error_s1),.media_state(tx_state),
-        .debug_request(control_debug_request),.auto_on(auto_on),.auto_period_s(auto_period_s),.volume(),.brightness(),.contrast(),
+        .debug_request(control_debug_request),.pc_snapshot_request(pc_snapshot_request),
+        .auto_on(auto_on),.auto_period_s(auto_period_s),.volume(),.brightness(),.contrast(),
         .effect(),.osd_mode(),.spectrum_on(),.spectrum_sensitivity(),.last_control_error()
     );
-    media_probe_bridge #(.DIAG_ENABLE(0)) u_probe (
-        .media_status(diag_s1),
-        .clk(clk),.rst(boot_rst),.cmd(cmd),.cmd_pending(cmd_pending),
-        .sd_init_done(sd_init_done),.fat_mounted(fat_mounted),.fat_error(fat_error),
-        .file_count(file_count),.bmp_count(bmp_count),.wav_count(wav_count),.first_bmp(first_bmp),.fat_state(fat_state),
-        .bmp_busy(source_busy || tx_busy_sync[1]),.bmp_req(debug_req),.bmp_next_req(unused_next),.bmp_prev_req(unused_prev),
-        .cmd_ack_t(),.tx_tog(),.tx_pkt()
-    );
+    // Ethernet D requests use the formal on-demand snapshot transaction.
+    // UART D retains the raw source probe for bench diagnostics.
     eth_subsys #(.LOCAL_IP(32'hc0a88903),.LOCAL_MAC(48'h020000000003),.DST_IP(32'hc0a88901),.DISPLAY_IP(32'hc0a88902),.PC_UDP_PORT(16'h0002),.DISPLAY_UDP_PORT(16'h0001)) u_eth (
         .clk_50(clk),.rst_all(boot_rst),.phy1_rgmii_rx_clk(eth_rgmii_rxc),.phy1_rgmii_rx_ctl(eth_rgmii_rx_ctl),
         .phy1_rgmii_rx_data(eth_rgmii_rxd),.phy1_rgmii_tx_clk(eth_rgmii_txc),.phy1_rgmii_tx_ctl(eth_rgmii_tx_ctl),
         .phy1_rgmii_tx_data(eth_rgmii_txd),.phy_reset(eth_phy_reset),
         .app_clk_out(app_clk),.app_reset_out(app_rst),.app_rx_byte(rx_byte),.app_rx_valid(rx_valid),.media_stack_status(media_stack_status),
         .media_request(media_request),.media_valid(media_valid),.media_data(media_data),.media_length(media_length),.media_ack(media_ack),
+        .media_to_pc(media_to_pc),
         .cmd(cmd),.cmd_pending(cmd_pending),.cmd_ack_t(cmd_ack_t),.tx_tog(tx_tog),
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),.tx_done_tog(tx_done_tog),
         .sys_rst(boot_rst),.tap_clk(clk),.tap_val(tap_val),.tap_word(tap_word),.tap_end(tap_end),
         .tap2_clk(clk),.tap2_val(1'b0),.tap2_word(32'd0),.tap2_end(1'b0)
     );
-    wire _unused=&{1'b0,image_width,image_height,production_available,tx_error,tx_done_tog,auto_next_pulse,control_debug_request,key_next_press,key_auto_press,key_prev_press};
+    wire _unused=&{1'b0,image_width,image_height,production_available,media_stack_status,tx_error,tx_done_tog,auto_next_pulse,key_next_press,key_auto_press,key_prev_press};
 endmodule

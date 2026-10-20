@@ -27,6 +27,7 @@ web_console/app.py — 板卡控制 Web 控制台（串口 / 以太网双控）
 import json
 import os
 import queue
+import struct
 import sys
 import threading
 import time
@@ -527,6 +528,7 @@ class EthTransport:
         self.lock = threading.Lock()
         # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
         self.str = {"wr": self._new_sess(), "rb": self._new_sess()}
+        self.snapshot = None
 
     @staticmethod
     def _new_sess():
@@ -659,12 +661,109 @@ class EthTransport:
                 slot["gaps"] = st["gaps"]
                 slot["words"] = words
                 slot["ts"] = ts
+                slot["stride"] = 3 if typ == "rb" else 1
                 fid = slot["id"]
             self.broadcast({"type": "frame", "kind": typ, "id": fid,
                             "words": words, "h": h,
                             "gaps": st["gaps"], "ts": ts})
 
     # ---- 读线程：UDP 报文 → 剥 8 字节头 → 解码包 → 广播 ----
+    def _send_snapshot_reply(self, kind: int, payload: bytes):
+        sock = self.sock
+        if sock is None:
+            return
+        packet = self._hdr(kind & 0xFF, (kind >> 8) & 0xFF,
+                           len(payload) & 0xFF, (len(payload) >> 8) & 0xFF) + payload
+        try:
+            with self.send_lock:
+                sock.sendto(packet, (self.board, self.BOARD_PORT))
+        except Exception as exc:
+            self.broadcast({"type": "pkt", "kind": "dump",
+                            "text": f"PC snapshot reply failed: {exc}",
+                            "ts": time.strftime("%H:%M:%S")})
+
+    def _on_snapshot(self, data: bytes):
+        """Receive a media-side D snapshot and complete its image/audio replies."""
+        kind = int.from_bytes(data[4:6], "little")
+        length = int.from_bytes(data[6:8], "little")
+        payload = data[8:]
+        if len(payload) != length:
+            return
+        if kind == 0x21 and length == 8:
+            self.snapshot = {
+                "frame": int.from_bytes(payload[:2], "little"),
+                "total": int.from_bytes(payload[4:8], "little"),
+                "words": bytearray(), "next_seq": 0, "gaps": 0,
+                "image_ok": False, "audio_frame": None, "audio_count": 0,
+                "audio": bytearray(), "audio_next_seq": 0, "audio_gaps": 0,
+            }
+            return
+        state = self.snapshot
+        if state is None:
+            return
+        frame_id = state["frame"]
+        if kind == 0x22 and length >= 8:
+            got_frame = int.from_bytes(payload[:2], "little")
+            seq = int.from_bytes(payload[2:4], "little")
+            if got_frame != frame_id or seq != state["next_seq"] or (length - 4) % 4:
+                state["gaps"] += max(1, (seq - state["next_seq"]) & 0xFFFF)
+            state["next_seq"] = (seq + 1) & 0xFFFF
+            state["words"].extend(payload[4:])
+            return
+        if kind == 0x23 and length == 8:
+            got_frame = int.from_bytes(payload[:2], "little")
+            checksum = int.from_bytes(payload[2:6], "little")
+            words = state["words"]
+            actual_sum = sum(word[0] for word in struct.iter_unpack("<I", words)) & 0xFFFFFFFF
+            good = (got_frame == frame_id and state["total"] == 460800 and
+                    len(words) == 460800 * 4 and state["gaps"] == 0 and
+                    actual_sum == checksum)
+            state["image_ok"] = good
+            self._send_snapshot_reply(0x24, struct.pack("<HB", frame_id, 0 if good else 1))
+            if not good:
+                self.broadcast({"type": "pkt", "kind": "dump",
+                                "text": f"PC snapshot {frame_id:04X} rejected: "
+                                        f"words={len(words)//4} gaps={state['gaps']} "
+                                        f"sum={'ok' if actual_sum == checksum else 'bad'}",
+                                "ts": time.strftime("%H:%M:%S")})
+            return
+        if kind == 0x30 and length == 8:
+            state["audio_frame"] = int.from_bytes(payload[:2], "little")
+            state["audio_count"] = int.from_bytes(payload[2:6], "little")
+            state["audio"] = bytearray()
+            state["audio_next_seq"] = 0
+            state["audio_gaps"] = 0
+            return
+        if kind == 0x31 and length >= 4:
+            audio_id = int.from_bytes(payload[:2], "little")
+            seq = int.from_bytes(payload[2:4], "little")
+            if audio_id != state["audio_frame"] or seq != state["audio_next_seq"]:
+                state["audio_gaps"] += max(1, (seq - state["audio_next_seq"]) & 0xFFFF)
+            state["audio_next_seq"] = (seq + 1) & 0xFFFF
+            state["audio"].extend(payload[4:])
+            return
+        if kind == 0x32 and length == 8:
+            audio_id = int.from_bytes(payload[:2], "little")
+            checksum = int.from_bytes(payload[2:6], "little")
+            audio = state["audio"]
+            good = (audio_id == frame_id and state["audio_gaps"] == 0 and
+                    len(audio) == state["audio_count"] and (sum(audio) & 0xFFFFFFFF) == checksum)
+            self._send_snapshot_reply(0x33, struct.pack("<HB", frame_id, 0 if good else 1))
+            if good and state["image_ok"]:
+                self._send_snapshot_reply(0x24, struct.pack("<HB", frame_id, 2))
+                ts = time.strftime("%H:%M:%S")
+                with ETH_FRAME_LOCK:
+                    ETH_FRAME_RB["id"] += 1
+                    ETH_FRAME_RB["data"] = bytes(state["words"])
+                    ETH_FRAME_RB["gaps"] = 0
+                    ETH_FRAME_RB["words"] = len(state["words"]) // 4
+                    ETH_FRAME_RB["ts"] = ts
+                    ETH_FRAME_RB["stride"] = 1
+                    fid = ETH_FRAME_RB["id"]
+                self.broadcast({"type": "frame", "kind": "rb", "id": fid,
+                                "words": 460800, "h": 720, "gaps": 0, "ts": ts})
+            self.snapshot = None
+
     def _reader(self):
         buf = bytearray(2048)
         view = memoryview(buf)
@@ -675,6 +774,10 @@ class EthTransport:
             except Exception:
                 self._stream_poll()            # 超时窗口顺带查会话收口
                 continue                       # 超时/关闭 → 回到 while 判据
+            if (n >= 8 and data[:4] == b"\xAA\xBB\xCC\xDD" and
+                    data[5] == 0 and data[4] in (0x21, 0x22, 0x23, 0x30, 0x31, 0x32)):
+                self._on_snapshot(bytes(data[:n]))
+                continue
             if (n >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
                     and data[4] in (0x03, 0x04) and data[5] == 0x00):
                 self._on_stream(data)          # 流包（03=写侧/04=读回）：重组不进日志
@@ -712,8 +815,8 @@ eth_link = EthTransport(SUBS)
 #（一帧 ~1.8MB，不适合塞 SSE 文本流）。
 # 字序与 RTL 线序一致：每字 4 字节 LSB 先（=小端），字低 16bit=左像素 RGB565。
 # ---------------------------------------------------------------------------
-ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
-ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
+ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
+ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 3}
 ETH_FRAME_LOCK = threading.Lock()
 
 
@@ -859,10 +962,11 @@ def api_frame():
     with ETH_FRAME_LOCK:
         data = slot["data"]
         gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
+        stride = slot.get("stride", 3 if is_rb else 1)
     resp = Response(data, mimetype="application/octet-stream")
     resp.headers["X-Frame-Words"] = str(words)
     resp.headers["X-Frame-Gaps"] = str(gaps)
-    resp.headers["X-Frame-Stride"] = "3" if is_rb else "1"
+    resp.headers["X-Frame-Stride"] = str(stride)
     resp.headers["X-Frame-Ts"] = ts
     resp.headers["Cache-Control"] = "no-store"
     return resp

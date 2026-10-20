@@ -18,14 +18,6 @@
                     <Attr Name="CompileOrder" Val="1"/>
                 </FileInfo>
             </File>
-            <File Path="../user_source/hdl_source/media_probe_bridge.v">
-                <FileInfo>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&amp;R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="2"/>
-                </FileInfo>
-            </File>
             <File Path="../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>

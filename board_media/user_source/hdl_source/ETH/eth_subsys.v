@@ -40,6 +40,7 @@ module eth_subsys(
     input wire [7:0]   media_data,
     input wire [15:0]  media_length,
     output wire        media_ack,
+    input wire         media_to_pc,
 
     // 应用层（跨域握手，见头注释）
     output wire [7:0]  cmd,
@@ -190,7 +191,7 @@ module eth_subsys(
         .PC_IP(DST_IP),.DISPLAY_IP(DISPLAY_IP),
         .PC_PORT(PC_UDP_PORT),.DISPLAY_PORT(DISPLAY_UDP_PORT)
     ) u_media_udp_route(
-        .media_active(media_in_flight),.control_type(tx_type),
+        .media_active(media_in_flight),.media_to_pc(media_to_pc),.control_type(tx_type),
         .destination_ip(tx_dst_ip),.destination_port(tx_dst_port),.display_route(display_route)
     );
     eth_front u_eth_front (

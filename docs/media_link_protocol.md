@@ -83,33 +83,30 @@ PC 到媒体板的 V1 字幕仍用 T 字节流：0x54、length XOR 0x80、各 AS
 
 ## 调试探针与发送完成
 
-D 的 type 0x0003 原始 BMP 调试流独立于正式媒体类型；显示侧 type 0x0004 读回也不作为正式帧。媒体 UDP mux 按整包仲裁。
+PC 以太网 D 命令请求“当前已提交图像”的正式快照：媒体板从 SD 重读该 BMP，经 `media_frame_format` 补黑边后，将 `0x0021–0x0023` 图像事务发给 PC `.1:2`。PC 校验后返回图像 RESULT；媒体板再发零样本静音事务 `0x0030/0x0032`，PC 返回音频 RESULT 和最终 RESULT=2。快照不写显示板 SDRAM，也不改变显示板当前提交图像。普通下一张/上一张/自动切换优先，PC 快照在媒体链路空闲后处理。
 
-eth_front 的 tx_done_tog 在控制包全部通过 UDP mux 且 mux 再次 ready 后才翻转；mux 空闲时等旧 stack_ack 拉低。核心收到该完成沿后才启动同一事务的下一包。此握手使 A5/5A 和字幕多包事务都可靠串行。
+UART D 保留原始 BMP 调试 tap `type=0x0003`；显示板 SDRAM 读回 `type=0x0004` 仍是独立的调试探针。两种探针都不参与正式图像提交。
+
+eth_front 的发送完成 toggle 在 UDP mux 返回 ready 后回传；mux 仲裁时先等 `stack_ack` 再发送，确保 PC V1 ACK/状态、显示控制请求和图像流之间不会互相占用一个数据包。
+
 ## PC 媒体模拟器对接显示板
 
-`scripts/pc_display_media_probe.py` 可临时替代媒体板，向显示板发送正式 `0x20–0x33` 图像/PCM 包，并在 PC 侧检查 RESULT、控制回包与 SDRAM D 探针采样。测试 bit 的显示板参数为 `MEDIA_PEER_IP=192.168.137.1`、`MEDIA_PEER_PORT=2`、`PC_RETURN_PORT=3`；PC 接收 formal replies 于 `.1:2`、D 读回于 `.1:3`。发送 IMG1/WAV、无 WAV 的 IMG3 的示例：
+`scripts/pc_display_media_probe.py` 临时扮演媒体板，向显示板发送正式 `0x20–0x33` 图像/PCM 事务，在 PC 侧检查 RESULT、控制回包与 SDRAM D 读回。测试显示板参数为 `MEDIA_PEER_IP=192.168.137.1`、`MEDIA_PEER_PORT=2`、`PC_RETURN_PORT=3`；PC 收 formal replies 于 `.1:2`，D 读回于 `.1:3`。
 
 ```powershell
 python scripts/pc_display_media_probe.py --bmp img/golden/IMG1.BMP --wav img/wav/IMG001.WAV
 python scripts/pc_display_media_probe.py --bmp img/golden/IMG3.BMP --wav img/wav/no-paired-file.wav --frame-id 0x2402 --capture-prefix boardtest/captures/display_pc_probe_nowav
 ```
 
-PC 单板验证完成后，显示板正式双板参数须恢复为 `MEDIA_PEER_IP=192.168.137.3`、`MEDIA_PEER_PORT=1`、`PC_RETURN_PORT=2`。正式网络地址与端口见本文前表。
+PC 显示板模拟通过后，正式双板参数应恢复为 `MEDIA_PEER_IP=192.168.137.3`、`MEDIA_PEER_PORT=1`、`PC_RETURN_PORT=2`。
+
 ## PC 模拟显示端测试媒体板
 
-`scripts/pc_media_display_stub.py` 在单板验收时模拟显示端，接收媒体板发送到 PC UDP 端口。测试媒体 bit 将 `DISPLAY_IP` 临时设为 `.1`、`DISPLAY_UDP_PORT` 设为 `2`；PC stub 在 `.1:2` 监听，响应 READY，并在图像/PCM 完成后回复 RESULT。
+`scripts/pc_media_display_stub.py` 临时扮演显示端，并可在媒体板首次提交后自动发 V1 D，检查正式 PC 快照是否走完第二个事务。测试媒体 bit 将 `DISPLAY_IP` 临时设为 `.1`、`DISPLAY_UDP_PORT` 设为 `2`；PC stub 绑定 `.1:2`，接收 READY/图像/PCM 并返回结果。
 
 ```powershell
 python scripts/pc_media_display_stub.py --card-image img/card_user_real.img --frames 1
+python scripts/pc_media_display_stub.py --card-image img/card_user_real.img --frames 2 --request-snapshot
 ```
 
-`--card-image` 从 raw MBR/FAT32 卡镜像读取 WAV 并比较 PCM 字节。IMG1 实测发送 460,800 个图像字及 720,000 个 PCM 样本，与 IMG1.BMP 和卡镜像中的 IMG1.WAV 完全一致，事务以 RESULT=2 提交。测试后必须将媒体板正式目标恢复为显示板 `.2:1`。
-
-D 命令继续使用 V1 原始 BMP 调试流 `type=0x0003`，可单独抓取并对比：
-
-```powershell
-python scripts/pc_media_d_probe.py --board-ip 192.168.137.3 --pc-ip 192.168.137.1
-```
-
-实测收到 1,822 个包、460,800 个字、序号缺口 0，重组像素与 IMG1 原始 RGB565 完全一致。D 是媒体侧诊断通路，不替代显示板 HDMI 上的图像提交。
+`--card-image` 从 raw MBR/FAT32 卡镜像读取 WAV 并逐字节比较。IMG1 的 460,800 个图像字和 720,000 个 PCM 样本已与 BMP/WAV golden 完全匹配；第二条命令再验证正式 D 快照。测试后恢复媒体板目标 `.2:1` 并重新综合 bit。

@@ -99,3 +99,4 @@ make -C boardtest mediamux media-protocol media-writer media-control media-tx me
 ```
 
 `media-display-path` 覆盖正式媒体包接收、像素/PCM SDRAM 写入、提交回包；`media-image-tx` 检查媒体发送 BEGIN 的自动轮播 bit4 与 WAV 配对 bit3。实网 PC 对端模拟及最终 TD 资源/时序报告见 [`dual_board_media_plan.md`](dual_board_media_plan.md) 和 [`media_link_protocol.md`](media_link_protocol.md)。
+PC WebTransport 快照接收回包单测：python scripts/web_console/test_media_snapshot.py。
