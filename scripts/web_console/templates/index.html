@@ -274,7 +274,6 @@
     background:rgba(255,255,255,.02); border-bottom:1px solid var(--panel-line);
   }
   table.cmd tr.sep:hover td { background:rgba(255,255,255,.02); color:var(--faint); }
-  .ethcard { border-style:dashed; opacity:.8; }
   code { font-family:var(--mono); background:rgba(255,255,255,.05);
          padding:1px 5px; border-radius:4px; font-size:11.5px; }
 
@@ -404,21 +403,7 @@
       </details>
     </div>
 
-    <div class="card ethcard" id="ethCard" style="display:none">
-      <h2>以太网连接</h2>
-      <div class="conn">
-        <span class="hint">媒体板固定地址 <b>192.168.137.3:1</b></span>
-        <button class="primary" id="btnEthConn">连接</button>
-        <button class="ghost" id="btnEthDisc" disabled>断开</button>
-      </div>
-      <div class="hint" style="margin-top:12px">
-        命令发媒体板 <b>192.168.137.3:1</b>，显示板回包发本机 <b>192.168.137.1:2</b>——
-        本机网卡需有 <b>192.168.137.1/24</b>（子网掩码 255.255.255.0），网线直连即可。<br>
-        首次连接 Windows 防火墙会询问是否放行 python 监听 UDP 端口 2，选「允许」。<br>
-        命令帧与串口同款 <code>[CMD,~CMD]</code>，UDP 载荷 = 8 字节应用头 + 2 字节命令。
-      </div>
-      <div class="note">先点「连接」再发命令；板卡侧 UDP 无连接，未收到 ACK 先查网线与 IP 网段。</div>
-    </div>
+
   </div>
 
   <!-- 右列 -->
@@ -537,7 +522,6 @@ function setMode(m, announce=true) {
   document.getElementById("mSerial").className = (m === "serial") ? "on" : "";
   document.getElementById("mEth").className = (m === "eth") ? "on" : "";
   slide();
-  document.getElementById("ethCard").style.display = (m === "eth") ? "" : "none";
   document.getElementById("serialCard").style.display = (m === "eth") ? "none" : "";
   document.getElementById("ctlHint").innerHTML = (m === "eth")
     ? "按键即发（走以太网 UDP）；板卡每条命令都会回 <b>ACK</b>，<b>S</b> 回系统全景状态包。"
@@ -683,21 +667,12 @@ async function conn() {
   else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
 }
 
-async function ethConn() {
-  const j = await post("/api/eth/connect", {});
-  if (j.ok) toast(`以太网已连接至 ${j.target || "192.168.137.3:1"}`);
-  else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
-}
 
 document.getElementById("btnConn").onclick = conn;
 document.getElementById("btnDisc").onclick = async () => {
   await post("/api/serial/disconnect"); toast("串口已断开");
 };
 document.getElementById("btnRefresh").onclick = () => loadPorts(false);
-document.getElementById("btnEthConn").onclick = ethConn;
-document.getElementById("btnEthDisc").onclick = async () => {
-  await post("/api/eth/disconnect"); toast("以太网已断开");
-};
 
 /* ---------- 命令发送 ---------- */
 async function sendKey(k) {
@@ -791,8 +766,6 @@ function setLink(on, port){
   document.getElementById("port").disabled = !!connState.serial;
   document.getElementById("baud").disabled = !!connState.serial;
   document.getElementById("btnRefresh").disabled = !!connState.serial;
-  document.getElementById("btnEthConn").disabled = !!connState.eth;
-  document.getElementById("btnEthDisc").disabled = !connState.eth;
   document.querySelectorAll("#pad button").forEach(b => b.disabled = !connected);
   if (!connected && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
   if (connected && document.getElementById("poll").checked && !pollTimer)

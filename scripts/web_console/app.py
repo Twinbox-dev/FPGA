@@ -1062,6 +1062,13 @@ def main():
             print("[serial] 未检测到串口，插上板卡后点页面上的刷新")
     # 串口不在启动时打开——由页面自动选端口后连接（WEB_NOAUTO=1 则只选中）
     print("Web 控制台: http://127.0.0.1:5000")
+    if not os.environ.get("WEB_LOOPBACK"):
+        eth_error = eth_link.open()
+        if eth_error:
+            print(f"[eth] automatic UDP setup failed: {eth_error}")
+        else:
+            print(f"[eth] UDP control ready: {eth_link.BOARD_DEFAULT}:{eth_link.BOARD_PORT} "
+                  f"via local port {eth_link.LOCAL_PORT}")
     app.run(host="127.0.0.1", port=5000, threaded=True)
 
 
