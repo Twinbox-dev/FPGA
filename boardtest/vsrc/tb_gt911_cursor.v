@@ -15,7 +15,7 @@ module tb_gt911_cursor;
 
     gt911_cursor_overlay #(
         .INIT_X(11'd2), .INIT_Y(10'd1),
-        .MEM_FILE("../board/user_source/hdl_source/SD/gt911_ganyu_cursor.mem")
+        .MEM_FILE("../board_display/user_source/hdl_source/SD/gt911_ganyu_cursor.mem")
     ) dut (
         .video_clk(clk), .rst(rst),
         .video_in(rgb), .de_in(de), .vs_in(vs),

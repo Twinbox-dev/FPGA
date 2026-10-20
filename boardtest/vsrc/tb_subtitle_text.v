@@ -8,7 +8,7 @@ module tb_subtitle_text;
     wire text_on, in_band;
     integer lit = 0;
     subtitle_text_renderer #(
-        .FONT_FILE("../board/user_source/hdl_source/SD/font.mem")
+        .FONT_FILE("../board_display/user_source/hdl_source/SD/font.mem")
     ) dut (
         .video_clk(clk), .rst(rst), .de(de), .vs(vs),
         .ox(12'sd8), .oy(10'd0), .text_len(8'd1),

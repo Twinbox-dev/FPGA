@@ -139,7 +139,7 @@
 
 **提交前清理（上板通过后）：**
 
-- [ ] boardtest/vsrc 副本的 public_flat 探针与 board/ 重新对齐（或保留并文档化）
+- [ ] boardtest/vsrc 副本的 public_flat 探针与 board_display/ 重新对齐（或保留并文档化）
 - [ ] board_sim.cpp 调试打印取舍（WR_OPEN/FAT/PSTATE 已 gate 在 SD_VERBOSE，可留）
 - [ ] img/*.img.bak 删除
 
@@ -200,7 +200,7 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
       H 心跳开关，未知不成对静默丢）；虚拟按键=50ms 低脉冲与物理键线相与，
       复用 sd_card_bmp 去抖零侵入；状态包 8 字节 A5|state|fat|flagA|flagB|
       underrun|00|00（与面板 d5..d0 同源）；心跳默认关，开后 1s/包。
-- [x] board/uart_link.v + uart_tx_byte（5 状态 FSM，停止位独立 TX_STOPBIT
+- [x] board_display/uart_link.v + uart_tx_byte（5 状态 FSM，停止位独立 TX_STOPBIT
       状态保证满 1 位宽，否则连发帧错）；top_tf_hdmi_audio 挂实例 + dbg 线、
       sd_card_bmp 键线相与。
 - [x] tb_uart.v 8 项全绿（make -C boardtest uart）：脉冲宽度/不成对拒收/
@@ -400,7 +400,7 @@ SDRAM 2M 字恰好用满：视频 A/B 各 460800 字、音频 A/B 各 587776 字
 - [x] 发现官方 demo `32_Ethernet_test`（APUG013 UDP 参考设计）：TEMAC_CORE
       官方 MAC IP + udp_ip_protocol_stack 官方协议栈 + RGMII PHY（板载
       RTL8211）——自写 MAC 2-3 周的工作量被官方 IP 取代，W5500 方案废弃。
-- [x] 移植：demo 的 15 个源文件拷入 board/.../ETH/（temac_block、rgmii 接口、
+- [x] 移植：demo 的 15 个源文件拷入 board_display/.../ETH/（temac_block、rgmii 接口、
       IDDR/ODDR、client fifo、时钟生成等原样；不拷 tpg/loopback/test 顶层）；
       新写 `eth_front.v`（应用层：RX 跳 8 字节头解析 [CMD,~CMD]，TX 组头+应答
       包 16 字节；不依赖 demo 缺失的 ram_fifo 库宏）+ `eth_subsys.v`（子系统

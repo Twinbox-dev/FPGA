@@ -322,7 +322,7 @@ static void reset(int n) {
 //   否则下一次按下去抖器认为还在按下、不产生新沿。
 static void press_next() {
     // 配合 boardtest 副本的 1ms 去抖（100k 周期）：按住/松开各留 2 倍余量。
-    // 板级 50ms 去抖在 board/ 正式版不变。
+    // 板级 50ms 去抖在 board_display/ 正式版不变。
     dut->key_next = 0;                       // 按下
     for (int i = 0; i < 200000; i++) cycle();
     dut->key_next = 1;                       // 松开

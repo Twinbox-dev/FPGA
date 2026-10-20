@@ -21,11 +21,13 @@ module tb_subtitle_ctrl;
     );
     ctrl_core #(.VK_PULSE_CYC(50)) ctrl (
         .clk(clk), .rst(rst), .cmd(cmd), .cmd_val(cmd_val),
+        .set_valid(1'b0), .set_op(8'd0), .set_value(8'd0),
         .touch_next(1'b0), .touch_prev(1'b0),
         .subtitle_consume(consume), .subtitle_ack_pulse(ack_pulse),
         .subtitle_ack_ok(ack_ok), .vk_next_n(vk_next_n),
         .vk_auto_n(vk_auto_n), .vk_prev_n(vk_prev_n),
         .tx_req(tx_req), .tx_pkt(tx_pkt), .vol_gain(vol_gain),
+        .brightness_value(), .contrast_value(), .sensitivity_value(),
         .transition_mode(effect), .osd_mode(osd_mode),
         .auto_period_s(), .vol_gray(), .bri_gray(), .ct_gray(),
         .bar_en(), .bar_sens_gray(),

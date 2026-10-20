@@ -27,6 +27,7 @@ web_console/app.py — 板卡控制 Web 控制台（串口 / 以太网双控）
 import json
 import os
 import queue
+import struct
 import sys
 import threading
 import time
@@ -51,7 +52,7 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
-        "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)",
+        "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "当前显示图片快照",
         "0": "直接切", "1": "交叉溶解", "2": "柔边滑动",
         "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示"}
 
@@ -132,7 +133,38 @@ def decode_pkt(pkt: bytes) -> str:
     osd_s = {0: "关闭", 1: "调节后 3 秒", 2: "始终显示"}.get((und >> 4) & 3, "未知")
     ct      = (fa >> 4) & 0xF            # flagA 字节空出的高 4 位 = 对比度档位
 
-    return (f"state=0x{state:X} fat=0x{fat:02X} buf={fb & 3} img={img & 0x1F}"
+    if und & 1:
+        source_state = (f"源帧={'就绪' if state & 0x80 else '未就绪'} "
+                        f"源音频={'播放' if und & 0x80 else '静音'} "
+                        f"发送={'已完成' if state & 0x40 else '未完成'} "
+                        f"显示接收={'进行中' if state & 0x20 else '空闲'} "
+                        f"写入={'进行中' if und & 2 else '空闲'} "
+                        f"包校验={'曾出错' if und & 0x40 else '无记录'}")
+        if state & 0x10:
+            recv_detail = (f"期望分片={((img >> 5) & 7) << 8 | fat} "
+                           f"最近收到分片低8位={wav:02X}")
+        else:
+            recv_detail = (f"FAT=0x{fat:02X} 源图={(wav >> 3) & 0x1F} "
+                           f"音频序列={'异常' if wav & 4 else '正常'} "
+                           f"发送计数低位={(wav >> 1) & 1}")
+        source = (f"媒体: 装载状态={state & 0xF} {recv_detail} | "
+                  f"{source_state} | ")
+    else:
+        media_tx_state = state & 0x0F
+        media_tx_error = (state >> 4) & 0x0F
+        tx_names = {0: "receiver-ready", 1: "read-bmp-header", 2: "load-image-chunk",
+                    3: "wait-udp", 4: "send-udp", 5: "wait-bmp-source",
+                    6: "image-end-gap", 7: "wait-image-result", 8: "wait-commit",
+                    9: "idle", 10: "read-wav-header", 11: "load-audio-chunk",
+                    12: "wait-wav-source", 13: "audio-end-gap", 14: "wait-audio-result"}
+        reject_names = {9: "frame-id/state", 10: "END length/reserved",
+                        11: "word-count", 12: "checksum", 13: "earlier packet",
+                        14: "receiver still draining previous packet"}
+        error_text = reject_names.get(media_tx_error, str(media_tx_error))
+        source = (f"media-TX={tx_names.get(media_tx_state, str(media_tx_state))} "
+                  f"error={error_text}({media_tx_error}) FAT=0x{fat:02X} | ")
+
+    return (f"{source}buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
             f"对比度={ct}/6 特效={effect_s} 面板={osd_s} 自动轮播={'开' if auto_on else '关'} | "
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
@@ -146,6 +178,7 @@ def decode_ack(pkt: bytes) -> str:
     相关的那一项**——调音量就只报音量、调亮度就只报亮度，不然每条 ACK 都吐
     一大串，操作起来很乱。想要全景请按 'S'（状态包，显示全部）。"""
     _, cmd, vol, per, img, wav, bri, flags = pkt[:8]
+    raw_bri = bri
     name = {0x4E: "下一张", 0x50: "上一张", 0x41: "自动轮播",
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
             0x5D: "亮度+", 0x5B: "亮度-",
@@ -178,7 +211,10 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
     elif cmd in (0x30, 0x31, 0x32): detail = f"切换特效={effect_s}"
     elif cmd in (0x33, 0x34, 0x35): detail = f"面板={osd_s}"
-    elif cmd == 0x54:         detail = "校验通过，帧边界生效" if flags & 0x80 else "失败，原字幕保留"
+    elif cmd == 0x54:
+        subtitle_error = (wav >> 1) & 0x0F
+        subtitle_tag = (wav >> 5) & 0x07
+        detail = f"FPGA_TAG={subtitle_tag} FPGA_ERR={subtitle_error} SUB_LEN={per} RX_COUNT={img} WIRE={vol:02X} CALC={raw_bri:02X} " + ("COMMIT=OK" if flags & 0x80 else "COMMIT=NO")
     elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
     elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
@@ -481,7 +517,8 @@ class LoopbackLink:
 class EthTransport:
     """以太网传输：UDP socket 直连板卡（板载官方 UDP 栈，无连接、无握手）。
 
-    板卡侧（eth_subsys.v）：本地 192.168.137.2:1，回包固定发 PC 192.168.137.1:2
+    双板控制入口为媒体板 192.168.137.3:1；显示板 192.168.137.2:1
+    负责最终 ACK/状态回包，固定发 PC 192.168.137.1:2。
     （目的端口/IP 在 FPGA 里写死，不做动态学习）。
     PC 侧：bind :2 收包，发往板卡 :1。命令帧与串口同款 [CMD,~CMD]，
     UDP 载荷 = 8 字节应用头 [AA BB CC DD type length] + 数据（APUG013）。
@@ -491,9 +528,13 @@ class EthTransport:
     """
 
     mode = "eth"
-    BOARD_DEFAULT = os.environ.get("WEB_ETH_BOARD", "192.168.137.2")
-    BOARD_PORT = int(os.environ.get("WEB_ETH_PORT", "1"))
-    LOCAL_PORT = int(os.environ.get("WEB_ETH_LOCAL_PORT", "2"))
+    # Fixed dual-board topology: PC .1, display .2, media/control .3.
+    # The browser and environment cannot redirect control traffic elsewhere.
+    BOARD_DEFAULT = "192.168.137.3"
+    BOARD_PORT = 1
+    LOCAL_PORT = 2
+    # The media RTL can wait 2 s and retry three times before its final ACK.
+    SUBTITLE_ACK_TIMEOUT = 9.0
 
     @staticmethod
     def _hdr(type_hi, type_lo, len_hi, len_lo):
@@ -505,8 +546,15 @@ class EthTransport:
         self.send_lock = threading.Lock()
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
+        self.subtitle_lock = threading.Lock()
+        self.subtitle_condition = threading.Condition()
+        self.subtitle_waiting = False
+        self.subtitle_result = None
+        self.subtitle_result_code = 0
+        self.subtitle_result_tag = 0
         # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
         self.str = {"wr": self._new_sess(), "rb": self._new_sess()}
+        self.snapshot = None
 
     @staticmethod
     def _new_sess():
@@ -533,15 +581,16 @@ class EthTransport:
     def link_msg(self, connected: bool):
         return {"type": "link", "mode": self.mode, "connected": connected,
                 "serial": connected,              # 兼容旧前端字段名
-                "port": f"{self.board}:{self.LOCAL_PORT}"}
+                "port": f"{self.board}:{self.BOARD_PORT}",
+                "local_port": self.LOCAL_PORT}
 
     # ---- 开关 ----
-    def open(self, board: str = "", _baud=None) -> str:
+    def open(self, _baud=None) -> str:
         import socket
         with self.lock:
             if self.sock is not None:
                 return "以太网已连接，请先断开"
-            self.board = (board or "").strip() or self.BOARD_DEFAULT
+            self.board = self.BOARD_DEFAULT
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -592,16 +641,54 @@ class EthTransport:
         if self.sock is None:
             return "以太网未连接"
         try:
-            # eth_front accepts one verified byte per datagram. Space the
-            # packets to let cmd_pending cross into the SD clock domain.
-            with self.send_lock:
-                for byte in subtitle_bytes(value):
-                    payload = self._hdr(0, 1, 0, 2) + bytes((byte, byte ^ 0xFF))
-                    self.sock.sendto(payload, (self.board, self.BOARD_PORT))
-                    time.sleep(0.002)
+            encoded = subtitle_bytes(value)
+            # V1 subtitle ACK has no transaction sequence, so serialize uploads
+            # and report success only after the display board confirms commit.
+            with self.subtitle_lock:
+                with self.subtitle_condition:
+                    self.subtitle_waiting = True
+                    self.subtitle_result = None
+                    self.subtitle_result_code = 0
+                    self.subtitle_result_tag = 0
+                with self.send_lock:
+                    for byte in encoded:
+                        payload = self._hdr(0, 1, 0, 2) + bytes((byte, byte ^ 0xFF))
+                        self.sock.sendto(payload, (self.board, self.BOARD_PORT))
+                        # eth_front accepts one verified byte per datagram.
+                        time.sleep(0.002)
+                deadline = time.monotonic() + self.SUBTITLE_ACK_TIMEOUT
+                with self.subtitle_condition:
+                    while self.subtitle_result is None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            self.subtitle_waiting = False
+                            return f"字幕已发出，但 {self.SUBTITLE_ACK_TIMEOUT:g} 秒内没有收到显示板确认"
+                        self.subtitle_condition.wait(remaining)
+                    success = self.subtitle_result
+                    self.subtitle_waiting = False
+                if not success:
+                    code = self.subtitle_result_code
+                    tag = self.subtitle_result_tag
+                    reason = {1: "PC subtitle checksum", 2: "display BEGIN/DATA/END validation",
+                              4: "PC subtitle length mismatch",
+                              3: "display ACK timeout", 5: "subtitle stream started",
+                              6: "PC checksum passed; display transaction started"}.get(code, "unknown stage")
+                    return f"\u663e\u793a\u677f\u62d2\u7edd\u6216\u672a\u63d0\u4ea4\u5b57\u5e55\uff0c\u65e7\u5b57\u5e55\u4fdd\u6301\u4e0d\u53d8 | FPGA_TAG={tag} FPGA_ERR={code} ({reason})"
         except Exception as e:
+            with self.subtitle_condition:
+                self.subtitle_waiting = False
             return f"以太网字幕发送失败: {e}"
         return ""
+
+    def _capture_subtitle_ack(self, pkt: bytes):
+        if len(pkt) < 8 or pkt[0] != 0x5A or pkt[1] != 0x54:
+            return
+        with self.subtitle_condition:
+            if self.subtitle_waiting:
+                self.subtitle_result = bool(pkt[7] & 0x80)
+                self.subtitle_result_code = (pkt[5] >> 1) & 0x0F
+                self.subtitle_result_tag = (pkt[5] >> 5) & 0x07
+                self.subtitle_condition.notify_all()
 
     # ---- 流包（type=0x0003）：seq 重组 + 静默收口 ----
     STR_TIMEOUT = 0.4                  # 流包静默判会话结束（整帧空口时间 ~20ms）
@@ -639,12 +726,109 @@ class EthTransport:
                 slot["gaps"] = st["gaps"]
                 slot["words"] = words
                 slot["ts"] = ts
+                slot["stride"] = 3 if typ == "rb" else 1
                 fid = slot["id"]
-            self.broadcast({"type": "frame", "kind": typ, "id": fid,
+            self.broadcast({"type": "frame", "kind": typ, "source": "probe", "id": fid,
                             "words": words, "h": h,
                             "gaps": st["gaps"], "ts": ts})
 
     # ---- 读线程：UDP 报文 → 剥 8 字节头 → 解码包 → 广播 ----
+    def _send_snapshot_reply(self, kind: int, payload: bytes):
+        sock = self.sock
+        if sock is None:
+            return
+        packet = self._hdr(kind & 0xFF, (kind >> 8) & 0xFF,
+                           len(payload) & 0xFF, (len(payload) >> 8) & 0xFF) + payload
+        try:
+            with self.send_lock:
+                sock.sendto(packet, (self.board, self.BOARD_PORT))
+        except Exception as exc:
+            self.broadcast({"type": "pkt", "kind": "dump",
+                            "text": f"PC snapshot reply failed: {exc}",
+                            "ts": time.strftime("%H:%M:%S")})
+
+    def _on_snapshot(self, data: bytes):
+        """Receive a media-side D snapshot and complete its image/audio replies."""
+        kind = int.from_bytes(data[4:6], "little")
+        length = int.from_bytes(data[6:8], "little")
+        payload = data[8:]
+        if len(payload) != length:
+            return
+        if kind == 0x21 and length == 8:
+            self.snapshot = {
+                "frame": int.from_bytes(payload[:2], "little"),
+                "total": int.from_bytes(payload[4:8], "little"),
+                "words": bytearray(), "next_seq": 0, "gaps": 0,
+                "image_ok": False, "audio_frame": None, "audio_count": 0,
+                "audio": bytearray(), "audio_next_seq": 0, "audio_gaps": 0,
+            }
+            return
+        state = self.snapshot
+        if state is None:
+            return
+        frame_id = state["frame"]
+        if kind == 0x22 and length >= 8:
+            got_frame = int.from_bytes(payload[:2], "little")
+            seq = int.from_bytes(payload[2:4], "little")
+            if got_frame != frame_id or seq != state["next_seq"] or (length - 4) % 4:
+                state["gaps"] += max(1, (seq - state["next_seq"]) & 0xFFFF)
+            state["next_seq"] = (seq + 1) & 0xFFFF
+            state["words"].extend(payload[4:])
+            return
+        if kind == 0x23 and length == 8:
+            got_frame = int.from_bytes(payload[:2], "little")
+            checksum = int.from_bytes(payload[2:6], "little")
+            words = state["words"]
+            actual_sum = sum(word[0] for word in struct.iter_unpack("<I", words)) & 0xFFFFFFFF
+            good = (got_frame == frame_id and state["total"] == 460800 and
+                    len(words) == 460800 * 4 and state["gaps"] == 0 and
+                    actual_sum == checksum)
+            state["image_ok"] = good
+            self._send_snapshot_reply(0x24, struct.pack("<HB", frame_id, 0 if good else 1))
+            if not good:
+                self.broadcast({"type": "pkt", "kind": "dump",
+                                "text": f"PC snapshot {frame_id:04X} rejected: "
+                                        f"words={len(words)//4} gaps={state['gaps']} "
+                                        f"sum={'ok' if actual_sum == checksum else 'bad'}",
+                                "ts": time.strftime("%H:%M:%S")})
+            return
+        if kind == 0x30 and length == 8:
+            state["audio_frame"] = int.from_bytes(payload[:2], "little")
+            state["audio_count"] = int.from_bytes(payload[2:6], "little")
+            state["audio"] = bytearray()
+            state["audio_next_seq"] = 0
+            state["audio_gaps"] = 0
+            return
+        if kind == 0x31 and length >= 4:
+            audio_id = int.from_bytes(payload[:2], "little")
+            seq = int.from_bytes(payload[2:4], "little")
+            if audio_id != state["audio_frame"] or seq != state["audio_next_seq"]:
+                state["audio_gaps"] += max(1, (seq - state["audio_next_seq"]) & 0xFFFF)
+            state["audio_next_seq"] = (seq + 1) & 0xFFFF
+            state["audio"].extend(payload[4:])
+            return
+        if kind == 0x32 and length == 8:
+            audio_id = int.from_bytes(payload[:2], "little")
+            checksum = int.from_bytes(payload[2:6], "little")
+            audio = state["audio"]
+            good = (audio_id == frame_id and state["audio_gaps"] == 0 and
+                    len(audio) == state["audio_count"] and (sum(audio) & 0xFFFFFFFF) == checksum)
+            self._send_snapshot_reply(0x33, struct.pack("<HB", frame_id, 0 if good else 1))
+            if good and state["image_ok"]:
+                self._send_snapshot_reply(0x24, struct.pack("<HB", frame_id, 2))
+                ts = time.strftime("%H:%M:%S")
+                with ETH_FRAME_LOCK:
+                    ETH_FRAME_SNAPSHOT["id"] += 1
+                    ETH_FRAME_SNAPSHOT["data"] = bytes(state["words"])
+                    ETH_FRAME_SNAPSHOT["gaps"] = 0
+                    ETH_FRAME_SNAPSHOT["words"] = len(state["words"]) // 4
+                    ETH_FRAME_SNAPSHOT["ts"] = ts
+                    ETH_FRAME_SNAPSHOT["stride"] = 1
+                    fid = ETH_FRAME_SNAPSHOT["id"]
+                self.broadcast({"type": "frame", "kind": "rb", "source": "snapshot", "id": fid,
+                                "words": 460800, "h": 720, "gaps": 0, "ts": ts})
+            self.snapshot = None
+
     def _reader(self):
         buf = bytearray(2048)
         view = memoryview(buf)
@@ -655,6 +839,10 @@ class EthTransport:
             except Exception:
                 self._stream_poll()            # 超时窗口顺带查会话收口
                 continue                       # 超时/关闭 → 回到 while 判据
+            if (n >= 8 and data[:4] == b"\xAA\xBB\xCC\xDD" and
+                    data[5] == 0 and data[4] in (0x21, 0x22, 0x23, 0x30, 0x31, 0x32)):
+                self._on_snapshot(bytes(data[:n]))
+                continue
             if (n >= 10 and data[:4] == b"\xAA\xBB\xCC\xDD"
                     and data[4] in (0x03, 0x04) and data[5] == 0x00):
                 self._on_stream(data)          # 流包（03=写侧/04=读回）：重组不进日志
@@ -671,6 +859,7 @@ class EthTransport:
                                     "text": decode_dump(pkt),
                                     "ts": time.strftime("%H:%M:%S")})
                 continue
+            self._capture_subtitle_ack(pkt)
             msg = {"type": "pkt",
                    "kind": "status" if pkt[0] == 0xA5 else "ack",
                    "text": decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt),
@@ -692,8 +881,9 @@ eth_link = EthTransport(SUBS)
 #（一帧 ~1.8MB，不适合塞 SSE 文本流）。
 # 字序与 RTL 线序一致：每字 4 字节 LSB 先（=小端），字低 16bit=左像素 RGB565。
 # ---------------------------------------------------------------------------
-ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
-ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": ""}
+ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
+ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 3}
+ETH_FRAME_SNAPSHOT = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
 ETH_FRAME_LOCK = threading.Lock()
 
 
@@ -771,9 +961,10 @@ def api_disconnect():
 
 @app.route("/api/eth/connect", methods=["POST"])
 def api_eth_connect():
-    d = request.get_json(force=True, silent=True) or {}
-    err = eth_link.open(d.get("board", ""))
-    return (jsonify({"ok": False, "error": err}), 400) if err else jsonify({"ok": True})
+    err = eth_link.open()
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    return jsonify({"ok": True, "target": f"{eth_link.BOARD_DEFAULT}:{eth_link.BOARD_PORT}"})
 
 
 @app.route("/api/eth/disconnect", methods=["POST"])
@@ -804,8 +995,8 @@ def api_subtitle():
         return jsonify({"ok": False, "error": str(e)}), 400
     err = (eth_link if mode == "eth" else link).send_subtitle(value)
     if err:
-        return jsonify({"ok": False, "error": err}), 400
-    return jsonify({"ok": True, "length": len(value)})
+        return jsonify({"ok": False, "error": err}), 504 if mode == "eth" and "确认" in err else 400
+    return jsonify({"ok": True, "length": len(value), "acknowledged": mode == "eth"})
 
 
 @app.route("/api/stream")
@@ -834,15 +1025,21 @@ def api_stream():
 def api_frame():
     """最新重组帧：原始字流（每字 4 字节小端，RGB565×2/字）+ 元数据头。
     ?slot=wr（写侧发射流，默认）/ rb（显存读回）。"""
-    is_rb = request.args.get("slot") == "rb"
-    slot = ETH_FRAME_RB if is_rb else ETH_FRAME
+    slot_name = request.args.get("slot", "wr")
+    slots = {"wr": ETH_FRAME, "rb": ETH_FRAME_RB, "snapshot": ETH_FRAME_SNAPSHOT}
+    slot = slots.get(slot_name)
+    if slot is None:
+        return jsonify({"ok": False, "error": "unknown frame slot"}), 404
     with ETH_FRAME_LOCK:
         data = slot["data"]
+        frame_id = slot["id"]
         gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
+        stride = slot.get("stride", 3 if slot_name == "rb" else 1)
     resp = Response(data, mimetype="application/octet-stream")
+    resp.headers["X-Frame-Id"] = str(frame_id)
     resp.headers["X-Frame-Words"] = str(words)
     resp.headers["X-Frame-Gaps"] = str(gaps)
-    resp.headers["X-Frame-Stride"] = "3" if is_rb else "1"
+    resp.headers["X-Frame-Stride"] = str(stride)
     resp.headers["X-Frame-Ts"] = ts
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -865,6 +1062,13 @@ def main():
             print("[serial] 未检测到串口，插上板卡后点页面上的刷新")
     # 串口不在启动时打开——由页面自动选端口后连接（WEB_NOAUTO=1 则只选中）
     print("Web 控制台: http://127.0.0.1:5000")
+    if not os.environ.get("WEB_LOOPBACK"):
+        eth_error = eth_link.open()
+        if eth_error:
+            print(f"[eth] automatic UDP setup failed: {eth_error}")
+        else:
+            print(f"[eth] UDP control ready: {eth_link.BOARD_DEFAULT}:{eth_link.BOARD_PORT} "
+                  f"via local port {eth_link.LOCAL_PORT}")
     app.run(host="127.0.0.1", port=5000, threaded=True)
 
 

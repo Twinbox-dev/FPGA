@@ -31,7 +31,7 @@ module tb_gt911_trackpad;
         .cursor_x(cursor_x), .cursor_y(cursor_y)
     );
     gt911_cursor_overlay #(
-        .MEM_FILE("../board/user_source/hdl_source/SD/gt911_ganyu_cursor.mem")
+        .MEM_FILE("../board_display/user_source/hdl_source/SD/gt911_ganyu_cursor.mem")
     ) u_cursor (
         .video_clk(video_clk), .rst(rst), .video_in(24'h123456),
         .de_in(1'b0), .vs_in(video_vs), .online_raw(online),

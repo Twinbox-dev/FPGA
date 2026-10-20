@@ -19,7 +19,7 @@
 
 初始光标在 HDMI 坐标 `(640,360)`，确认 GT911 在线后显示。首次接触以及触点 ID 改变时只记录原点。后续单指坐标差值乘 2 后累加，坐标被限制在 `1280×720`。单次超过 96 个触摸坐标的跳变会重新设原点；每轴 1 像素的抖动暂不推动光标，但会在后续移动中累计。速度与阈值为第一版上板调手感的起点。
 
-指针坐标经请求／应答握手跨到 `video_clk` 域，在 VS 帧边界提交。`gt911_cursor_overlay` 位于现有 OSD 后、HDMI AXIS 输入前。第二阶段光标取自用户提供的 `link.ani` 第 10 帧，提取后的 [256×256 PNG](../board/user_source/assets/gt911_ganyu_cursor.png) 为素材真源；原图每个 8×8 像素块颜色完全相同，因此取每块中心得到 [32×32 RGB565 ROM](../board/user_source/hdl_source/SD/gt911_ganyu_cursor.mem)，硬件每像素显示成 2×2，最终仍是完全相同的 64×64 光标。零字透明，原 `.ani` 的热点在左上角。ROM 同步读取使 RGB、DE、VS 一起延迟两拍。光标允许在屏幕边缘裁切，PC 探针仍位于叠加层之前。网络搜索过程中下载的备选素材及其临时生成脚本未纳入此版本。
+指针坐标经请求／应答握手跨到 `video_clk` 域，在 VS 帧边界提交。`gt911_cursor_overlay` 位于现有 OSD 后、HDMI AXIS 输入前。第二阶段光标取自用户提供的 `link.ani` 第 10 帧，提取后的 [256×256 PNG](../board_display/user_source/assets/gt911_ganyu_cursor.png) 为素材真源；原图每个 8×8 像素块颜色完全相同，因此取每块中心得到 [32×32 RGB565 ROM](../board_display/user_source/hdl_source/SD/gt911_ganyu_cursor.mem)，硬件每像素显示成 2×2，最终仍是完全相同的 64×64 光标。零字透明，原 `.ani` 的热点在左上角。ROM 同步读取使 RGB、DE、VS 一起延迟两拍。光标允许在屏幕边缘裁切，PC 探针仍位于叠加层之前。网络搜索过程中下载的备选素材及其临时生成脚本未纳入此版本。
 
 ## 第二阶段：快速横划切图
 

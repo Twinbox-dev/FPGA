@@ -31,7 +31,7 @@
      原始镜像备份 `img/*.img.bak`
 2. **并行回归**：`make -C boardtest regress` = 7 卡 7 进程并行，
    脚本 `scripts/run_all_sims.sh`，日志 `boardtest/logs/<卡>.log`，墙钟≈最慢单卡
-3. **boardtest 副本 1ms 去抖**（`` `ifdef VERILATOR ``，board/ 正式版 50ms 不变）
+3. **boardtest 副本 1ms 去抖**（`` `ifdef VERILATOR ``，board_display/ 正式版 50ms 不变）
    + 驱动 `press_next` 按住/松开各 200k 周期（余量 2×）
 4. **Makefile `-O3 -march=native`**：+12%（6.6→7.4 Mcyc/s）
 5. **`getenv` 缓存成 static**（调试打印 gating 每拍都 getenv 是隐藏大坑，

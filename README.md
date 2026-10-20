@@ -1,5 +1,11 @@
 # 嵌赛'2026 安路选题一 —— TF 卡 720p BMP 轮播 + 配对 WAV 伴音（单仓）
 
+> **重点：TD CLI 可从命令行综合、布局布线并下载 FPGA bit。**
+> 项目工程的 `syn_1`、`phy_1` 目录分别用 `settings.cfg` 选择综合和布局布线流程；
+> `td_commands_prompt.exe` 执行 TD 自带的 `DefaultFlow.tcl`。JTAG SRAM 下载命令为
+> `download -mode jtag -bit <bit路径>`。详细命令、步骤和模式差异见
+> [TD CLI 综合与 SRAM 下载指南](docs/td_cli_programming.md)。
+
 ## 基线来源（provenance）
 - 仿真框架 + boardtest：`anlogic` 仓 `6956e5d`（boardtest 即为 board 工程对应
   版本的 Verilator 验证台快照，两者 RTL 逐字节一致）
@@ -29,7 +35,8 @@ GT911 触控板的单指相对移动、角色光标和左右横划切图已上�
 [`docs/gt911_trackpad.md`](docs/gt911_trackpad.md)。
 
 ## 目录
-- `board/` —— TD 工程（`user_source` 源 + `td_project` 工程文件），真机唯一真源
+- `board_display/` —— 当前已验证的显示板 TD 工程（`user_source` 源 + `td_project` 工程文件）
+- `board_media/` —— 媒体板正式 SD/解析/控制与图像/PCM 发送工程；分工见 `docs/dual_board_architecture.md`
 - `boardtest/` —— 板级 RTL 的 Verilator 验证台（SD 引脚级卡模型 + 帧写口 C++ 模型）
   - `make -C boardtest regress`：7 卡全量回归
   - `make -C boardtest smoke`：单卡首图/BMP/WAV 扫描快速集成检查
@@ -46,10 +53,10 @@ GT911 触控板的单指相对移动、角色光标和左右横划切图已上�
 - `docs/` —— 架构、调试面板、时序排查、板卡盘点等
 
 ## 开发流程（单仓两步）
-1. RTL 改动改 `board/user_source/hdl_source/`，涉及 SD/图像路径时同步
+1. RTL 改动改 `board_display/user_source/hdl_source/`，涉及 SD/图像路径时同步
    `boardtest/vsrc/` 副本（两副本差异 = 探针 + VERILATOR 加速块）。开发时先跑
    对应模块自检或单卡检查，收口时跑七卡全量回归。
-2. `board/` 综合上板；对照 `docs/board_status.md` 的资源与时序基线。
+2. `board_display/` 综合上板；对照 `docs/board_status.md` 的资源与时序基线。
 
 注意：`boardtest/vsrc` 不含视频读通道（C++ 模型替代 frame_read_write），
 video_delay/frame_fifo_* 类改动必须跑 readeng/vdelay 自检。

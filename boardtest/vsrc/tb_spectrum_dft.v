@@ -9,7 +9,7 @@ module tb_spectrum_dft;
     integer n, i;
     reg signed [23:0] tone;
     spectrum_dft #(
-        .COEFF_FILE("../board/user_source/hdl_source/SD/spectrum_twiddle_512.mem")
+        .COEFF_FILE("../board_display/user_source/hdl_source/SD/spectrum_twiddle_512.mem")
     ) dut (
         .clk(clk), .rst(rst), .aud_tick(aud_tick), .aud_valid(aud_valid),
         .pcm(pcm), .sens_gray(2'b01), // binary sensitivity level 1

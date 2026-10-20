@@ -104,7 +104,7 @@ python -X utf8 scripts/analyze_frame_dump.py --bmp img/golden/IMG5.BMP --url htt
 
 ## 后续调试准则与遗留项
 
-1. **先固定 last known good，再 diff 新代码。** 用 `git log --oneline`、`git diff <稳定提交>..HEAD -- board/user_source/hdl_source` 列新增的 FSM、mux、计数、复位与跨域握手；不先归罪于时序报告里早已存在的违例。撤回被实测推翻的实验，例如填黑 ACK 等待和 128 字写突发。
+1. **先固定 last known good，再 diff 新代码。** 用 `git log --oneline`、`git diff <稳定提交>..HEAD -- board_display/user_source/hdl_source` 列新增的 FSM、mux、计数、复位与跨域握手；不先归罪于时序报告里早已存在的违例。撤回被实测推翻的实验，例如填黑 ACK 等待和 128 字写突发。
 2. **每次上板只变一个可检验因素。** 记录 bit/PLL 参数、SHA、生成时间、所用 BMP、缓冲区编号、音频是否配对、A/B 完整字数和 `seq` 缺口。旧 bit 与报告先备份；把 TD 综合、布局、布线分别计时，行数少不保证布线快。
 3. **先确认探针确实覆盖待测会话。** A 的上下黑边是浏览器画布，不是填黑事务；B 是 SDRAM 返回的 3:1 抽样，不是 HDMI 后级逐像素全量。若复发，先分图像窗口、左右 padding、上下纯填黑三块统计，再决定把探针临时移到写 mux 后或 App 口。
 4. **用局部仿真验证 RTL，板上验证硬 IP。** 真 FIFO 的 `SHOW_AHEAD`、使能/数据同拍、会话首末字与仲裁竞态须用针对性 TB；C++ SDRAM 模型无法验证加密控制器的物理接受条件。

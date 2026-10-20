@@ -6,7 +6,7 @@ module tb_osd_panel_levels;
     wire text_on, in_band;
     reg [7:0] font_mem [0:2047];
     osd_panel_levels #(
-        .FONT_FILE("../board/user_source/hdl_source/SD/font.mem"),
+        .FONT_FILE("../board_display/user_source/hdl_source/SD/font.mem"),
         .X_TOP(11'd8), .Y_TOP(10'd0)
     ) dut (
         .video_clk(clk), .rst(rst), .de(de), .vs(vs),
@@ -41,7 +41,7 @@ module tb_osd_panel_levels;
     reg [7:0] glyph;
     reg expected;
     initial begin
-        $readmemh("../board/user_source/hdl_source/SD/font.mem", font_mem);
+        $readmemh("../board_display/user_source/hdl_source/SD/font.mem", font_mem);
         repeat (4) @(negedge clk); rst=0;
         vs=1; @(negedge clk); vs=0;
         for (y=0; y<48; y=y+1) begin
