@@ -45,7 +45,12 @@ module media_image_tx #(
     localparam [3:0] WAIT_READY=0,WAIT_HEADER=1,LOAD_IMAGE=2,ISSUE=3,SEND=4,
         WAIT_SOURCE=5,IMAGE_END_GAP=6,WAIT_RESULT=7,WAIT_COMMIT=8,IDLE=9,
         AUDIO_WAIT_HEADER=10,AUDIO_LOAD=11,AUDIO_WAIT_SOURCE=12,
-        AUDIO_END_GAP=13,AUDIO_WAIT_RESULT=14;
+        AUDIO_END_GAP=13,AUDIO_WAIT_RESULT=14,IMAGE_PACKET_GAP=15;
+    // media_protocol_rx drains a 253-word packet into the display-side frame
+    // FIFO. A 100 us pause gives the SDRAM writer time to start consuming that
+    // FIFO before later DATA packets arrive and fill its 512-word capacity.
+    localparam integer IMAGE_PACKET_GAP_CYCLES =
+        (CLK_HZ/10000) > 0 ? (CLK_HZ/10000) : 1;
     localparam [7:0] READY=8'h20,BEGIN_IMAGE=8'h21,IMAGE_DATA=8'h22,END_IMAGE=8'h23;
     localparam [7:0] AUDIO_BEGIN=8'h30,AUDIO_DATA=8'h31,AUDIO_END=8'h32,AUDIO_RESULT=8'h33;
     localparam integer AUDIO_PACKET_SAMPLES=1012;
@@ -286,7 +291,7 @@ module media_image_tx #(
                             sequence_id<=sequence_id+1'b1;loaded<=0;
                             target_words<=FRAME_WORDS-total_words>253 ? 253 : FRAME_WORDS-total_words;
                             if(total_words>=FRAME_WORDS)state<=WAIT_SOURCE;
-                            else state<=LOAD_IMAGE;
+                            else begin wait_count<=0;state<=IMAGE_PACKET_GAP;end
                         end else if(kind==AUDIO_DATA) begin
                             sequence_id<=sequence_id+1'b1;loaded<=0;
                             if(audio_samples_remaining>audio_packet_samples) begin
@@ -301,6 +306,11 @@ module media_image_tx #(
                 WAIT_SOURCE: if(done_sync[2]!=done_ref) begin
                     if(source_error) begin error_code<=2;state<=IDLE;end
                     else begin wait_count<=0;state<=IMAGE_END_GAP;end
+                end
+                IMAGE_PACKET_GAP: begin
+                    if(wait_count>=IMAGE_PACKET_GAP_CYCLES-1) begin
+                        wait_count<=0;state<=LOAD_IMAGE;
+                    end else wait_count<=wait_count+1'b1;
                 end
                 IMAGE_END_GAP: begin
                     if(wait_count>=CLK_HZ/1000-1) begin
@@ -326,12 +336,15 @@ module media_image_tx #(
                                 audio_packet_samples<=0;kind<=AUDIO_BEGIN;tx_length<=16;
                                 return_state<=AUDIO_LOAD;state<=ISSUE;
                             end
-                        end else if(rx_result==1) begin
+                        end else if(rx_result==1 || rx_result[7:4]==4'h1) begin
                             if(attempts<3) begin
                                 attempts<=attempts+1'b1;start_toggle<=~start_toggle;
                                 prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
                                 total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;state<=WAIT_HEADER;
-                            end else begin error_code<=3;state<=IDLE;end
+                            end else begin
+                                error_code<=rx_result[7:4]==4'h1 ? (8'd8+{4'd0,rx_result[3:0]}) : 8'd3;
+                                state<=IDLE;
+                            end
                         end
                     end else if(wait_count>=CLK_HZ*2-1) begin error_code<=4;state<=IDLE;end
                     else wait_count<=wait_count+1'b1;

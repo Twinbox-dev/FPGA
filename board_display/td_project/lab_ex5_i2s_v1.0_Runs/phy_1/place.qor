@@ -3,27 +3,27 @@
 -----------------------------------------------------------
 | Timing                    |                             |
 |     Setup WNS             |        -7443                |
-|     Setup TNS             |      -804309                |
-|     Num of violated S-EP  |          934                |
+|     Setup TNS             |      -759669                |
+|     Num of violated S-EP  |          744                |
 |     FMAX                  |    57.330MHz                |
 |     SWNS path clock period |      10000ps                |
 |     Hold WNS              |          -11                |
-|     Hold TNS              |          -88                |
-|     Num of violated H-EP  |            8                |
+|     Hold TNS              |          -22                |
+|     Num of violated H-EP  |            2                |
 -----------------------------------------------------------
 | Routing Resource          |                             |
-|     Wire length           |       866535                |
+|     Wire length           |       837374                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #slices               |         8241                |
-|     slices percentage     |       84.09%                |
+|     #slices               |         8251                |
+|     slices percentage     |       84.19%                |
 |     #RAMs                 |           57                |
 |     #DSPs                 |           10                |
 |     #DRAMHARDCON          |            0                |
 -----------------------------------------------------------
 | Congestion                |                             |
-|     Top 1% tile util      |           58                |
-|     Top 1% tile avg util  |       62.21%                |
+|     Top 1% tile util      |           55                |
+|     Top 1% tile avg util  |       56.59%                |
 |     Over 100% util #tile  |            0                |
 -----------------------------------------------------------
 Report place stage QoR done.

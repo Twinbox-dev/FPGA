@@ -31,15 +31,23 @@ const view = new DataView(raw);
 view.setUint32(0, 0x0000F800, true);       // frame word 0: red low pixel
 view.setUint32(4, 0x001F0000, true);       // frame word 3: blue high pixel
 view.setUint32(76693 * 4, 0x0000F800, true); // row 359, word 319
+const snapshotRaw = new ArrayBuffer(460800 * 4);
+new DataView(snapshotRaw).setUint32(0, 0x0000F800, true); // bottom-up source row 0 -> canvas row 719
+const fetched = [];
 
 const env = {
   document: {getElementById(id) { assert(elements[id], id); return elements[id]; }},
-  fetch: async () => ({
+  fetch: async url => {
+    fetched.push(url);
+    const isSnapshot = url.endsWith("slot=snapshot");
+    return ({
     ok: true,
-    headers: {get(name) { return ({'X-Frame-Words': '153600',
-      'X-Frame-Gaps': '0', 'X-Frame-Stride': '3'})[name]; }},
-    arrayBuffer: async () => raw,
-  }),
+    headers: {get(name) { return ({'X-Frame-Id': '1',
+      'X-Frame-Words': isSnapshot ? '460800' : '153600',
+      'X-Frame-Gaps': '0', 'X-Frame-Stride': isSnapshot ? '1' : '3'})[name]; }},
+    arrayBuffer: async () => isSnapshot ? snapshotRaw : raw,
+  });
+  },
   DataView, Uint8ClampedArray, Math, ArrayBuffer,
 };
 vm.createContext(env);
@@ -64,5 +72,12 @@ vm.runInContext(html.slice(begin, end), env);
     elements.diffHintRb.textContent);
   assert(elements.diffHintRb.textContent.includes('黑边差异 2/307198'),
     elements.diffHintRb.textContent);
-  console.log('Readback render and full-frame BMP diff: PASS');
+  await vm.runInContext('bmpImg=null; showFrame({kind:"rb", source:"snapshot", id:1, ts:"snapshot"})', env);
+  const snap = rb.ctx.image.data;
+  assert.equal(snap[(719 * 1280) * 4], 255); // BMP source row 0 is the bottom display row
+  assert.equal(snap[(719 * 1280) * 4 + 3], 255);
+  assert.equal(snap[0], 0);                  // no accidental red pixel at the top row
+  assert(fetched.includes('/api/frame?slot=rb'));
+  assert(fetched.includes('/api/frame?slot=snapshot'));
+  console.log('Probe and bottom-up D snapshot rendering: PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });

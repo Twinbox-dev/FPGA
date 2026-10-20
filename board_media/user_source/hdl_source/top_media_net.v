@@ -34,6 +34,9 @@ module top (
     wire auto_on;wire [3:0] auto_period_s,auto_next_pulse;
     wire uart_cmd_valid;wire [7:0] uart_cmd;wire uart_tx_ready,uart_tx_req;wire [63:0] uart_tx_pkt;
     wire control_debug_request,pc_snapshot_request,media_to_pc;reg [1:0] control_debug_sync;
+    // N/P are translated by media_control_core to one-cycle local pulses.
+    // Passing them to media_image_tx as well queues the same step twice.
+    wire media_internal_cmd_pending = cmd_pending && (cmd==8'h4d);
     wire local_next_pulse,local_prev_pulse;
     wire key_next_press,key_auto_press,key_prev_press;
     reg key_next_toggle,key_auto_toggle,key_prev_toggle;
@@ -139,7 +142,7 @@ module top (
     );
     media_image_tx u_formal_tx (
         .clk(app_clk),.rst(app_rst),.mounted(mounted_sync[2]),.source_busy(busy_sync[1]),.source_error(error_sync[1]),
-        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.cmd(cmd),.cmd_pending(cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
+        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.cmd(cmd),.cmd_pending(media_internal_cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
         .pc_snapshot_request(pc_snapshot_request),.media_to_pc(media_to_pc),
         .local_next(local_next_pulse || key_next_app_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse),
         .prepared_toggle(prepared_sync[1]),.done_toggle(done_sync[1]),.source_has_wav_async(source_has_wav),
@@ -165,7 +168,8 @@ module top (
         .image_next_pulse(local_next_pulse),.image_prev_pulse(local_prev_pulse),.local_auto_toggle(key_auto_app_pulse),
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),
         .first_bmp(first_s1),.committed_index(committed_s1),.committed_valid(committed_valid_sync[1]),
-        .paired_wav(committed_wav),.fat_state(fat_state_s1),.fat_error(fat_error_s1),.media_state(tx_state),
+        .paired_wav(committed_wav),.fat_state(fat_state_s1),.fat_error(fat_error_s1),
+        .media_state({tx_error[3:0],tx_state}),
         .debug_request(control_debug_request),.pc_snapshot_request(pc_snapshot_request),
         .auto_on(auto_on),.auto_period_s(auto_period_s),.volume(),.brightness(),.contrast(),
         .effect(),.osd_mode(),.spectrum_on(),.spectrum_sensitivity(),.last_control_error()
@@ -184,5 +188,5 @@ module top (
         .sys_rst(boot_rst),.tap_clk(clk),.tap_val(tap_val),.tap_word(tap_word),.tap_end(tap_end),
         .tap2_clk(clk),.tap2_val(1'b0),.tap2_word(32'd0),.tap2_end(1'b0)
     );
-    wire _unused=&{1'b0,image_width,image_height,production_available,media_stack_status,tx_error,tx_done_tog,auto_next_pulse,key_next_press,key_auto_press,key_prev_press};
+wire _unused=&{1'b0,image_width,image_height,production_available,media_stack_status,tx_done_tog,auto_next_pulse,key_next_press,key_auto_press,key_prev_press};
 endmodule

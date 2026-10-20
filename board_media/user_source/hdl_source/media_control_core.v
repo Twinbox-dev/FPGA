@@ -29,7 +29,8 @@ module media_control_core #(
     input wire paired_wav,
     input wire [7:0] fat_state,
     input wire fat_error,
-    input wire [3:0] media_state,
+    // Status byte packs {last media transaction error, current TX FSM state}.
+    input wire [7:0] media_state,
     output reg debug_request,
     output reg pc_snapshot_request,
     output reg auto_on,
@@ -99,7 +100,7 @@ module media_control_core #(
         status_flags,
         {4'd0,contrast},
         fat_state,
-        {4'd0,media_state},
+        media_state,
         8'hA5
     };
 

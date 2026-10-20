@@ -464,6 +464,7 @@ wire [8:0]  media_stream_word_count;
 wire [31:0] media_stream_word_data;
 wire        media_stream_word_valid, media_stream_word_ready, media_stream_done;
 wire        media_frame_end_valid, media_frame_end_ok;
+wire [3:0]  media_frame_end_reason;
 wire [15:0] media_frame_end_id;
 wire        media_audio_begin_valid;
 wire [15:0] media_audio_frame_id;
@@ -581,6 +582,7 @@ media_protocol_rx u_media_protocol_rx (
     .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_stream_word_ready),
     .stream_done (media_stream_done),
     .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
+    .frame_end_reason (media_frame_end_reason),
     .frame_end_id (media_frame_end_id),
     .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
@@ -617,6 +619,7 @@ media_transaction_writer u_media_transaction_writer (
     .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_stream_word_ready),
     .stream_done (media_stream_done),
     .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
+    .frame_end_reason (media_frame_end_reason),
     .frame_end_id (media_frame_end_id),
     .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
@@ -1158,7 +1161,9 @@ assign tap2_word_w = mem_tap_word;
 assign tap2_end_w = mem_tap_end;
 
 frame_read_write #(
-    .WRITE_V_FLIP     (0),
+    // Media board sends BMP rows in source order (bottom-up); preserve the
+    // single-board V1 address mapping so HDMI scans the image upright.
+    .WRITE_V_FLIP     (1),
     .FRAME_WIDTH      (640),   // 每行字数（RGB565 两像素/字：1280 像素/行 = 640 字）
     .FRAME_HEIGHT     (720)
 ) frame_read_write_m0(

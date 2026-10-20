@@ -832,7 +832,7 @@ function listen() {
    写侧帧（wr）：发射行 r = 图像自底向上第 r 行（BMP 文件序），vflip 落显示
    行 y0+h-1-r —— 渲染照搬该映射。读回帧（rb）：线性显存 = 正立刻信，行 m
    直接落 y=m，无需翻转。 */
-let lastFrameId = {wr: 0, rb: 0}, frameBuf = {wr: null, rb: null}, frameMeta = {wr: null, rb: null};
+let lastFrameId = {wr: 0, rb: 0, snapshot: 0}, frameBuf = {wr: null, rb: null}, frameMeta = {wr: null, rb: null};
 function put565(px, o, v) {
   const r5 = (v >> 11) & 31, g6 = (v >> 5) & 63, b5 = v & 31;
   px[o]     = (r5 << 3) | (r5 >> 2);
@@ -842,18 +842,24 @@ function put565(px, o, v) {
 }
 async function showFrame(m) {
   const kind = m.kind || "wr";
-  if (m.id === lastFrameId[kind]) return;
-  lastFrameId[kind] = m.id;
+  const source = m.source || "probe";
+  const slot = kind === "rb" && source === "snapshot" ? "snapshot" : kind;
+  if (m.id === lastFrameId[slot]) return;
   try {
-    const r = await fetch("/api/frame?slot=" + kind);
+    const r = await fetch("/api/frame?slot=" + slot);
     if (!r.ok) return;
+    const responseId = +(r.headers.get("X-Frame-Id") || 0);
+    if (responseId && responseId !== +m.id) return;
+    if (+m.id < lastFrameId[slot]) return;
+    lastFrameId[slot] = m.id;
     frameBuf[kind] = await r.arrayBuffer();
     const gaps  = +(r.headers.get("X-Frame-Gaps")  || 0);
     const words = +(r.headers.get("X-Frame-Words") || 0);
-    const step = +(r.headers.get("X-Frame-Stride") || (kind === "rb" ? 3 : 1));
+    const step = +(r.headers.get("X-Frame-Stride") || (kind === "rb" && source !== "snapshot" ? 3 : 1));
+    const bottomUp = kind === "rb" && source === "snapshot";
     const h  = kind === "rb" ? 720 : Math.floor(words / 640);
     const y0 = kind === "rb" ? 0 : (720 - h) >> 1;
-    frameMeta[kind] = {h, y0, step, gaps};
+    frameMeta[kind] = {h, y0, step, gaps, bottomUp};
     const dv  = new DataView(frameBuf[kind]);
     const ctx = document.getElementById(kind === "wr" ? "frameCv" : "frameCvRb").getContext("2d");
     const img = ctx.createImageData(1280, 720);
@@ -863,7 +869,8 @@ async function showFrame(m) {
       if (kind === "rb") {
         // 第 j 个收到的字对应完整显存字 step*j；空位保持透明。
         for (let j = 0; j < nWords && step * j < 460800; j++) {
-          const wi = step * j, y = Math.floor(wi / 640), c = wi % 640;
+          const wi = step * j, sourceY = Math.floor(wi / 640), c = wi % 640;
+          const y = bottomUp ? 719 - sourceY : sourceY;
           const w = dv.getUint32(j * 4, true);
           put565(px, (y * 1280 + 2 * c) * 4, w & 0xFFFF);
           put565(px, (y * 1280 + 2 * c + 1) * 4, w >>> 16);
@@ -955,7 +962,8 @@ function diffAll() {
     const px = img.data;
     let imageBad = 0, imageCovered = 0, borderBad = 0, borderCovered = 0;
     for (let sample = 0; sample < wMax && step * sample < 460800; sample++) {
-      const wi = step * sample, y = Math.floor(wi / 640), c = wi % 640;
+      const wi = step * sample, sourceY = Math.floor(wi / 640), c = wi % 640;
+      const y = frameMeta.rb.bottomUp ? 719 - sourceY : sourceY;
       const word = dv.getUint32(sample * 4, true);
       for (let half = 0; half < 2; half++) {
         const col = 2 * c + half;

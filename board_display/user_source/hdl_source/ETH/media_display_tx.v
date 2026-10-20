@@ -45,6 +45,7 @@ module media_display_tx #(
     reg ready_pending, image_pending, audio_pending, ack_pending, status_pending;
     reg [7:0] image_code_pending, audio_code_pending;
     reg [15:0] image_frame_pending, audio_frame_pending;
+    reg [1:0] image_commit_copies;
     reg [7:0] ack_seq_pending, ack_op_pending, ack_status_pending, ack_value_pending;
     reg [63:0] status_pending_data;
 
@@ -84,6 +85,7 @@ module media_display_tx #(
             ack_pending <= 1'b0; status_pending <= 1'b0;
             image_code_pending <= 8'd0; audio_code_pending <= 8'd0;
             image_frame_pending <= 16'd0; audio_frame_pending <= 16'd0;
+            image_commit_copies <= 2'd0;
             ack_seq_pending <= 8'd0; ack_op_pending <= 8'd0;
             ack_status_pending <= 8'd0; ack_value_pending <= 8'd0;
             status_pending_data <= 64'd0;
@@ -102,6 +104,7 @@ module media_display_tx #(
                 image_code_pending <= image_result_code;
                 image_frame_pending <= image_result_frame;
                 image_pending <= 1'b1;
+                image_commit_copies <= 2'd0;
             end
             if (audio_result_valid) begin
                 audio_code_pending <= audio_result_code;
@@ -146,7 +149,16 @@ module media_display_tx #(
                         packet[8] <= image_frame_pending[7:0];
                         packet[9] <= image_frame_pending[15:8];
                         packet[10] <= image_code_pending;
-                        image_pending <= 1'b0;
+                        // RESULT=2 is the only notice that the new buffer is
+                        // committed. Repeat it a few times so one lost UDP
+                        // reply cannot leave the media sender on the old index.
+                        if (image_code_pending == 8'd2 && image_commit_copies < 2'd2) begin
+                            image_commit_copies <= image_commit_copies + 2'd1;
+                            image_pending <= 1'b1;
+                        end else begin
+                            image_commit_copies <= 2'd0;
+                            image_pending <= 1'b0;
+                        end
                     end else if (ack_pending) begin
                         header(8'h41, 16'd4);
                         packet[8] <= ack_seq_pending; packet[9] <= ack_op_pending;

@@ -16,6 +16,7 @@ module tb_media_protocol_rx;
     wire [31:0] stream_word_data;
     wire stream_word_valid, stream_done;
     wire frame_end_valid, frame_end_ok;
+    wire [3:0] frame_end_reason;
     wire [15:0] frame_end_id;
     wire audio_begin_valid;
     wire [15:0] audio_frame_id;
@@ -33,7 +34,8 @@ module tb_media_protocol_rx;
         .stream_word_data(stream_word_data), .stream_word_valid(stream_word_valid),
         .stream_word_ready(1'b1), .stream_done(stream_done),
         .frame_end_valid(frame_end_valid), .frame_end_ok(frame_end_ok),
-        .frame_end_id(frame_end_id), .audio_begin_valid(audio_begin_valid),
+        .frame_end_reason(frame_end_reason), .frame_end_id(frame_end_id),
+        .audio_begin_valid(audio_begin_valid),
         .audio_frame_id(audio_frame_id), .audio_sample_count(audio_sample_count),
         .audio_end_valid(audio_end_valid), .audio_end_ok(audio_end_ok),
         .audio_end_id(audio_end_id), .protocol_error_toggle(protocol_error_toggle)
@@ -91,6 +93,10 @@ module tb_media_protocol_rx;
         if (frame_end_valid) begin
             if (frame_end_id == 16'h1234 && !frame_end_ok) $fatal(1, "valid image rejected");
             if (frame_end_id == 16'h1235 && frame_end_ok) $fatal(1, "bad checksum accepted");
+            if (frame_end_id == 16'h1234 && frame_end_reason != 4'd0)
+                $fatal(1, "good frame reported reason %0d", frame_end_reason);
+            if (frame_end_id == 16'h1235 && frame_end_reason != 4'd4)
+                $fatal(1, "checksum failure reported reason %0d", frame_end_reason);
             if (frame_end_id == 16'h1234) frame_end_seen <= 1;
             if (frame_end_id == 16'h1235) bad_end_seen <= 1;
         end

@@ -31,6 +31,7 @@ module media_protocol_rx #(
 
     output reg         frame_end_valid,
     output reg         frame_end_ok,
+    output reg  [3:0]  frame_end_reason,
     output reg  [15:0] frame_end_id,
     output reg         audio_begin_valid,
     output reg  [15:0] audio_frame_id,
@@ -138,6 +139,7 @@ module media_protocol_rx #(
             frame_id <= 16'd0; image_index <= 5'd0; image_flags <= 8'd0;
             image_total_words <= 21'd0;
             frame_end_valid <= 1'b0; frame_end_ok <= 1'b0; frame_end_id <= 16'd0;
+            frame_end_reason <= 4'd0;
             audio_begin_valid <= 1'b0; audio_frame_id <= 16'd0;
             audio_sample_count <= 32'd0;
             audio_end_valid <= 1'b0; audio_end_ok <= 1'b0; audio_end_id <= 16'd0;
@@ -307,6 +309,12 @@ module media_protocol_rx #(
                         TYPE_IMAGE_END: begin
                             frame_end_id <= packet_frame_id;
                             frame_end_valid <= 1'b1;
+                            frame_end_reason <=
+                                (!frame_active || packet_frame_id != active_frame_id) ? 4'd1 :
+                                ((payload_length != 16'd8 || packet_reserved != 16'd0) ? 4'd2 :
+                                ((received_image_words != image_total_words) ? 4'd3 :
+                                ((image_sum != packet_checksum) ? 4'd4 :
+                                (frame_bad ? 4'd5 : (stream_active ? 4'd6 : 4'd0)))));
                             frame_end_ok <= frame_active && packet_frame_id == active_frame_id &&
                                 payload_length == 16'd8 && packet_reserved == 16'd0 &&
                                 received_image_words == image_total_words &&

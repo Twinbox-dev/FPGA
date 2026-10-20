@@ -19,8 +19,8 @@ module tb_media_display_tx;
 
     media_display_tx #(.TX_GAP_CYCLES(4)) dut(.*);
     assign tx_ack=tx_request;
-    reg [7:0] packets[0:7][0:15];
-    integer packet_lengths[0:7];
+    reg [7:0] packets[0:8][0:15];
+    integer packet_lengths[0:8];
     integer packet_count=0, byte_count=0;
     reg in_packet=0;
     always @(posedge clk) begin
@@ -75,24 +75,27 @@ module tb_media_display_tx;
         check_header(1,8'h24,3);
         if(packets[1][8]!=8'h34 || packets[1][9]!=8'h12 || packets[1][10]!=0)
             $fatal(1,"image accept result");
-        pulse(2); wait(packet_count==4);
+        pulse(2); wait(packet_count==6);
         check_header(2,8'h33,3);
         if(packets[2][10]!=0) $fatal(1,"audio result ordering");
-        check_header(3,8'h24,3);
-        if(packets[3][10]!=2) $fatal(1,"final image commit result");
-        pulse(3); wait(packet_count==5);
-        check_header(4,8'h41,4);
-        if(packets[4][8]!=8'h31 || packets[4][9]!=4 || packets[4][10]!=0 || packets[4][11]!=2)
+        for(integer i=3;i<=5;i=i+1) begin
+            check_header(i,8'h24,3);
+            if(packets[i][8]!=8'h34 || packets[i][9]!=8'h12 || packets[i][10]!=2)
+                $fatal(1,"final image commit result copy %0d",i-2);
+        end
+        pulse(3); wait(packet_count==7);
+        check_header(6,8'h41,4);
+        if(packets[6][8]!=8'h31 || packets[6][9]!=4 || packets[6][10]!=0 || packets[6][11]!=2)
             $fatal(1,"control ACK payload");
-        pulse(4); wait(packet_count==6);
-        check_header(5,8'h43,8);
-        if(packets[5][8]!=0 || packets[5][15]!=7) $fatal(1,"status payload byte order");
+        pulse(4); wait(packet_count==8);
+        check_header(7,8'h43,8);
+        if(packets[7][8]!=0 || packets[7][15]!=7) $fatal(1,"status payload byte order");
 
         @(negedge clk); local_cmd_async=8'h4e; local_cmd_toggle_async=~local_cmd_toggle_async;
-        wait(packet_count==7);
-        check_header(6,8'h05,2);
-        if(packets[6][8]!=8'h4e || packets[6][9]!=8'hb1) $fatal(1,"local next command");
-        $display("PASS: READY/results ordering, control/status responses, local touch command");
+        wait(packet_count==9);
+        check_header(8,8'h05,2);
+        if(packets[8][8]!=8'h4e || packets[8][9]!=8'hb1) $fatal(1,"local next command");
+        $display("PASS: READY/results ordering, repeated commit result, control/status, local touch command");
         $finish;
     end
     initial begin #200000; $fatal(1,"timeout"); end

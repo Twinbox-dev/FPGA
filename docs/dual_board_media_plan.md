@@ -95,8 +95,10 @@ PC 行为级对端已分别验证过媒体板发送到显示板、显示板接�
 
 | 板卡 | bit 文件 | SHA-256 | LUT / FF | BRAM9K / BRAM32K | DSP / PLL | Setup WNS / Hold WNS |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | BB7FEA85CC09BC58A74E51F74F909E6898D22F0479AC6DAE9AD830C365A23BCF | 14,295 / 10,334 | 55 / 2 | 10 / 4 | −5.948 ns / −3.137 ns |
-| 媒体板 | board_media/td_project/media_net_Runs/phy_1/media_net.bit | 8D5A8EAA78EBA76C76915DA631F9C3FD40264B2F782153B38ED10B46C9A70478 | 12,320 / 8,503 | 22 / 2 | 2 / 2 | −3.490 ns / −3.200 ns |
+| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | BC027D50F8A0246180E14F531315201C452DD920B6462B476F505E55BAAB865C | 14,310 / 10,370 | 55 / 2 | 10 / 4 | −5.699 ns / −2.935 ns |
+| 媒体板 | board_media/td_project/media_net_Runs/phy_1/media_net.bit | 0DE75D333FE0D0FE85A0C375B7502B75DAB86782B7247BB43689CA36568B72AB | 12,411 / 8,500 | 22 / 2 | 2 / 2 | −3.560 ns / −3.056 ns |
+
+2026-10-20 的黑边图、单步命令、按键启动和最终 RESULT 重试修复及逐图验收见 [双板实时联调记录](dual_board_live_debug_20261020.md)。
 
 两边 TD P&R 均生成 bit；资源与最终报告位于各自 phy_1/*_phy.area、route.qor、final_timing.rpt。两份报告仍显示既有的 setup/hold 时序违例，实际网络与协议回归已通过；HDMI 目视和音频听感由用户返回后确认。
 

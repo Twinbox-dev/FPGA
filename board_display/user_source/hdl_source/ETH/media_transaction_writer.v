@@ -25,6 +25,7 @@ module media_transaction_writer #(
     input  wire        stream_done,
     input  wire        frame_end_valid,
     input  wire        frame_end_ok,
+    input  wire [3:0]  frame_end_reason,
     input  wire [15:0] frame_end_id,
     input  wire        audio_begin_valid,
     input  wire [15:0] audio_frame_id,
@@ -72,6 +73,7 @@ module media_transaction_writer #(
     reg [31:0] image_meta_udp;
     reg [15:0] image_id_udp, image_end_id_udp, audio_id_udp, audio_end_id_udp;
     reg image_end_good_udp, audio_end_good_udp;
+    reg [3:0] image_end_reason_udp;
     reg [31:0] audio_samples_udp;
     reg image_begin_toggle_udp, image_end_toggle_udp;
     reg audio_begin_toggle_udp, audio_end_toggle_udp;
@@ -96,6 +98,7 @@ module media_transaction_writer #(
     reg frame_read_pending, audio_read_pending;
     reg frame_write_done, audio_write_done;
     reg frame_active_w, frame_end_seen_w, frame_end_good_w, frame_result_sent_w;
+    reg [3:0] frame_end_reason_w;
     reg audio_active_w, audio_end_seen_w, audio_end_good_w, audio_result_sent_w;
     reg audio_retry_pending_w, audio_no_data_w;
     reg commit_pending_w, transition_pending_w, transition_done_seen_w;
@@ -175,6 +178,7 @@ module media_transaction_writer #(
             image_meta_udp <= 32'd0; image_id_udp <= 16'd0;
             image_end_id_udp <= 16'd0; audio_id_udp <= 16'd0; audio_end_id_udp <= 16'd0;
             image_end_good_udp <= 1'b0; audio_end_good_udp <= 1'b0;
+            image_end_reason_udp <= 4'd0;
             audio_samples_udp <= 32'd0;
             image_begin_toggle_udp <= 1'b0; image_end_toggle_udp <= 1'b0;
             audio_begin_toggle_udp <= 1'b0; audio_end_toggle_udp <= 1'b0;
@@ -202,6 +206,7 @@ module media_transaction_writer #(
             if (frame_end_valid) begin
                 image_end_id_udp <= frame_end_id;
                 image_end_good_udp <= frame_end_ok;
+                image_end_reason_udp <= frame_end_reason;
                 image_end_toggle_udp <= ~image_end_toggle_udp;
             end
             if (audio_begin_valid) begin
@@ -232,6 +237,7 @@ module media_transaction_writer #(
             frame_write_done <= 1'b0; audio_write_done <= 1'b0;
             frame_active_w <= 1'b0; frame_end_seen_w <= 1'b0;
             frame_end_good_w <= 1'b0; frame_result_sent_w <= 1'b0;
+            frame_end_reason_w <= 4'd0;
             audio_active_w <= 1'b0; audio_end_seen_w <= 1'b0;
             audio_end_good_w <= 1'b0; audio_result_sent_w <= 1'b0;
             audio_retry_pending_w <= 1'b0; audio_no_data_w <= 1'b0;
@@ -312,6 +318,7 @@ module media_transaction_writer #(
             if (image_end_event && image_end_id_udp == pending_frame_id_w) begin
                 frame_end_seen_w <= 1'b1;
                 frame_end_good_w <= image_end_good_udp;
+                frame_end_reason_w <= image_end_reason_udp;
             end
 
             if (audio_begin_event && audio_id_udp == pending_frame_id_w && audio_active_w == 1'b0) begin
@@ -356,7 +363,8 @@ module media_transaction_writer #(
             end
 
             if (frame_active_w && frame_end_seen_w && frame_write_done && !frame_result_sent_w) begin
-                image_result_code_w <= frame_end_good_w ? 8'd0 : 8'd1;
+                // RESULT 0x10..0x16 means reject/retry plus a four-bit cause.
+                image_result_code_w <= frame_end_good_w ? 8'd0 : {4'h1,frame_end_reason_w};
                 image_result_toggle_w <= ~image_result_toggle_w;
                 frame_result_sent_w <= 1'b1;
                 if (frame_end_good_w) begin

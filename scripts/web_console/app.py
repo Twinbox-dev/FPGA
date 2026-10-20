@@ -52,7 +52,7 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
-        "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "显存读回捕获(调试)",
+        "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "当前显示图片快照",
         "0": "直接切", "1": "交叉溶解", "2": "柔边滑动",
         "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示"}
 
@@ -150,7 +150,19 @@ def decode_pkt(pkt: bytes) -> str:
         source = (f"媒体: 装载状态={state & 0xF} {recv_detail} | "
                   f"{source_state} | ")
     else:
-        source = "媒体诊断=未收到 | "
+        media_tx_state = state & 0x0F
+        media_tx_error = (state >> 4) & 0x0F
+        tx_names = {0: "receiver-ready", 1: "read-bmp-header", 2: "load-image-chunk",
+                    3: "wait-udp", 4: "send-udp", 5: "wait-bmp-source",
+                    6: "image-end-gap", 7: "wait-image-result", 8: "wait-commit",
+                    9: "idle", 10: "read-wav-header", 11: "load-audio-chunk",
+                    12: "wait-wav-source", 13: "audio-end-gap", 14: "wait-audio-result"}
+        reject_names = {9: "frame-id/state", 10: "END length/reserved",
+                        11: "word-count", 12: "checksum", 13: "earlier packet",
+                        14: "receiver still draining previous packet"}
+        error_text = reject_names.get(media_tx_error, str(media_tx_error))
+        source = (f"media-TX={tx_names.get(media_tx_state, str(media_tx_state))} "
+                  f"error={error_text}({media_tx_error}) FAT=0x{fat:02X} | ")
 
     return (f"{source}buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
@@ -716,7 +728,7 @@ class EthTransport:
                 slot["ts"] = ts
                 slot["stride"] = 3 if typ == "rb" else 1
                 fid = slot["id"]
-            self.broadcast({"type": "frame", "kind": typ, "id": fid,
+            self.broadcast({"type": "frame", "kind": typ, "source": "probe", "id": fid,
                             "words": words, "h": h,
                             "gaps": st["gaps"], "ts": ts})
 
@@ -806,14 +818,14 @@ class EthTransport:
                 self._send_snapshot_reply(0x24, struct.pack("<HB", frame_id, 2))
                 ts = time.strftime("%H:%M:%S")
                 with ETH_FRAME_LOCK:
-                    ETH_FRAME_RB["id"] += 1
-                    ETH_FRAME_RB["data"] = bytes(state["words"])
-                    ETH_FRAME_RB["gaps"] = 0
-                    ETH_FRAME_RB["words"] = len(state["words"]) // 4
-                    ETH_FRAME_RB["ts"] = ts
-                    ETH_FRAME_RB["stride"] = 1
-                    fid = ETH_FRAME_RB["id"]
-                self.broadcast({"type": "frame", "kind": "rb", "id": fid,
+                    ETH_FRAME_SNAPSHOT["id"] += 1
+                    ETH_FRAME_SNAPSHOT["data"] = bytes(state["words"])
+                    ETH_FRAME_SNAPSHOT["gaps"] = 0
+                    ETH_FRAME_SNAPSHOT["words"] = len(state["words"]) // 4
+                    ETH_FRAME_SNAPSHOT["ts"] = ts
+                    ETH_FRAME_SNAPSHOT["stride"] = 1
+                    fid = ETH_FRAME_SNAPSHOT["id"]
+                self.broadcast({"type": "frame", "kind": "rb", "source": "snapshot", "id": fid,
                                 "words": 460800, "h": 720, "gaps": 0, "ts": ts})
             self.snapshot = None
 
@@ -871,6 +883,7 @@ eth_link = EthTransport(SUBS)
 # ---------------------------------------------------------------------------
 ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
 ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 3}
+ETH_FRAME_SNAPSHOT = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
 ETH_FRAME_LOCK = threading.Lock()
 
 
@@ -1012,13 +1025,18 @@ def api_stream():
 def api_frame():
     """最新重组帧：原始字流（每字 4 字节小端，RGB565×2/字）+ 元数据头。
     ?slot=wr（写侧发射流，默认）/ rb（显存读回）。"""
-    is_rb = request.args.get("slot") == "rb"
-    slot = ETH_FRAME_RB if is_rb else ETH_FRAME
+    slot_name = request.args.get("slot", "wr")
+    slots = {"wr": ETH_FRAME, "rb": ETH_FRAME_RB, "snapshot": ETH_FRAME_SNAPSHOT}
+    slot = slots.get(slot_name)
+    if slot is None:
+        return jsonify({"ok": False, "error": "unknown frame slot"}), 404
     with ETH_FRAME_LOCK:
         data = slot["data"]
+        frame_id = slot["id"]
         gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
-        stride = slot.get("stride", 3 if is_rb else 1)
+        stride = slot.get("stride", 3 if slot_name == "rb" else 1)
     resp = Response(data, mimetype="application/octet-stream")
+    resp.headers["X-Frame-Id"] = str(frame_id)
     resp.headers["X-Frame-Words"] = str(words)
     resp.headers["X-Frame-Gaps"] = str(gaps)
     resp.headers["X-Frame-Stride"] = str(stride)

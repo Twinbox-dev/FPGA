@@ -17,6 +17,7 @@ module tb_media_display_path;
     wire [31:0] stream_word_data;
     wire stream_word_ready;
     wire frame_end_valid,frame_end_ok;
+    wire [3:0] frame_end_reason;
     wire [15:0] frame_end_id,audio_frame_id,audio_end_id;
     wire audio_begin_valid,audio_end_valid,audio_end_ok;
     wire [31:0] audio_sample_count;
@@ -58,7 +59,8 @@ module tb_media_display_path;
         .stream_is_audio(stream_is_audio),.stream_word_count(stream_word_count),
         .stream_word_data(stream_word_data),.stream_word_valid(stream_word_valid),
         .stream_word_ready(stream_word_ready),.stream_done(stream_done),
-        .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),.frame_end_id(frame_end_id),
+        .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),
+        .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),.audio_frame_id(audio_frame_id),
         .audio_sample_count(audio_sample_count),.audio_end_valid(audio_end_valid),
         .audio_end_ok(audio_end_ok),.audio_end_id(audio_end_id),
@@ -71,7 +73,8 @@ module tb_media_display_path;
         .stream_is_audio(stream_is_audio),.stream_word_count(stream_word_count),
         .stream_word_data(stream_word_data),.stream_word_valid(stream_word_valid),
         .stream_word_ready(stream_word_ready),.stream_done(stream_done),
-        .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),.frame_end_id(frame_end_id),
+        .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),
+        .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),.audio_frame_id(audio_frame_id),
         .audio_sample_count(audio_sample_count),.audio_end_valid(audio_end_valid),
         .audio_end_ok(audio_end_ok),.audio_end_id(audio_end_id),
@@ -129,8 +132,8 @@ module tb_media_display_path;
 
     integer output_packets=0,output_bytes=0;
     reg output_in_packet=0;
-    reg [7:0] packet_types[0:3];
-    reg [7:0] packet_results[0:3];
+    reg [7:0] packet_types[0:6];
+    reg [7:0] packet_results[0:6];
     always @(posedge udp_clk) begin
         if(stack_valid) begin
             if(output_bytes==4) packet_types[output_packets]=stack_data;
@@ -197,7 +200,27 @@ module tb_media_display_path;
            audio_buffer_index!=2 || audio_buffer_length!=256 || audio_sample_count_out!=5)
             $fatal(1,"final display metadata mismatch");
         if(req_buffer!=2 || req_words!=256) $fatal(1,"audio SDRAM transaction alignment");
-        $display("PASS: formal packets flow through parser, frame/audio SDRAM writer, commit and replies");
+        // The display repeats final RESULT=2 twice after the first copy. Drain
+        // those idempotent replies before checking the next frame's rejection.
+        wait(output_packets>=6);
+
+        // A checksum failure returns 0x14 (reject + checksum reason 4), while
+        // leaving the previously committed display image untouched.
+        header(8'h21,8);send_byte(8'h35);send_byte(8'h12);send_byte(2);send_byte(8'h08);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        header(8'h22,16);send_byte(8'h35);send_byte(8'h12);send_byte(0);send_byte(0);
+        send_byte(8'h44);send_byte(8'h33);send_byte(8'h22);send_byte(8'h11);
+        send_byte(8'h88);send_byte(8'h77);send_byte(8'h66);send_byte(8'h55);
+        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet();
+        header(8'h23,8);send_byte(8'h35);send_byte(8'h12);send_byte(8'hba);send_byte(8'h69);
+        send_byte(8'h36);send_byte(8'h45);send_byte(0);send_byte(0);close_packet();
+        wait(output_packets>=7);
+        if(packet_types[6]!=8'h24 || packet_results[6]!=8'h14)
+            $fatal(1,"bad frame did not report checksum reject: type=%02x result=%02x",
+                   packet_types[6],packet_results[6]);
+        if(!display_valid || image_index_out!=2)
+            $fatal(1,"rejected frame replaced committed image");
+        $display("PASS: valid frame commit and checksum reject reason round-trip");
         $finish;
     end
     initial begin #20000000;$fatal(1,"timeout");end

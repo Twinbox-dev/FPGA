@@ -43,7 +43,7 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -222,6 +222,20 @@ media-control:
 media-tx:
 	$(VERILATOR) --binary --timing --top-module tb_media_display_tx vsrc/tb_media_display_tx.sv ../board_display/user_source/hdl_source/ETH/media_display_tx.v --Mdir build_media_tx -o sim_media_display_tx
 	./build_media_tx/sim_media_display_tx
+
+# The media-side 1280x720 formatter, including black borders and sector/FIFO backpressure.
+media-frame-format:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_frame_format vsrc/tb_media_frame_format.sv ../board_media/user_source/hdl_source/media_frame_format.v --Mdir build_media_frame_format -o sim_media_frame_format
+	./build_media_frame_format/sim_media_frame_format
+
+build_bmp_frame_format/sim_bmp_frame_format: vsrc/tb_bmp_frame_format.sv ../board_media/user_source/hdl_source/SD/bmp_dec.v ../board_media/user_source/hdl_source/media_frame_format.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_bmp_frame_format $^ --Mdir build_bmp_frame_format -o sim_bmp_frame_format
+
+media-bmp-format: build_bmp_frame_format/sim_bmp_frame_format
+	./build_bmp_frame_format/sim_bmp_frame_format +BMP=../img/golden/IMG0.BMP
+	./build_bmp_frame_format/sim_bmp_frame_format +BMP=../img/golden/IMG3.BMP
+	./build_bmp_frame_format/sim_bmp_frame_format +BMP=../img/golden/IMG4.BMP
+	./build_bmp_frame_format/sim_bmp_frame_format +BMP=../img/golden/IMG5.BMP
 media-audio-playback:
 	$(VERILATOR) --binary --timing --top-module tb_media_audio_playback vsrc/tb_media_audio_playback.sv ../board_display/user_source/hdl_source/SD/media_audio_playback.v --Mdir build_media_audio_playback -o sim_media_audio_playback
 	./build_media_audio_playback/sim_media_audio_playback
@@ -234,6 +248,22 @@ media-image-tx:
 media-route:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_udp_route ../board_media/sim/tb_media_udp_route.sv ../board_media/user_source/hdl_source/media_image_tx.v ../board_media/user_source/hdl_source/media_udp_route.v --Mdir build_media_route -o sim_media_udp_route
 	./build_media_route/sim_media_udp_route
+
+media-tx-gap:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_image_tx_gap vsrc/tb_media_image_tx_gap.sv ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_media_image_tx_gap -o sim_media_image_tx_gap
+	./build_media_image_tx_gap/sim_media_image_tx_gap
+
+media-packet-drain:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_packet_drain vsrc/tb_media_packet_drain.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v --Mdir build_media_packet_drain -o sim_media_packet_drain
+	./build_media_packet_drain/sim_media_packet_drain
+
+media-single-step:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_single_step vsrc/tb_media_single_step.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_media_single_step -o sim_media_single_step
+	./build_media_single_step/sim_media_single_step
+
+media-button:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_button_debounce vsrc/tb_media_button_debounce.sv ../board_media/user_source/hdl_source/media_button_debounce.v --Mdir build_media_button -o sim_media_button
+	./build_media_button/sim_media_button
 media-command:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_control_snapshot vsrc/tb_media_control_snapshot.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_command -o sim_media_control_snapshot
 	./build_media_command/sim_media_control_snapshot

@@ -24,9 +24,13 @@
 | 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32 | 8 字节；total_words=460800；flags bit0=上一张方向，bit2:1=特效，bit3=有同名 WAV 候选; bit4=自动轮播状态快照 |
 | 0x0022 DATA | frame_id:u16, sequence:u16, N×u32 words | N 从 LEN 计算，1–253；序号从 0 连续递增 |
 | 0x0023 END | frame_id:u16, checksum:u32, reserved:u16=0 | 8 字节；前一数据包后等待 1 ms 再发 |
-| 0x0024 RESULT | frame_id:u16, result:u8 | 0 图像验收并开始音频；1 整图重传；2 图音提交完成 |
+| 0x0024 RESULT | frame_id:u16, result:u8 | 0 图像验收并开始音频；1 整图重传；2 图音提交完成。显示板对最终 `result=2` 连发三次，间隔 1 ms；媒体板按 frame_id 接收，后续重复包会被忽略 |
 
 DATA 校验为全部有效像素字按流序相加，32-bit 无符号溢出回绕；不含包头、BEGIN 元数据或序号。正常满片 253 字，总 UDP 载荷 1024 字节；最后一片按剩余字数发送。完整帧共有 1822 个 DATA 包。接收端发现序号缺口、字数不等或累计和失配时不提交非活动缓冲，回 RESULT 1；发送端最多完整读取并发送三次。
+
+媒体板在每个非末尾 IMAGE_DATA 包后等待 100 µs 再发下一包（125 MHz 应用时钟下 12,500 拍）；最后一包后仍按 1 ms 等待再发 END。显示接收器使用一块 253 字包缓存，将数据写入 512 字异步 FIFO 后再交给 SDRAM 写控制器。板测曾在 16 µs 包间隔下出现 word-count 拒绝；100 µs 后 IMG3/IMG4/IMG5 均完成提交，PC D 快照的 460,800 字逐字匹配各自 BMP。该间隔是发送端为接收侧排空和写启动留出的余量，不代表千兆网带宽不足。
+
+显示端 IMAGE_DATA/END 检查原因随 RESULT 低四位返回：`0x11` 帧号/状态、`0x12` END 长度或 reserved、`0x13` 字数、`0x14` 校验和、`0x15` 本帧先前包无效、`0x16` 接收器仍在排空前一包。媒体板最多重试整图三次；最终 S 状态中的 error=9–14 对应上述六种原因。
 
 ## 配对 PCM（0x30–0x33）
 
@@ -60,6 +64,8 @@ PC 发给媒体板的 V1 type 0x0001 载荷为 [CMD, CMD XOR 0xFF]。网页小�
 | ' / ; | 0x27 / 0x3B | 频谱灵敏度加 / 减 |
 | d | 0x44 | 媒体侧原始 BMP 调试读回 |
 | l | 0x4C | 保留 UI 按键；按约定 FPGA 不返回有效响应 |
+
+媒体板顶层把 Ethernet/UART 的 `n` / `p` 交给 `media_control_core`，由其产生单周期切图脉冲；不要再把同一份原始 N/P 命令并行送给 `media_image_tx`，否则会把一次按键排成多次切图。实体按键另走同步去抖路径；去抖器在启动后须先确认稳定释放，再允许按下事件。
 
 媒体板 V1 type 0x0002 回包载荷为 8 字节：5A, cmd, volume, period_s, image_index, wav_flag, levels, flags。S 还会先返回 A5 状态，载荷为 A5, media_state, fat_state, flagA, flagB, underrun, image_index, wav_flag，再返回 5A 命令 ACK。
 
