@@ -1,9 +1,7 @@
 // One 8x16 glyph row at a time. Text RAM and font ROM are both synchronous:
 // request next character at pixel 4, fetch its glyph at pixel 6, then load
 // the shift register at pixel 7 for the next cell.
-module subtitle_text_renderer #(
-    parameter FONT_FILE = "../user_source/hdl_source/SD/font.mem"
-)(
+module subtitle_text_renderer(
     input  wire               video_clk,
     input  wire               rst,
     input  wire               de,
@@ -13,6 +11,9 @@ module subtitle_text_renderer #(
     input  wire [7:0]         text_len,
     output reg  [7:0]         char_index,
     input  wire [7:0]         char_data,
+    output wire [6:0]         font_ascii,
+    output wire [3:0]         font_row,
+    input  wire [7:0]         font_row_data,
     output reg                text_on,
     output reg                in_band
 );
@@ -46,13 +47,9 @@ module subtitle_text_renderer #(
     wire signed [12:0] column = rx >>> 3;
 
     reg [7:0] row_shift;
-    wire [7:0] glyph_row;
-    font_rom #(.MEM_FILE(FONT_FILE)) u_font (
-        .video_clk(video_clk),
-        .ascii(char_data[6:0]),
-        .row(glyph_y),
-        .row_data(glyph_row)
-    );
+    wire [7:0] glyph_row = font_row_data;
+    assign font_ascii = char_data[6:0];
+    assign font_row = glyph_y;
     always @(posedge video_clk or posedge rst) begin
         if (rst) begin
             char_index <= 8'd0;

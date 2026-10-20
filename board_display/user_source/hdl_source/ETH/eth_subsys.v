@@ -5,18 +5,11 @@
 // 组成（与 demo udp_transmit_test.v 对应）：
 //   clk_gen_rst_gen(125/12.5/25M + PLL lock 复位) → udp_clk_gen(按速率选
 //   udp_clk，百兆=12.5M) → udp_ip_protocol_stack(UDP/IP/ARP，官方 IP) ↔
-//   tx/rx_client_fifo ↔ temac_block(TEMAC_CORE + RGMII) → eth_front(应用层)
+//   tx/rx_client_fifo ↔ temac_block(TEMAC_CORE + RGMII) ↔ UDP 栈
+// 显示板应用层只接收正式媒体协议，并向媒体板回送结果与状态。
 //
-// 应用接口（跨时钟域握手，udp_clk 12.5M 域 ↔ sd_card_clk 域由顶层完成）：
-//   cmd/cmd_pending/cmd_ack_t：命令握手（pending 置位后 cmd 稳定，直到顶层
-//   翻转 cmd_ack_t 表示已取走）
-//   tx_tog/tx_pkt：应答包入口（顶层每收到一条 ctrl_core 应答翻转一次 tx_tog，
-//   tx_pkt 在翻转前后稳定，本模块同步检测变化后锁存发送）
-//
-// 网络配置：本地 IP 192.168.137.2 / MAC 01:23:45:67:89:ab / UDP 端口 1
-// （PC 侧为 192.168.137.1（笔记本静态/ICS 默认），发往板卡端口 1，监听端口 2——
-//   demo 的 DST_UDP_PORT_NUM=2 本模块未实现 PC 端口动态化，回包统一发
-//   192.168.137.1:2。板卡 IP 取同网段 .2，子网掩码 255.255.255.0）
+// 网络配置：本地 IP 192.168.137.2 / MAC 01:23:45:67:89:ab / UDP 端口 1。
+// 显示板所有应用层发送均回媒体板 .3:1；PC 控制和 D 快照由媒体板处理。
 // 速率：TRI_SPEED 一处切换（2'b01=百兆 udp_clk=12.5M / 2'b10=千兆 udp_clk=125M，
 // 由 udp_clk_gen 自动按 tri_speed 选时钟源）。当前用**千兆**——板载 PHY 与 PC
 // 网卡自协商即 1G，且后续数据面（图/音上传）需要带宽。
@@ -37,39 +30,20 @@ module eth_subsys(
     output wire [7:0]  app_rx_data_out,
     output wire        app_rx_data_valid_out,
 
-    // 应用层（跨域握手，见头注释）
-    output wire [7:0]  cmd,
-    output wire        cmd_pending,
-    input  wire        cmd_ack_t,
-    input  wire        tx_tog,
-    input  wire [63:0] tx_pkt,
+    // 正式媒体应用层收发
     input  wire        media_packet_request,
     input  wire        media_packet_valid,
     input  wire [7:0]  media_packet_data,
     input  wire [15:0] media_packet_length,
     output wire        media_packet_ack,
-    output wire        media_packet_ready,
-
-    // 写侧分叉：图像发射流旁路（tap_clk = sd_card_clk 域；sys_rst = rst_all）
-    input  wire        sys_rst,
-    input  wire        tap_clk,
-    input  wire        tap_val,
-    input  wire [31:0] tap_word,
-    input  wire        tap_end,
-    // 读侧 dump：显示读数据捕获流（独立源时钟 video_clk，type=0x0004）
-    input  wire        tap2_clk,
-    input  wire        tap2_val,
-    input  wire [31:0] tap2_word,
-    input  wire        tap2_end
+    output wire        media_packet_ready
 );
     parameter DEVICE           = "EG4";
     parameter LOCAL_UDP_PORT   = 16'h0001;
     parameter LOCAL_IP         = 32'hc0a88902;   // 192.168.137.2（板卡）
     parameter LOCAL_MAC        = 48'h0123456789ab;
-    parameter DST_IP           = 32'hc0a88901;   // 192.168.137.1（PC 侧）
-    parameter DST_UDP_PORT     = 16'h0002;        // 目标 UDP 端口，原显示板回包端口
-    parameter MEDIA_PEER_IP    = 32'hc0a88903;    // 正式媒体板；PC 仿真时覆写为 .1
-    parameter MEDIA_PEER_UDP_PORT = 16'h0001;     // 双板媒体端口；PC WebTransport 模拟时可覆写为 2
+    parameter MEDIA_PEER_IP    = 32'hc0a88903;    // 媒体板 .3
+    parameter MEDIA_PEER_UDP_PORT = 16'h0001;     // 媒体应用端口
     // 速率开关（2026-10-02 定）：**当前=千兆**（GIGABIT=1）。
     // 已知风险（用户明确接受）：综合时序过不了——厂商加密 UDP 栈内部（ARP 缓存）
     // 在 125MHz 下实测 Fmax 只有 44MHz（setup 差 5.3ns，281 个端点），
@@ -133,62 +107,28 @@ module eth_subsys(
         else if (phy_rst_cnt < 8'd255) phy_rst_cnt <= phy_rst_cnt + 1'b1;
     assign phy_reset = phy_rst_cnt[7];
 
-    // ================= 应用层（eth_front，udp_clk 域）=================
+    // ================= 应用层（媒体协议，udp_clk 域）=================
     wire [7:0]  app_rx_data;
     wire        app_rx_data_valid;
-    wire [15:0] app_rx_data_length;
     wire        udp_tx_ready, app_tx_ack;
-    wire [7:0]  app_tx_data, ctrl_tx_data;
+    wire [7:0]  app_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
-    wire [15:0] udp_data_length, ctrl_tx_length;
-    wire        ctrl_udp_ready, ctrl_tx_ack, ctrl_tx_req, ctrl_tx_valid;
-    wire        media_tx_chunk_active;
-    wire [31:0] tx_dst_ip = media_tx_chunk_active ? MEDIA_PEER_IP : DST_IP;
-    wire [15:0] tx_dst_port = media_tx_chunk_active ? MEDIA_PEER_UDP_PORT : DST_UDP_PORT;
+    wire [15:0] udp_data_length;
+    wire [31:0] tx_dst_ip = MEDIA_PEER_IP;
+    wire [15:0] tx_dst_port = MEDIA_PEER_UDP_PORT;
 
     media_tx_mux u_tx_mux (
         .clk          (udp_clk), .rst(reset),
         .stack_ready  (udp_tx_ready), .stack_ack(app_tx_ack),
-        .ctrl_req     (ctrl_tx_req), .ctrl_valid(ctrl_tx_valid),
-        .ctrl_data    (ctrl_tx_data), .ctrl_length(ctrl_tx_length),
-        .ctrl_ready   (ctrl_udp_ready), .ctrl_ack(ctrl_tx_ack),
+        .ctrl_req     (1'b0), .ctrl_valid(1'b0),
+        .ctrl_data    (8'd0), .ctrl_length(16'd0),
+        .ctrl_ready   (), .ctrl_ack(),
         .chunk_req    (media_packet_request), .chunk_valid(media_packet_valid),
         .chunk_data   (media_packet_data), .chunk_length(media_packet_length),
         .chunk_ack    (media_packet_ack), .chunk_ready(media_packet_ready),
-        .chunk_active(media_tx_chunk_active),
+        .chunk_active(),
         .stack_req    (app_tx_data_request), .stack_valid(app_tx_data_valid),
         .stack_data   (app_tx_data), .stack_length(udp_data_length)
-    );
-
-    eth_front u_eth_front (
-        .app_rx_clk        (udp_clk),
-        .app_tx_clk        (udp_clk),
-        .reset             (reset),
-        .app_rx_data       (app_rx_data),
-        .app_rx_data_valid (app_rx_data_valid),
-        .app_rx_data_length(app_rx_data_length),
-        .udp_tx_ready      (ctrl_udp_ready),
-        .app_tx_ack        (ctrl_tx_ack),
-        .app_tx_data       (ctrl_tx_data),
-        .app_tx_data_request(ctrl_tx_req),
-        .app_tx_data_valid (ctrl_tx_valid),
-        .udp_data_length   (ctrl_tx_length),
-        .cmd               (cmd),
-        .cmd_pending       (cmd_pending),
-        .local_cmd         (),
-        .local_cmd_valid   (),
-        .cmd_ack_t         (cmd_ack_t),
-        .tx_tog            (tx_tog),
-        .tx_pkt            (tx_pkt),
-        .sys_rst           (sys_rst),
-        .tap_clk           (tap_clk),
-        .tap_val           (tap_val),
-        .tap_word          (tap_word),
-        .tap_end           (tap_end),
-        .tap2_clk          (tap2_clk),
-        .tap2_val          (tap2_val),
-        .tap2_word         (tap2_word),
-        .tap2_end          (tap2_end)
     );
 
     assign app_rx_data_out = app_rx_data;
@@ -243,15 +183,15 @@ module eth_subsys(
         .app_tx_data_valid     (app_tx_data_valid),
         .app_tx_data           (app_tx_data),
         .app_tx_data_length    (udp_data_length),
-        .app_tx_dst_port       (tx_dst_port),          // PC 侧端口（demo 同款）
-        .ip_tx_dst_address     (tx_dst_ip),            // PC 侧 IP
+        .app_tx_dst_port       (tx_dst_port),          // 媒体板应用端口
+        .ip_tx_dst_address     (tx_dst_ip),            // 媒体板地址
         .input_local_udp_port_num       (local_port_dyn),
         .input_local_udp_port_num_valid (local_cfg_valid),
         .input_local_ip_address         (local_ip_dyn),
         .input_local_ip_address_valid   (local_cfg_valid),
         .app_rx_data_valid      (app_rx_data_valid),
         .app_rx_data            (app_rx_data),
-        .app_rx_data_length     (app_rx_data_length),
+        .app_rx_data_length     (),
         .app_rx_port_num        (),
         .temac_rx_ready         (temac_rx_ready),
         .temac_rx_valid         (!temac_rx_valid_n),  // fifo 的 _n 低有效，栈要高有效

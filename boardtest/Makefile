@@ -158,6 +158,8 @@ transitionpair: $(SIM)
 
 # HDMI-only subtitle/OSD units. Kept independent of the full SD-card image test.
 OSD_FONT := $(TSD)/font_rom.v $(TSD)/font.mem
+build_font_rom_2r/sim_font_rom_2r: vsrc/tb_font_rom_2r.v $(OSD_FONT)
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_font_rom_2r $(filter %.v,$^) --Mdir build_font_rom_2r -o sim_font_rom_2r
 build_subtitle_cmd/sim_subtitle_cmd: vsrc/tb_subtitle_cmd.v $(TSD)/subtitle_cmd.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_cmd $^ --Mdir build_subtitle_cmd -o sim_subtitle_cmd
 build_subtitle_ctrl/sim_subtitle_ctrl: vsrc/tb_subtitle_ctrl.v $(TSD)/subtitle_cmd.v $(TSD)/ctrl_core.v
@@ -175,7 +177,8 @@ build_osd_composite/sim_osd_composite: vsrc/tb_osd_composite.v $(TSD)/osd_compos
 build_osd_panel/sim_osd_panel: vsrc/tb_osd_panel_levels.v $(TSD)/osd_panel_levels.v $(OSD_FONT)
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_panel_levels $(filter %.v,$^) --Mdir build_osd_panel -o sim_osd_panel
 .PHONY: osd-unit
-osd-unit: build_subtitle_cmd/sim_subtitle_cmd build_subtitle_ctrl/sim_subtitle_ctrl build_subtitle_store/sim_subtitle_store build_subtitle_scroll/sim_subtitle_scroll build_subtitle_text/sim_subtitle_text build_osd_visibility/sim_osd_visibility build_osd_composite/sim_osd_composite build_osd_panel/sim_osd_panel
+osd-unit: build_font_rom_2r/sim_font_rom_2r build_subtitle_cmd/sim_subtitle_cmd build_subtitle_ctrl/sim_subtitle_ctrl build_subtitle_store/sim_subtitle_store build_subtitle_scroll/sim_subtitle_scroll build_subtitle_text/sim_subtitle_text build_osd_visibility/sim_osd_visibility build_osd_composite/sim_osd_composite build_osd_panel/sim_osd_panel
+	./build_font_rom_2r/sim_font_rom_2r
 	./build_subtitle_cmd/sim_subtitle_cmd
 	./build_subtitle_ctrl/sim_subtitle_ctrl
 	./build_subtitle_store/sim_subtitle_store

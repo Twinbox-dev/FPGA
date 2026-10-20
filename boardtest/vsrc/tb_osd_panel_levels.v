@@ -4,14 +4,25 @@ module tb_osd_panel_levels;
     always #5 clk = ~clk;
     reg rst = 1, de = 0, vs = 0;
     wire text_on, in_band;
+    wire [6:0] font_ascii;
+    wire [3:0] font_row;
+    wire [7:0] font_row_data;
     reg [7:0] font_mem [0:2047];
     osd_panel_levels #(
-        .FONT_FILE("../board_display/user_source/hdl_source/SD/font.mem"),
         .X_TOP(11'd8), .Y_TOP(10'd0)
     ) dut (
         .video_clk(clk), .rst(rst), .de(de), .vs(vs),
         .brightness_level(4'd5), .contrast_level(4'd3),
-        .volume_level(4'd7), .text_on(text_on), .in_band(in_band)
+        .volume_level(4'd7),
+        .font_ascii(font_ascii), .font_row(font_row), .font_row_data(font_row_data),
+        .text_on(text_on), .in_band(in_band)
+    );
+    font_rom_2r #(
+        .MEM_FILE("../board_display/user_source/hdl_source/SD/font.mem")
+    ) font (
+        .video_clk(clk),
+        .ascii_a(7'd0), .row_a(4'd0), .row_data_a(),
+        .ascii_b(font_ascii), .row_b(font_row), .row_data_b(font_row_data)
     );
     function automatic [7:0] panel_char(input integer row, input integer col);
         begin

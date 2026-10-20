@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Act as a PC media board for the display FPGA's standalone acceptance test.
 
-Sends the agreed 0x20..0x33 image/PCM packets to a display board, checks its
-transaction replies, then requests the existing 1/3-rate SDRAM readback probe
-and compares every captured word with the transmitted frame.
+Sends the agreed 0x20..0x33 image/PCM packets to a display board and checks
+transaction results, settings, status, and subtitle replies. Pixel inspection
+is by HDMI for this standalone test; the display-side legacy D stream was
+removed, while the product PC D snapshot remains served by the media board.
 """
 from __future__ import annotations
 
@@ -75,13 +76,10 @@ class Probe:
         self.pending_formal: list[bytes] = []
         self.formal_order: list[tuple[int, int]] = []
         self.ctrl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.dump = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        for sock in (self.ctrl, self.dump):
-            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 16 * 1024 * 1024)
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.ctrl.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        self.ctrl.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 16 * 1024 * 1024)
         self.ctrl.bind((pc_ip, ctrl_port))
-        self.dump.bind((pc_ip, 3))
 
     def send(self, kind: int, payload: bytes = b"") -> None:
         self.ctrl.sendto(packet(kind, payload), (self.board_ip, 1))
@@ -216,57 +214,6 @@ class Probe:
         if ack != (8, 0, len(raw)):
             raise RuntimeError(f"subtitle ACK={ack}")
 
-    def readback(self, attempts: int, timeout_s: float = 0.45) -> bytes:
-        for attempt in range(1, attempts + 1):
-            # V1 command frame: type and length are big-endian; payload is [D,~D].
-            self.ctrl.sendto(MAGIC + struct.pack(">HH", 1, 2) + b"D\xbb", (self.board_ip, 1))
-            packet_data = bytearray()
-            expected_sequence = 0
-            gaps = 0
-            saw_stream = False
-            last_packet = time.monotonic()
-            while time.monotonic() - last_packet < timeout_s:
-                try:
-                    data = self.receive(self.dump, timeout_s)
-                except socket.timeout:
-                    break
-                if len(data) < 10 or data[:6] != MAGIC + b"\x04\x00":
-                    continue
-                declared = int.from_bytes(data[6:8], "little")
-                payload = data[8:]
-                if declared != len(payload) or len(payload) < 2 or (len(payload) - 2) % 4:
-                    continue
-                seq = int.from_bytes(payload[:2], "little")
-                if seq == 0:
-                    packet_data.clear()
-                    expected_sequence = 0
-                    gaps = 0
-                    saw_stream = True
-                elif not saw_stream:
-                    continue
-                if seq != expected_sequence:
-                    gaps += (seq - expected_sequence) & 0xffff
-                expected_sequence = (seq + 1) & 0xffff
-                packet_data.extend(payload[2:])
-                last_packet = time.monotonic()
-            words = len(packet_data) // 4
-            print(f"readback attempt {attempt}: {words} sampled words, sequence gaps={gaps}", flush=True)
-            if words == FRAME_WORDS // 3 and gaps == 0:
-                return bytes(packet_data[:words * 4])
-            time.sleep(0.5)
-        raise RuntimeError("readback probe did not return a complete 1/3-rate frame")
-
-
-def compare_readback(sampled: bytes, words: list[int]) -> tuple[int, int]:
-    got = [int.from_bytes(sampled[i:i + 4], "little") for i in range(0, len(sampled), 4)]
-    best_phase, best_bad = 0, len(got)
-    for phase in range(3):
-        bad = sum(value != words[(phase + 3 * i) % len(words)] for i, value in enumerate(got))
-        if bad < best_bad:
-            best_phase, best_bad = phase, bad
-    return best_phase, best_bad
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--board-ip", default="192.168.137.2")
@@ -278,8 +225,6 @@ def main() -> None:
     ap.add_argument("--pace-ms", type=float, default=0.5,
                     help="inter-UDP-packet spacing; default leaves time for the FPGA BRAM packet buffer")
     ap.add_argument("--frame-id", type=lambda x: int(x, 0), default=0x2401)
-    ap.add_argument("--dump-attempts", type=int, default=3)
-    ap.add_argument("--capture-prefix", type=Path, default=Path("boardtest/captures/display_pc_probe"))
     ap.add_argument("--skip-controls", action="store_true")
     args = ap.parse_args()
 
@@ -300,19 +245,16 @@ def main() -> None:
             raise TimeoutError("display did not answer ten READY queries")
         print(f"display READY={ready}", flush=True)
         probe.set_control(0xf0, 4, 0)
-        print("transition mode set to direct for deterministic readback", flush=True)
+        print("transition mode set to direct for deterministic display acceptance", flush=True)
         if not args.skip_controls:
             print(f"preflight status: {probe.request_status(0xf1)}", flush=True)
         probe.send_image(frame, args.frame_id, 0, bool(pcm))
         probe.send_audio(pcm, args.frame_id)
-        final_result = None
-        try:
-            final_result = probe.wait_formal(0x24, args.frame_id)
-        except TimeoutError:
-            print("no final RESULT=2 received; continuing with SDRAM readback to check commit state", flush=True)
-        if final_result == 2:
-            print(f"formal result order: {[(hex(kind), code) for kind, code in probe.formal_order]}", flush=True)
-            print("image/audio transaction committed", flush=True)
+        final_result = probe.wait_formal(0x24, args.frame_id)
+        print(f"formal result order: {[(hex(kind), code) for kind, code in probe.formal_order]}", flush=True)
+        if final_result != 2:
+            raise RuntimeError(f"image/audio transaction did not commit: RESULT={final_result}")
+        print("image/audio transaction committed", flush=True)
 
         if not args.skip_controls:
             for seq, (op, value) in enumerate(((1, 4), (2, 5), (3, 3),
@@ -323,21 +265,9 @@ def main() -> None:
             probe.upload_subtitle("FPGA DISPLAY LINK")
             print("control SET/status/subtitle passed", flush=True)
 
-        sampled = probe.readback(args.dump_attempts)
-        args.capture_prefix.parent.mkdir(parents=True, exist_ok=True)
-        raw_path = args.capture_prefix.with_suffix(".rgb565le")
-        raw_path.write_bytes(sampled)
-        phase, bad = compare_readback(sampled, frame)
-        words = len(sampled) // 4
-        print(f"readback comparison: {bad}/{words} mismatches, best phase={phase}", flush=True)
-        if bad:
-            raise RuntimeError("display SDRAM/video readback differs from the sent frame")
-        if final_result != 2:
-            raise RuntimeError("readback pixels match, but final RESULT=2 was not returned")
-        print(f"PASS: full frame, PCM transaction, and readback; raw={raw_path}", flush=True)
+        print("PASS: full frame and PCM transaction, settings, status, and subtitle replies", flush=True)
     finally:
         probe.ctrl.close()
-        probe.dump.close()
 
 
 if __name__ == "__main__":
