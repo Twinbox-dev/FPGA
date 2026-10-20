@@ -65,7 +65,7 @@ module tb_media_display_control_rx;
     task automatic header(input [7:0] kind,input [15:0] len);
         begin
             send_byte(8'haa);send_byte(8'hbb);send_byte(8'hcc);send_byte(8'hdd);
-            send_byte(kind);send_byte(0);send_byte(len[7:0]);send_byte(len[15:8]);
+            send_byte(0);send_byte(kind);send_byte(len[15:8]);send_byte(len[7:0]);
         end
     endtask
     task automatic subtitle_data(input [7:0] seq,input [7:0] offset,input [7:0] ch);

@@ -1,6 +1,6 @@
 // PC/V1 command bridge for the media board.
 // PC command bytes remain [CMD,~CMD]. Media actions stay local; display settings
-// use absolute 0x0040 requests and wait for the PC display model's 0x0041 ACK.
+// use absolute 0x0040 requests and wait for the display board's 0x0041 ACK.
 module media_control_core #(
     parameter integer CLK_HZ = 125000000
 )(
@@ -48,8 +48,9 @@ module media_control_core #(
                      WAIT_STATUS_ACK_TX=5, WAIT_ACK_TX=6,
                      PREP_ACK=7, PREP_STATUS=8,
                      WAIT_UART_READY=9, WAIT_UART_BUSY=10, WAIT_UART_DONE=11,
-                     SUB_BEGIN_WAIT_TX=12, SUB_DATA_SEND=13,
-                     SUB_DATA_WAIT_TX=14, SUB_END_WAIT_TX=15;
+                     SUB_BEGIN_WAIT_TX=12, SUB_DATA_PREFETCH=13,
+                     SUB_DATA_SEND=14, SUB_DATA_WAIT_TX=15,
+                     SUB_END_WAIT_TX=16, SUB_PACKET_GAP=17;
     reg [4:0] state, after_req;
     reg cmd_seen,pending_uart,uart_stage,uart_busy_seen,suppress_cmd_ack;
     reg [7:0] pending_cmd;
@@ -57,9 +58,13 @@ module media_control_core #(
     reg [7:0] pending_op, pending_value;
     reg subtitle_active,subtitle_source_uart,subtitle_success,subtitle_swap_ack;
     reg [1:0] subtitle_parse_state;
-    reg [7:0] subtitle_remaining,subtitle_length,subtitle_checksum;
+    reg [7:0] subtitle_remaining,subtitle_length,subtitle_checksum,subtitle_calc_checksum;
+    reg [7:0] subtitle_rx_count;
     reg [3:0] subtitle_sum_hi;
     reg [7:0] subtitle_offset;
+    reg [7:0] subtitle_read_data;
+    reg subtitle_gap_to_end;
+    reg [27:0] subtitle_gap_count;
     reg [1:0] subtitle_attempts;
     reg [7:0] subtitle_mem [0:159];
     wire subtitle_consume,subtitle_wr_en,subtitle_commit_toggle,subtitle_ack_pulse,subtitle_ack_ok;
@@ -68,6 +73,7 @@ module media_control_core #(
     reg [27:0] timeout_count;
     localparam [31:0] WAIT_LIMIT_FULL = CLK_HZ*2-1;
     localparam [27:0] WAIT_LIMIT = WAIT_LIMIT_FULL[27:0];
+    localparam integer SUBTITLE_GAP_CYCLES = CLK_HZ/1000;
     reg [1:0] request_attempts;
     reg [7:0] rx_pos, rx_type_lo, rx_type_hi, rx_len_lo, rx_len_hi;
     reg [63:0] rx_body;
@@ -104,13 +110,26 @@ module media_control_core #(
     );
     always @(posedge clk) if(subtitle_wr_en && subtitle_wr_index<160)
         subtitle_mem[subtitle_wr_index]<=subtitle_wr_char;
+    // TD infers subtitle_mem as synchronous-read DRAM. Prefetch the selected
+    // character one cycle before building its UDP packet so hardware and RTL
+    // simulation use the same byte rather than the previous RAM output.
+    always @(posedge clk)
+        if(!rst && state==SUB_DATA_PREFETCH)
+            subtitle_read_data<=subtitle_mem[subtitle_offset];
 
     task automatic start_app_ack(input [7:0] key, input subtitle_ok);
         reg [63:0] body;
+        reg [7:0] ack_wav;
+        reg [7:0] ack_volume,ack_period,ack_index,ack_picture_byte;
         begin
-            body={{subtitle_ok,spectrum_sensitivity,spectrum_on,contrast[2:0],auto_on},ack_picture,
-                  {7'd0,paired_wav},{3'd0,current_index},{4'd0,auto_period_s},
-                  {4'd0,volume},key,8'h5A};
+            ack_wav=(key==8'h54) ? {3'b101,last_control_error[3:0],paired_wav} : {7'd0,paired_wav};
+            ack_volume=(key==8'h54) ? subtitle_checksum : {4'd0,volume};
+            ack_period=(key==8'h54) ? subtitle_length : {4'd0,auto_period_s};
+            ack_index=(key==8'h54) ? subtitle_rx_count : {3'd0,current_index};
+            ack_picture_byte=(key==8'h54) ? subtitle_calc_checksum : ack_picture;
+            body={{subtitle_ok,spectrum_sensitivity,spectrum_on,contrast[2:0],auto_on},ack_picture_byte,
+                  ack_wav,ack_index,ack_period,
+                  ack_volume,key,8'h5A};
             if(pending_uart) begin
                 uart_tx_pkt<=body;uart_stage<=0;uart_busy_seen<=0;state<=WAIT_UART_READY;
             end else begin
@@ -168,19 +187,24 @@ module media_control_core #(
                     1:rx_good<=rx_good && rx_data==8'hBB;
                     2:rx_good<=rx_good && rx_data==8'hCC;
                     3:rx_good<=rx_good && rx_data==8'hDD;
-                    4:rx_type_lo<=rx_data;
-                    5:rx_type_hi<=rx_data;
-                    6:rx_len_lo<=rx_data;
-                    7:rx_len_hi<=rx_data;
+                    // Display-control replies use the V1 envelope byte order:
+                    // TYPE_HI, TYPE_LO, LEN_HI, LEN_LO.
+                    4:rx_type_hi<=rx_data;
+                    5:rx_type_lo<=rx_data;
+                    6:rx_len_hi<=rx_data;
+                    7:rx_len_lo<=rx_data;
                     default:if(rx_pos>=8 && rx_pos<16)rx_body[8*(rx_pos-8)+:8]<=rx_data;
                 endcase
                 rx_pos<=rx_pos+1'b1;
             end else if(rx_pos!=0) begin
-                if(rx_good && rx_type_lo==0 && rx_type_hi==8'h41 && rx_len_lo==0 && rx_len_hi==4 && rx_pos==12) begin
+                // V1 control reply type/length fields are high byte first.
+                // Thus 0x0041/length 4 arrive as [00,41,00,04].
+                if(rx_good && rx_type_lo==8'h41 && rx_type_hi==0 && rx_len_lo==4 && rx_len_hi==0 && rx_pos==12) begin
                     display_ack_seq<=rx_body[7:0];display_ack_op<=rx_body[15:8];
                     display_ack_status<=rx_body[23:16];display_ack_value<=rx_body[31:24];display_ack_pulse<=1;
                 end
-                if(rx_good && rx_type_lo==0 && rx_type_hi==8'h43 && rx_len_lo==0 && rx_len_hi==8 && rx_pos==16) begin
+                // The same low-byte-first ordering applies to 0x0043 STATUS.
+                if(rx_good && rx_type_lo==8'h43 && rx_type_hi==0 && rx_len_lo==8 && rx_len_hi==0 && rx_pos==16) begin
                     display_status_seq<=rx_body[7:0];display_status_volume<=rx_body[15:8];
                     display_status_brightness<=rx_body[23:16];display_status_contrast<=rx_body[31:24];
                     display_status_effect<=rx_body[39:32];display_status_osd<=rx_body[47:40];
@@ -199,7 +223,9 @@ module media_control_core #(
             sequence_id<=0;pending_sequence<=0;pending_op<=0;pending_value<=0;
             subtitle_active<=0;subtitle_source_uart<=0;subtitle_success<=0;subtitle_swap_ack<=0;
             subtitle_parse_state<=0;subtitle_remaining<=0;subtitle_sum_hi<=0;subtitle_length<=0;
-            subtitle_checksum<=0;subtitle_offset<=0;subtitle_attempts<=0;
+            subtitle_checksum<=0;subtitle_calc_checksum<=0;subtitle_rx_count<=0;
+            subtitle_offset<=0;subtitle_attempts<=0;
+            subtitle_gap_to_end<=0;subtitle_gap_count<=0;
             tx_done_ref<=0;timeout_count<=0;request_attempts<=0;
             cmd_ack_t<=0;tx_tog<=0;tx_type<=16'h0002;tx_payload_len<=8;tx_pkt<=0;
             debug_request<=0;pc_snapshot_request<=0;auto_on<=0;auto_period_s<=1;volume<=8;brightness<=4;
@@ -216,24 +242,33 @@ module media_control_core #(
                     if(subtitle_ack_pulse && subtitle_active) begin
                         subtitle_active<=0;pending_cmd<=8'h54;pending_uart<=subtitle_source_uart;subtitle_success<=0;
                         if(subtitle_ack_ok && subtitle_commit_len==subtitle_length) begin
-                            pending_value<=subtitle_commit_len;pending_op<=8;
+                            pending_value<=subtitle_commit_len;pending_op<=8;last_control_error<=6;
                             pending_sequence<=sequence_id;sequence_id<=sequence_id+1'b1;
                             subtitle_attempts<=1;subtitle_length<=subtitle_commit_len;subtitle_offset<=0;
                             tx_type<=16'h0044;tx_payload_len<=3;
                             tx_pkt<={40'd0,subtitle_checksum,subtitle_commit_len,sequence_id};
                             tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=SUB_BEGIN_WAIT_TX;timeout_count<=0;
-                        end else state<=PREP_ACK;
+                        end else begin
+                            last_control_error<=subtitle_ack_ok ? 4 : 1;
+                            subtitle_swap_ack<=~subtitle_swap_ack;
+                            state<=PREP_ACK;
+                        end
                     end else if(event_valid && subtitle_consume) begin
                         if(eth_event)begin cmd_seen<=1;cmd_ack_t<=~cmd_ack_t;end
                         if(event_cmd==8'h54 && !subtitle_active) begin
                             subtitle_active<=1;subtitle_source_uart<=event_from_uart;subtitle_success<=0;
+                            last_control_error<=5;
                             pending_cmd<=8'h54;pending_uart<=event_from_uart;suppress_cmd_ack<=!event_from_uart;
                             subtitle_parse_state<=0;subtitle_remaining<=0;subtitle_length<=0;subtitle_checksum<=0;
+                            subtitle_calc_checksum<=0;subtitle_rx_count<=0;
                         end else if(subtitle_active) begin
+                            subtitle_rx_count<=subtitle_rx_count+1'b1;
                             case(subtitle_parse_state)
                                 0:begin subtitle_length<=event_cmd^8'h80;subtitle_remaining<=event_cmd^8'h80;
-                                    subtitle_checksum<=event_cmd^8'h80;subtitle_parse_state<=((event_cmd^8'h80)==0) ? 2'd2 : 2'd1;end
+                                    subtitle_checksum<=event_cmd^8'h80;subtitle_calc_checksum<=event_cmd^8'h80;
+                                    subtitle_parse_state<=((event_cmd^8'h80)==0) ? 2'd2 : 2'd1;end
                                 1:begin subtitle_checksum<=subtitle_checksum^{1'b0,event_cmd[6:0]};
+                                    subtitle_calc_checksum<=subtitle_calc_checksum^{1'b0,event_cmd[6:0]};
                                     subtitle_remaining<=subtitle_remaining-1'b1;
                                     if(subtitle_remaining==1)subtitle_parse_state<=2'd2;end
                                 2:begin subtitle_sum_hi<=event_cmd[3:0];subtitle_parse_state<=2'd3;end
@@ -284,7 +319,7 @@ module media_control_core #(
                     if(display_ack_pulse && display_ack_seq==pending_sequence && display_ack_op==pending_op) begin
                         if(pending_op==8) begin
                             if(display_ack_status==0 && display_ack_value==subtitle_length) begin
-                                subtitle_success<=1;subtitle_swap_ack<=~subtitle_swap_ack;state<=PREP_ACK;
+                                subtitle_success<=1;last_control_error<=0;subtitle_swap_ack<=~subtitle_swap_ack;state<=PREP_ACK;
                             end else if(subtitle_attempts<3) begin
                                 subtitle_attempts<=subtitle_attempts+1'b1;subtitle_offset<=0;
                                 tx_type<=16'h0044;tx_payload_len<=3;
@@ -313,7 +348,10 @@ module media_control_core #(
                             tx_type<=16'h0044;tx_payload_len<=3;
                             tx_pkt<={40'd0,subtitle_checksum,subtitle_length,pending_sequence};
                             tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=SUB_BEGIN_WAIT_TX;
-                        end else begin last_control_error<=3;subtitle_success<=0;state<=PREP_ACK;end
+                        end else begin
+                            last_control_error<=3;subtitle_success<=0;
+                            subtitle_swap_ack<=~subtitle_swap_ack;state<=PREP_ACK;
+                        end
                     end
                 end
                 WAIT_STATUS_REPLY: begin
@@ -327,22 +365,31 @@ module media_control_core #(
                 end
                 SUB_BEGIN_WAIT_TX:if(tx_done_tog!=tx_done_ref)begin
                     subtitle_offset<=0;
-                    if(subtitle_length==0)begin
+                    subtitle_gap_to_end<=(subtitle_length==0);subtitle_gap_count<=0;state<=SUB_PACKET_GAP;
+                end
+                SUB_PACKET_GAP:begin
+                    if(SUBTITLE_GAP_CYCLES<=1 || subtitle_gap_count>=SUBTITLE_GAP_CYCLES-1)begin
+                        subtitle_gap_count<=0;
+                        if(subtitle_gap_to_end)begin
                         tx_type<=16'h0046;tx_payload_len<=3;tx_pkt<={40'd0,subtitle_checksum,subtitle_length,pending_sequence};
                         tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=SUB_END_WAIT_TX;
-                    end else state<=SUB_DATA_SEND;
+                        end else state<=SUB_DATA_PREFETCH;
+                    end else subtitle_gap_count<=subtitle_gap_count+1'b1;
                 end
+                SUB_DATA_PREFETCH:state<=SUB_DATA_SEND;
                 SUB_DATA_SEND:begin
                     // One indexed sample per UDP packet keeps the title RAM single-read-port.
                     tx_type<=16'h0045;tx_payload_len<=16'd3;
-                    tx_pkt<={40'd0,subtitle_mem[subtitle_offset],subtitle_offset,pending_sequence};
+                    tx_pkt<={40'd0,subtitle_read_data,subtitle_offset,pending_sequence};
                     tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=SUB_DATA_WAIT_TX;
                 end
                 SUB_DATA_WAIT_TX:if(tx_done_tog!=tx_done_ref)begin
                     if(subtitle_offset+1'b1>=subtitle_length)begin
-                        tx_type<=16'h0046;tx_payload_len<=3;tx_pkt<={40'd0,subtitle_checksum,subtitle_length,pending_sequence};
-                        tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=SUB_END_WAIT_TX;
-                    end else begin subtitle_offset<=subtitle_offset+1'b1;state<=SUB_DATA_SEND;end
+                        subtitle_gap_to_end<=1'b1;subtitle_gap_count<=0;state<=SUB_PACKET_GAP;
+                    end else begin
+                        subtitle_offset<=subtitle_offset+1'b1;subtitle_gap_to_end<=1'b0;
+                        subtitle_gap_count<=0;state<=SUB_PACKET_GAP;
+                    end
                 end
                 SUB_END_WAIT_TX:if(tx_done_tog!=tx_done_ref)begin timeout_count<=0;state<=WAIT_SET_REPLY;end
                 PREP_ACK:start_app_ack(pending_cmd,subtitle_success);

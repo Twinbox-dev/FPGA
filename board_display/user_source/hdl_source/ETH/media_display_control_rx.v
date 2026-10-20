@@ -87,10 +87,12 @@ module media_display_control_rx (
                 else if (rx_pos == 2) magic_ok <= magic_ok && rx_data == 8'hcc;
                 else if (rx_pos == 3) magic_ok <= magic_ok && rx_data == 8'hdd;
                 case (rx_pos)
-                    11'd4: type_lo <= rx_data;
-                    11'd5: type_hi <= rx_data;
-                    11'd6: payload_length[7:0] <= rx_data;
-                    11'd7: payload_length[15:8] <= rx_data;
+                    // The 0x0040-0x0046 control packets use the V1
+                    // envelope byte order: TYPE_HI, TYPE_LO, LEN_HI, LEN_LO.
+                    11'd4: type_hi <= rx_data;
+                    11'd5: type_lo <= rx_data;
+                    11'd6: payload_length[15:8] <= rx_data;
+                    11'd7: payload_length[7:0] <= rx_data;
                     11'd8: payload[0] <= rx_data;
                     11'd9: payload[1] <= rx_data;
                     11'd10: payload[2] <= rx_data;

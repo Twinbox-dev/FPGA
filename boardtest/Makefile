@@ -209,7 +209,7 @@ gt911-unit: build_gt911_trackpad/sim_gt911_trackpad build_gt911_cursor/sim_gt911
 
 
 
-.PHONY: media-protocol media-writer media-control media-tx media-audio-playback media-display-path media-image-tx media-route media-command ctrlset
+.PHONY: media-protocol media-writer media-control media-tx media-audio-playback media-display-path media-image-tx media-route media-command media-reply media-subtitle-roundtrip media-eth-subtitle-rx ctrlset
 media-protocol:
 	$(VERILATOR) --binary --timing --top-module tb_media_protocol_rx vsrc/tb_media_protocol_rx.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v --Mdir build_media_protocol -o sim_media_protocol_rx
 	./build_media_protocol/sim_media_protocol_rx
@@ -232,11 +232,20 @@ media-image-tx:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_image_tx_flags vsrc/tb_media_image_tx_flags.sv ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_media_image_tx_flags -o sim_media_image_tx_flags
 	./build_media_image_tx_flags/sim_media_image_tx_flags
 media-route:
-	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_udp_route ../board_media/sim/tb_media_udp_route.sv ../board_media/user_source/hdl_source/media_udp_route.v --Mdir build_media_route -o sim_media_udp_route
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_udp_route ../board_media/sim/tb_media_udp_route.sv ../board_media/user_source/hdl_source/media_image_tx.v ../board_media/user_source/hdl_source/media_udp_route.v --Mdir build_media_route -o sim_media_udp_route
 	./build_media_route/sim_media_udp_route
 media-command:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_control_snapshot vsrc/tb_media_control_snapshot.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_command -o sim_media_control_snapshot
 	./build_media_command/sim_media_control_snapshot
+media-reply:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_control_reply_parse vsrc/tb_media_control_reply_parse.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_reply -o sim_media_control_reply_parse
+	./build_media_reply/sim_media_control_reply_parse
+media-subtitle-roundtrip:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_subtitle_roundtrip vsrc/tb_media_subtitle_roundtrip.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_media_subtitle_roundtrip -o sim_media_subtitle_roundtrip
+	./build_media_subtitle_roundtrip/sim_media_subtitle_roundtrip
+media-eth-subtitle-rx:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_eth_subtitle_rx vsrc/tb_media_eth_subtitle_rx.sv ../board_media/user_source/hdl_source/ETH/eth_front.v ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_eth_subtitle_rx -o sim_media_eth_subtitle_rx
+	./build_media_eth_subtitle_rx/sim_media_eth_subtitle_rx
 ctrlset:
 	$(VERILATOR) --binary --timing --top-module tb_ctrl_core_set vsrc/tb_ctrl_core_set.sv ../board_display/user_source/hdl_source/SD/ctrl_core.v --Mdir build_ctrlset -o sim_ctrl_core_set
 	./build_ctrlset/sim_ctrl_core_set

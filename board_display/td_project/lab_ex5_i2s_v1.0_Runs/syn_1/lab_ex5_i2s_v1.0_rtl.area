@@ -12,22 +12,22 @@ IO Statistics
   #inout                    0
 
 Gate Statistics
-#Basic gates            23288
-  #and                   5245
+#Basic gates            23293
+  #and                   5249
   #nand                     0
   #or                    4450
   #nor                      0
   #xor                    275
   #xnor                     0
   #buf                      0
-  #not                   1001
+  #not                   1006
   #bufif1                  35
-  #MX21                  2176
+  #MX21                  2173
   #FADD                     0
-  #DFF                  10106
+  #DFF                  10105
   #LATCH                    0
-#MACRO_ADD                514
-#MACRO_EQ                 328
+#MACRO_ADD                515
+#MACRO_EQ                 330
 #MACRO_MULT                15
 #MACRO_MUX               5424
 #MACRO_OTHERS              42
@@ -44,7 +44,7 @@ Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |13182  |10106  |899    |
+|top                                       |top                                               |13188  |10105  |902    |
 |  U3                                      |sdram                                             |104    |534    |9      |
 |    u2_ram                                |sdr_as_ram                                        |104    |534    |9      |
 |      u1_init_ref                         |sdr_init_ref                                      |24     |96     |4      |
@@ -154,9 +154,9 @@ Report Hierarchy Area:
 |      u_video_axi_stream_receiver         |video_axi_stream_receiver                         |8      |2      |1      |
 |        u_w24_d1024_fifo                  |w24_d1024_fifo                                    |0      |0      |1      |
 |  u_media_audio_playback                  |media_audio_playback                              |146    |175    |14     |
-|  u_media_display_control_rx              |media_display_control_rx                          |162    |194    |39     |
-|  u_media_display_tx                      |media_display_tx                                  |225    |176    |8      |
-|  u_media_protocol_rx                     |media_protocol_rx                                 |790    |532    |51     |
+|  u_media_display_control_rx              |media_display_control_rx                          |161    |194    |39     |
+|  u_media_display_tx                      |media_display_tx                                  |226    |175    |8      |
+|  u_media_protocol_rx                     |media_protocol_rx                                 |796    |532    |54     |
 |  u_media_transaction_writer              |media_transaction_writer                          |232    |598    |28     |
 |    u_audio_rx_fifo                       |tap_afifo                                         |20     |80     |5      |
 |    u_frame_rx_fifo                       |tap_afifo                                         |20     |80     |5      |

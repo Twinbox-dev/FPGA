@@ -166,6 +166,7 @@ def decode_ack(pkt: bytes) -> str:
     相关的那一项**——调音量就只报音量、调亮度就只报亮度，不然每条 ACK 都吐
     一大串，操作起来很乱。想要全景请按 'S'（状态包，显示全部）。"""
     _, cmd, vol, per, img, wav, bri, flags = pkt[:8]
+    raw_bri = bri
     name = {0x4E: "下一张", 0x50: "上一张", 0x41: "自动轮播",
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
             0x5D: "亮度+", 0x5B: "亮度-",
@@ -198,7 +199,10 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd == 0x41:         detail = f"自动轮播={'开' if flags & 1 else '关'}"
     elif cmd in (0x30, 0x31, 0x32): detail = f"切换特效={effect_s}"
     elif cmd in (0x33, 0x34, 0x35): detail = f"面板={osd_s}"
-    elif cmd == 0x54:         detail = "校验通过，帧边界生效" if flags & 0x80 else "失败，原字幕保留"
+    elif cmd == 0x54:
+        subtitle_error = (wav >> 1) & 0x0F
+        subtitle_tag = (wav >> 5) & 0x07
+        detail = f"FPGA_TAG={subtitle_tag} FPGA_ERR={subtitle_error} SUB_LEN={per} RX_COUNT={img} WIRE={vol:02X} CALC={raw_bri:02X} " + ("COMMIT=OK" if flags & 0x80 else "COMMIT=NO")
     elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
     elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
@@ -512,9 +516,13 @@ class EthTransport:
     """
 
     mode = "eth"
-    BOARD_DEFAULT = os.environ.get("WEB_ETH_BOARD", "192.168.137.3")
-    BOARD_PORT = int(os.environ.get("WEB_ETH_PORT", "1"))
-    LOCAL_PORT = int(os.environ.get("WEB_ETH_LOCAL_PORT", "2"))
+    # Fixed dual-board topology: PC .1, display .2, media/control .3.
+    # The browser and environment cannot redirect control traffic elsewhere.
+    BOARD_DEFAULT = "192.168.137.3"
+    BOARD_PORT = 1
+    LOCAL_PORT = 2
+    # The media RTL can wait 2 s and retry three times before its final ACK.
+    SUBTITLE_ACK_TIMEOUT = 9.0
 
     @staticmethod
     def _hdr(type_hi, type_lo, len_hi, len_lo):
@@ -526,6 +534,12 @@ class EthTransport:
         self.send_lock = threading.Lock()
         self.subs = subs if subs is not None else []
         self.lock = threading.Lock()
+        self.subtitle_lock = threading.Lock()
+        self.subtitle_condition = threading.Condition()
+        self.subtitle_waiting = False
+        self.subtitle_result = None
+        self.subtitle_result_code = 0
+        self.subtitle_result_tag = 0
         # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
         self.str = {"wr": self._new_sess(), "rb": self._new_sess()}
         self.snapshot = None
@@ -555,15 +569,16 @@ class EthTransport:
     def link_msg(self, connected: bool):
         return {"type": "link", "mode": self.mode, "connected": connected,
                 "serial": connected,              # 兼容旧前端字段名
-                "port": f"{self.board}:{self.LOCAL_PORT}"}
+                "port": f"{self.board}:{self.BOARD_PORT}",
+                "local_port": self.LOCAL_PORT}
 
     # ---- 开关 ----
-    def open(self, board: str = "", _baud=None) -> str:
+    def open(self, _baud=None) -> str:
         import socket
         with self.lock:
             if self.sock is not None:
                 return "以太网已连接，请先断开"
-            self.board = (board or "").strip() or self.BOARD_DEFAULT
+            self.board = self.BOARD_DEFAULT
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -614,16 +629,54 @@ class EthTransport:
         if self.sock is None:
             return "以太网未连接"
         try:
-            # eth_front accepts one verified byte per datagram. Space the
-            # packets to let cmd_pending cross into the SD clock domain.
-            with self.send_lock:
-                for byte in subtitle_bytes(value):
-                    payload = self._hdr(0, 1, 0, 2) + bytes((byte, byte ^ 0xFF))
-                    self.sock.sendto(payload, (self.board, self.BOARD_PORT))
-                    time.sleep(0.002)
+            encoded = subtitle_bytes(value)
+            # V1 subtitle ACK has no transaction sequence, so serialize uploads
+            # and report success only after the display board confirms commit.
+            with self.subtitle_lock:
+                with self.subtitle_condition:
+                    self.subtitle_waiting = True
+                    self.subtitle_result = None
+                    self.subtitle_result_code = 0
+                    self.subtitle_result_tag = 0
+                with self.send_lock:
+                    for byte in encoded:
+                        payload = self._hdr(0, 1, 0, 2) + bytes((byte, byte ^ 0xFF))
+                        self.sock.sendto(payload, (self.board, self.BOARD_PORT))
+                        # eth_front accepts one verified byte per datagram.
+                        time.sleep(0.002)
+                deadline = time.monotonic() + self.SUBTITLE_ACK_TIMEOUT
+                with self.subtitle_condition:
+                    while self.subtitle_result is None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            self.subtitle_waiting = False
+                            return f"字幕已发出，但 {self.SUBTITLE_ACK_TIMEOUT:g} 秒内没有收到显示板确认"
+                        self.subtitle_condition.wait(remaining)
+                    success = self.subtitle_result
+                    self.subtitle_waiting = False
+                if not success:
+                    code = self.subtitle_result_code
+                    tag = self.subtitle_result_tag
+                    reason = {1: "PC subtitle checksum", 2: "display BEGIN/DATA/END validation",
+                              4: "PC subtitle length mismatch",
+                              3: "display ACK timeout", 5: "subtitle stream started",
+                              6: "PC checksum passed; display transaction started"}.get(code, "unknown stage")
+                    return f"\u663e\u793a\u677f\u62d2\u7edd\u6216\u672a\u63d0\u4ea4\u5b57\u5e55\uff0c\u65e7\u5b57\u5e55\u4fdd\u6301\u4e0d\u53d8 | FPGA_TAG={tag} FPGA_ERR={code} ({reason})"
         except Exception as e:
+            with self.subtitle_condition:
+                self.subtitle_waiting = False
             return f"以太网字幕发送失败: {e}"
         return ""
+
+    def _capture_subtitle_ack(self, pkt: bytes):
+        if len(pkt) < 8 or pkt[0] != 0x5A or pkt[1] != 0x54:
+            return
+        with self.subtitle_condition:
+            if self.subtitle_waiting:
+                self.subtitle_result = bool(pkt[7] & 0x80)
+                self.subtitle_result_code = (pkt[5] >> 1) & 0x0F
+                self.subtitle_result_tag = (pkt[5] >> 5) & 0x07
+                self.subtitle_condition.notify_all()
 
     # ---- 流包（type=0x0003）：seq 重组 + 静默收口 ----
     STR_TIMEOUT = 0.4                  # 流包静默判会话结束（整帧空口时间 ~20ms）
@@ -794,6 +847,7 @@ class EthTransport:
                                     "text": decode_dump(pkt),
                                     "ts": time.strftime("%H:%M:%S")})
                 continue
+            self._capture_subtitle_ack(pkt)
             msg = {"type": "pkt",
                    "kind": "status" if pkt[0] == 0xA5 else "ack",
                    "text": decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt),
@@ -894,9 +948,10 @@ def api_disconnect():
 
 @app.route("/api/eth/connect", methods=["POST"])
 def api_eth_connect():
-    d = request.get_json(force=True, silent=True) or {}
-    err = eth_link.open(d.get("board", ""))
-    return (jsonify({"ok": False, "error": err}), 400) if err else jsonify({"ok": True})
+    err = eth_link.open()
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    return jsonify({"ok": True, "target": f"{eth_link.BOARD_DEFAULT}:{eth_link.BOARD_PORT}"})
 
 
 @app.route("/api/eth/disconnect", methods=["POST"])
@@ -927,8 +982,8 @@ def api_subtitle():
         return jsonify({"ok": False, "error": str(e)}), 400
     err = (eth_link if mode == "eth" else link).send_subtitle(value)
     if err:
-        return jsonify({"ok": False, "error": err}), 400
-    return jsonify({"ok": True, "length": len(value)})
+        return jsonify({"ok": False, "error": err}), 504 if mode == "eth" and "确认" in err else 400
+    return jsonify({"ok": True, "length": len(value), "acknowledged": mode == "eth"})
 
 
 @app.route("/api/stream")

@@ -57,8 +57,11 @@ module tb_media_display_tx;
         begin
             if (packet_lengths[n] != ({16'd0,len}+32'd8) || packets[n][0]!=8'haa ||
                 packets[n][1]!=8'hbb || packets[n][2]!=8'hcc || packets[n][3]!=8'hdd ||
-                packets[n][4]!=kind || packets[n][5]!=0 ||
-                packets[n][6]!=len[7:0] || packets[n][7]!=len[15:8])
+                ((kind==8'h41 || kind==8'h43) ?
+                    (packets[n][4]!=0 || packets[n][5]!=kind ||
+                     packets[n][6]!=len[15:8] || packets[n][7]!=len[7:0]) :
+                    (packets[n][4]!=kind || packets[n][5]!=0 ||
+                     packets[n][6]!=len[7:0] || packets[n][7]!=len[15:8])))
                 $fatal(1,"packet %0d header/type %h length %0d",n,packets[n][4],packet_lengths[n]);
         end
     endtask

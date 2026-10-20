@@ -445,6 +445,9 @@ module media_udp_mux (
 );
     reg active,owner;
     assign packet_active=active;
+    // Distinguish normal media packets from control replies so the Ethernet
+    // route sends image/audio data to the display (.2), not the PC (.1).
+    assign media_in_flight=active && owner;
     reg [15:0] count,media_length_latched;
     reg [7:0] media_type_lo,media_type_hi;
     // While idle, do not advertise readiness until the previous UDP stack ACK drops.

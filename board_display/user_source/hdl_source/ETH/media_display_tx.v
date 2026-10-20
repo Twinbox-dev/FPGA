@@ -57,8 +57,16 @@ module media_display_tx #(
         begin
             packet[0] <= 8'haa; packet[1] <= 8'hbb;
             packet[2] <= 8'hcc; packet[3] <= 8'hdd;
-            packet[4] <= kind; packet[5] <= 8'h00;
-            packet[6] <= payload_len[7:0]; packet[7] <= payload_len[15:8];
+            if (kind == 8'h41 || kind == 8'h43) begin
+                // 0x0041/0x0043 are V1 display-control replies. The image
+                // stream (0x0020-0x0033) keeps its documented little-endian
+                // header, so only these two reply types use V1 byte order.
+                packet[4] <= 8'h00; packet[5] <= kind;
+                packet[6] <= payload_len[15:8]; packet[7] <= payload_len[7:0];
+            end else begin
+                packet[4] <= kind; packet[5] <= 8'h00;
+                packet[6] <= payload_len[7:0]; packet[7] <= payload_len[15:8];
+            end
             packet_length <= payload_len[4:0] + 5'd8;
             byte_index <= 5'd0;
             state <= WAIT_READY;

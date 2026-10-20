@@ -407,7 +407,7 @@
     <div class="card ethcard" id="ethCard" style="display:none">
       <h2>以太网连接</h2>
       <div class="conn">
-        <input id="ethIp" value="192.168.137.3" title="板卡 IP" style="min-width:150px">
+        <span class="hint">媒体板固定地址 <b>192.168.137.3:1</b></span>
         <button class="primary" id="btnEthConn">连接</button>
         <button class="ghost" id="btnEthDisc" disabled>断开</button>
       </div>
@@ -531,8 +531,9 @@ function slide() {
   t.style.left = (btn.offsetLeft) + "px";
   t.style.width = (btn.offsetWidth) + "px";
 }
-function setMode(m) {
+function setMode(m, announce=true) {
   mode = m;
+  try { localStorage.setItem("fpga-web-mode", m); } catch (_) {}
   document.getElementById("mSerial").className = (m === "serial") ? "on" : "";
   document.getElementById("mEth").className = (m === "eth") ? "on" : "";
   slide();
@@ -546,7 +547,7 @@ function setMode(m) {
   const name = (m === "eth") ? "以太网" : "串口";
   setBadge(on, on ? `${name}已连接` : `${name}未连接`);
   setLink(on, "");
-  addLog("sys", "SYS", m === "eth"
+  if (announce) addLog("sys", "SYS", m === "eth"
     ? `已切换到以太网模式（${connState.eth ? "已连接" : "未连接"}）`
     : `已切换到串口模式（${connState.serial ? "已连接" : "未连接"}）`);
 }
@@ -683,9 +684,8 @@ async function conn() {
 }
 
 async function ethConn() {
-  const board = document.getElementById("ethIp").value.trim() || "192.168.137.3";
-  const j = await post("/api/eth/connect", {board});
-  if (j.ok) toast(`以太网 ${board}:1 已连接`);
+  const j = await post("/api/eth/connect", {});
+  if (j.ok) toast(`以太网已连接至 ${j.target || "192.168.137.3:1"}`);
   else { addLog("err", "ERR", "连接失败: " + j.error); toast("连接失败: " + j.error, true); }
 }
 
@@ -729,7 +729,11 @@ async function sendSubtitle(value) {
   btn.disabled = true;
   const j = await post("/api/subtitle", {mode, text:value});
   btn.disabled = false;
-  if (j.ok) { toast("字幕已发送，等待板卡 ACK"); addLog("sys", "SYS", `字幕已发送 ${j.length}/160 字符`); }
+  if (j.ok) {
+    toast(j.acknowledged ? "显示板已确认字幕" : "字幕已发送，等待板卡确认");
+    addLog(j.acknowledged ? "ack" : "sys", j.acknowledged ? "ACK" : "SYS",
+           `字幕 ${j.acknowledged ? "已确认" : "已发送，待确认"} ${j.length}/160 字符`);
+  }
   else toast(j.error || "字幕发送失败", true);
 }
 document.getElementById("btnSubtitle").onclick = () => sendSubtitle(subtitleInput.value);
@@ -781,18 +785,17 @@ function parseMetrics(text){
 
 /* ---------- 连接态同步 ---------- */
 function setLink(on, port){
-  connected = on;
-  document.getElementById("btnConn").disabled = on;
-  document.getElementById("btnDisc").disabled = !on;
-  document.getElementById("port").disabled = on;
-  document.getElementById("baud").disabled = on;
-  document.getElementById("btnRefresh").disabled = on;
-  document.getElementById("btnEthConn").disabled = on;
-  document.getElementById("btnEthDisc").disabled = !on;
-  document.getElementById("ethIp").disabled = on;
-  document.querySelectorAll("#pad button").forEach(b => b.disabled = !on);
-  if (!on && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
-  if (on && document.getElementById("poll").checked && !pollTimer)
+  connected = !!connState[mode];
+  document.getElementById("btnConn").disabled = !!connState.serial;
+  document.getElementById("btnDisc").disabled = !connState.serial;
+  document.getElementById("port").disabled = !!connState.serial;
+  document.getElementById("baud").disabled = !!connState.serial;
+  document.getElementById("btnRefresh").disabled = !!connState.serial;
+  document.getElementById("btnEthConn").disabled = !!connState.eth;
+  document.getElementById("btnEthDisc").disabled = !connState.eth;
+  document.querySelectorAll("#pad button").forEach(b => b.disabled = !connected);
+  if (!connected && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+  if (connected && document.getElementById("poll").checked && !pollTimer)
     pollTimer = setInterval(()=> sendKey("s"), 1000);
 }
 document.getElementById("poll").onchange = e => {
@@ -810,7 +813,7 @@ function listen() {
       connState[mk] = !!m.connected;
       const name = (mk === "eth") ? "以太网" : "串口";
       if (mk === mode) {                 // 只反映当前模式的连接态
-        setBadge(mk, m.connected ? `${name}已连接 ${m.port || ""}` : `${name}未连接`);
+        setBadge(!!m.connected, m.connected ? `${name}已连接 ${m.port || ""}` : `${name}未连接`);
         setLink(!!m.connected, m.port);
       }
       addLog(m.connected ? "sys" : "err", "SYS",
@@ -997,12 +1000,15 @@ document.getElementById("bmpFile").addEventListener("change", async e => {
   await buildPad();
   const st = await (await fetch("/api/status")).json().catch(()=>({}));
   if (st.baud) document.getElementById("baud").value = st.baud;
-  if (st.eth_board) document.getElementById("ethIp").value = st.eth_board;
   document.getElementById("autoConn").checked = st.auto_connect !== false;
   connState.serial = !!st.serial_open;
   connState.eth = !!st.eth_open;
-  setBadge(connState.serial, connState.serial ? `串口已连接 ${st.serial_port || ""}` : "串口未连接");
-  setLink(connState.serial, st.serial_port);
+  let savedMode = "";
+  try { savedMode = localStorage.getItem("fpga-web-mode") || ""; } catch (_) {}
+  const initialMode = savedMode && connState[savedMode] ? savedMode :
+    (connState.eth && !connState.serial ? "eth" :
+     connState.serial && !connState.eth ? "serial" : savedMode || "eth");
+  setMode(initialMode, false);
   listen();
   slide();
   await loadPorts(!st.serial_open);

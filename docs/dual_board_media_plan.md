@@ -67,25 +67,39 @@ app.py 有 23 个按键字节；媒体侧命令表和显示侧 0x0040–0x0046 �
 PC 网页收到快照后用它更新预览画布，并按包序号、字数、累计校验确认；失败时媒体板重试整张快照。UART D 仍保留原始 type `0x0003` 调试 tap，和以太网正式快照分开。
 ## 6. 实现与验证状态（2026-10-20）
 
-媒体板正式链路已移植并提交在 `feature/dual-board-media`：`519beb1 媒体板正式链路移植`。显示板已接入正式收包、双缓冲 SDRAM 写入与播放、切换提交、控制/字幕回包；两板正式地址为 PC `.1`、显示板 `.2`、媒体板 `.3`。
+PC 行为级对端已分别验证过媒体板发送到显示板、显示板接收和提交、PC 按需快照等数据路径；本轮进一步在实际双板上排查了显示控制通道。
 
-两侧均使用 PC 行为级对端完成过实网验收：
+### 先前 PC 行为级互操作测试
 
-- **PC 模拟媒体板 → 显示板**：临时显示板参数 `.1:2`，PC 在 `.1:2` 收 RESULT、`.1:3` 收 D 读回。IMG1 + 24,000 个 WAV 样本完整提交，IMG3 无 WAV 以零样本静音事务提交；控制、状态、字幕通过。两帧 D 探针均返回 153,600 抽样字、序号缺口 0、逐像素差异 0。
-- **PC 模拟显示板 ← 媒体板**：临时媒体板参数将 display 目的地指向 PC `.1:2`。PC stub 主动回 READY/RESULT；IMG1 的 460,800 个图像字与 golden 完全一致，720,000 个 WAV 样本与 `img/card_user_real.img` 中的 `IMG1.WAV` 完全一致，图像和音频的累计校验通过，事务以 RESULT=2 提交。
-- **PC D 正式快照**：媒体板首帧提交后，PC 发 D；媒体板读取已提交 IMG1 并经 `0x0021–0x0023` 回传完整 460,800 字，PC 对比 golden 全相同；零样本音频事务与最终 RESULT=2 均通过，显示侧活动图像不变。
-- 定向 Verilator 回归覆盖协议接收、SDRAM 写事务、音频回放、控制/字幕、UDP 回包仲裁、UART、媒体发送 BEGIN 标志，全部通过。
+- **媒体发送、PC 模拟显示端**：PC stub 收 READY/RESULT。IMG1 的 460800 字图像和 24000 个 WAV 样本提交成功；无配对 WAV 的图片走零样本静音事务。显示板参数临时改为 PC `.1:2`，供媒体板数据流经 PC 校验后回 RESULT。
+- **显示端接收、PC 模拟媒体板**：PC stub 向显示板发送 READY、IMG1 图像和 WAV；460800 字图像与 golden 相同，720000 个 WAV 字节与卡镜像中的配对文件相同，图音提交 RESULT=2。
+- **正式 PC D 快照**：媒体板从已提交 SD 索引重读图片并回传 460800 字，PC 校验通过后收到图音最终提交 RESULT=2；此路径不写显示板 SDRAM。
+- 上述模拟测试及既有 Verilator 回归覆盖图像/音频协议解析、SDRAM 写入、图音提交、控制、状态、字幕、以太网发送仲裁与 UART 控制。
 
-PC 以太网 D 正式快照已接入媒体板，并由 WebTransport 重组、校验、回送结果及更新预览画布；UART D 的原始调试 tap 单独保留。
+### 本轮控制通道根因与修复
 
-最终双板参数已恢复并重新 bitgen：显示板发送至 `.3:1`、PC 回包 `.1:2`；媒体板发送至 `.2:1`、PC 诊断回包 `.1:2`。两份最终参数 bit 尚未在两板同时上电时联机验收。
+媒体板通过旧版 eth_front 发出的 V1 控制头采用大端 TYPE/LEN，例如 0x0042、长度 1 的线路字节为 00 42 00 01。显示板 media_display_control_rx 原先按小端解析，因此忽略 SET、STATUS_REQ 和字幕包；显示板返回的 0x0041/0x0043 也曾按另一种字节序发送，媒体板等待约 2 秒后超时。修复后 0x0040–0x0046 控制包的双向 TYPE/LEN 都按 V1 大端收发；正式图像与 PCM 流 0x0020–0x0033 仍按小端收发。
 
-| 板卡 | 最终 bit | SHA-256 | LUT / FF | BRAM9K / BRAM32K | DSP / PLL | Setup WNS / Hold WNS |
+之前的字幕 round-trip 仿真自行拼了小端请求头，没有复现 eth_front 的 V1 大端头，因此仿真通过而上板控制超时。本轮仿真改为实际 V1 字节顺序，并增加显示侧 ACK/STATUS 头的字节检查。
+
+### 板级与软件验收
+
+- 实际 .3 媒体板与 .2 显示板均从 PC .1 可达；FPGA 配置后需要等待 PHY 初始化。
+- S 状态查询在约 16 ms 收到 FPGA 回包（修复前约 2 秒后走超时路径）。亮度加一得到 5/8，减一恢复 4/8，显示板 ACK 正常返回。
+- 以太网字幕 ETH CONTROL OK（14 字符）、160 字符上限和空字幕清除均收到显示板提交 ACK。
+- N 切图后媒体状态中的已提交索引从 1 前进到 3，说明显示端完成了图像提交并回报 RESULT。
+- PC 正式 D 快照收到完整 460800 字、序号缺口 0；帧数据与 IMG0.BMP 转换出的 RGB565 字逐字相同。
+- python scripts/web_console/test_subtitle.py 通过。以下 Verilator 定向回归全部通过：media-control、media-tx、media-reply、media-subtitle-roundtrip、media-eth-subtitle-rx、media-route。
+
+### 本轮 bit、资源与时序
+
+| 板卡 | bit 文件 | SHA-256 | LUT / FF | BRAM9K / BRAM32K | DSP / PLL | Setup WNS / Hold WNS |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| 显示板 | `board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit` | `F1A6E20D576F404BB7C50FE35CCB91D6B463BE86696E11028505755F54DEF753` | 14,188 / 10,331 | 55 / 2 | 10 / 4 | −5.699 ns / −3.200 ns |
-| 媒体板 | `board_media/td_project/media_net_Runs/phy_1/media_net.bit` | `ECDD6716D270B7B2D60EA5B05F52E99A067732725122A0A2E0B0A9245ACFAC20` | 12,416 / 8,423 | 21 / 2 | 2 / 2 | −4.109 ns / −3.188 ns |
+| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | BB7FEA85CC09BC58A74E51F74F909E6898D22F0479AC6DAE9AD830C365A23BCF | 14,295 / 10,334 | 55 / 2 | 10 / 4 | −5.948 ns / −3.137 ns |
+| 媒体板 | board_media/td_project/media_net_Runs/phy_1/media_net.bit | 8D5A8EAA78EBA76C76915DA631F9C3FD40264B2F782153B38ED10B46C9A70478 | 12,320 / 8,503 | 22 / 2 | 2 / 2 | −3.490 ns / −3.200 ns |
 
-两份 P&R 均成功生成 bit；报告保存在各自 `phy_1/route.qor`、`final_timing.rpt` 和 area 文件中。显示板 4 个 PLL 全占，媒体板资源有充足余量。双板实机验收按下一节执行。
+两边 TD P&R 均生成 bit；资源与最终报告位于各自 phy_1/*_phy.area、route.qor、final_timing.rpt。两份报告仍显示既有的 setup/hold 时序违例，实际网络与协议回归已通过；HDMI 目视和音频听感由用户返回后确认。
+
 ## 7. 双板上板验收
 
 两板均烧录上表所列正式参数 bit，并连入同一千兆交换机/PC 网段后，按以下顺序验收：
