@@ -1,7 +1,6 @@
 // Fixed three-line OSD: BRI 4/8, CON 2/6, VOL 8/8. Values are actual control
 // levels, not demo counters. One synchronous glyph ROM is shared by all rows.
 module osd_panel_levels #(
-    parameter FONT_FILE = "../user_source/hdl_source/SD/font.mem",
     parameter [10:0] X_TOP = 11'd1216,
     parameter [9:0]  Y_TOP = 10'd8
 )(
@@ -12,6 +11,9 @@ module osd_panel_levels #(
     input  wire [3:0]  brightness_level,
     input  wire [3:0]  contrast_level,
     input  wire [3:0]  volume_level,
+    output wire [6:0]  font_ascii,
+    output wire [3:0]  font_row,
+    input  wire [7:0]  font_row_data,
     output reg         text_on,
     output reg         in_band
 );
@@ -43,7 +45,7 @@ module osd_panel_levels #(
     wire [5:0] column = rx[8:3];
     reg [5:0] font_col;
     reg [7:0] row_shift;
-    wire [7:0] glyph_row;
+    wire [7:0] glyph_row = font_row_data;
     wire [3:0] level = (panel_row == 2'd0) ? brightness_level :
                        (panel_row == 2'd1) ? contrast_level : volume_level;
     wire [7:0] label0 = (panel_row == 2'd0) ? "B" :
@@ -65,10 +67,8 @@ module osd_panel_levels #(
             default: glyph_ascii = " ";
         endcase
     end
-    font_rom #(.MEM_FILE(FONT_FILE)) u_font (
-        .video_clk(video_clk), .ascii(glyph_ascii[6:0]),
-        .row(glyph_y), .row_data(glyph_row)
-    );
+    assign font_ascii = glyph_ascii[6:0];
+    assign font_row = glyph_y;
     always @(posedge video_clk or posedge rst) begin
         if (rst) begin
             font_col <= 6'd0;

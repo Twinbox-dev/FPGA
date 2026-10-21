@@ -9,6 +9,11 @@ const html = fs.readFileSync(path.join(__dirname, 'templates/index.html'), 'utf8
 assert(!html.includes('id="ethCard"'), 'manual Ethernet connection card should be removed');
 assert(!html.includes('id="btnEthConn"') && !html.includes('id="btnEthDisc"'),
   'Ethernet connect/disconnect buttons should be removed');
+assert(!/document\.addEventListener\(["']keydown/.test(html),
+  'page-wide keyboard commands should be disabled so text fields can be edited normally');
+for (const id of ['btnSnapshot', 'frameCvRb', 'frameCv', 'bmpFile', 'subtitleText'])
+  assert(html.includes(`id="${id}"`), `required console control ${id} is missing`);
+assert(html.includes('sendKey("d")'), 'D snapshot button must request a board snapshot');
 const begin = html.indexOf('let lastFrameId = ');
 const end = html.indexOf('document.getElementById("bmpFile").addEventListener', begin);
 assert(begin >= 0 && end > begin, 'frame renderer not found');

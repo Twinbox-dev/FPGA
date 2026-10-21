@@ -10,9 +10,23 @@ module media_control_core #(
     output reg cmd_ack_t,
     input wire [7:0] uart_cmd,
     input wire uart_cmd_valid,
+    input wire [1:0] uart_cmd_source, // 0=Ethernet, 1=USB UART, 2=HC-08
+    output wire uart_cmd_ready,
+    output wire [1:0] uart_source_lock,
+    input wire [7:0] sd_diag_flags, // {init, SDHC, HS support, HS active, debug-active, host state[2:0]}
+    input wire [15:0] sd_init_debug_word,
+    input wire [31:0] image_read_cycles,
+    input wire [31:0] sd_read_cycles,
+    input wire [7:0] image_source_status,
+    input wire image_source_busy,
+    input wire [31:0] sd_last_failure_lba,
+    input wire [7:0] sd_last_failure_info,
+    input wire [31:0] sd_stream_debug,
     input wire uart_tx_ready,
+    input wire bt_tx_ready,
     input wire local_auto_toggle,
     output reg uart_tx_req,
+    output reg bt_tx_req,
     output reg [63:0] uart_tx_pkt,
     output reg image_next_pulse,
     output reg image_prev_pulse,
@@ -54,10 +68,11 @@ module media_control_core #(
                      SUB_END_WAIT_TX=16, SUB_PACKET_GAP=17;
     reg [4:0] state, after_req;
     reg cmd_seen,pending_uart,uart_stage,uart_busy_seen,suppress_cmd_ack;
+    reg [1:0] pending_source,subtitle_source;
     reg [7:0] pending_cmd;
     reg [7:0] sequence_id, pending_sequence;
     reg [7:0] pending_op, pending_value;
-    reg subtitle_active,subtitle_source_uart,subtitle_success,subtitle_swap_ack;
+    reg subtitle_active,subtitle_success,subtitle_swap_ack;
     reg [1:0] subtitle_parse_state;
     reg [7:0] subtitle_remaining,subtitle_length,subtitle_checksum,subtitle_calc_checksum;
     reg [7:0] subtitle_rx_count;
@@ -86,9 +101,18 @@ module media_control_core #(
     reg [7:0] display_status_spectrum, display_status_sensitivity;
 
     wire eth_event=cmd_pending && !cmd_seen;
-    wire event_valid=eth_event || uart_cmd_valid;
-    wire event_from_uart=!eth_event;
+    wire serial_source_match=!subtitle_active || (uart_cmd_source==subtitle_source);
+    wire serial_event=uart_cmd_valid && serial_source_match;
+    wire eth_blocked=eth_event && subtitle_active && (subtitle_source!=2'd0);
+    wire event_valid=eth_event || serial_event;
+    wire [1:0] event_source=eth_event?2'd0:uart_cmd_source;
+    wire event_from_uart=(event_source!=2'd0);
     wire [7:0] event_cmd=eth_event?cmd:uart_cmd;
+    wire event_accept=(state==IDLE) && !eth_event && !subtitle_ack_pulse && serial_source_match;
+    assign uart_cmd_ready=event_accept;
+    assign uart_source_lock=!subtitle_active ? 2'd0 :
+                            (subtitle_source==2'd0) ? 2'd3 : subtitle_source;
+    wire selected_uart_tx_ready=(pending_source==2'd2)?bt_tx_ready:uart_tx_ready;
     wire [4:0] current_index=committed_valid?committed_index:first_bmp[4:0];
     wire [7:0] ack_flags={1'b0,spectrum_sensitivity,spectrum_on,contrast[2:0],auto_on};
     wire [7:0] ack_picture={osd_mode,effect,brightness};
@@ -172,6 +196,52 @@ module media_control_core #(
         end
     endtask
 
+    task automatic send_sd_diagnostics(input serial_request);
+        reg [63:0] diag_body;
+        reg [15:0] last_field;
+        reg [31:0] middle_field;
+        reg [7:0] diag_flags;
+        begin
+            // A6 | SD flags | image-source cycles (u32 LE) | last CMD17 cycles
+            // (u16 LE). A busy image source uses F|source-status|FAT-state in
+            // the final field so a stuck source can be diagnosed in place.
+            diag_flags=sd_diag_flags;
+            middle_field=image_read_cycles;
+            if (!sd_diag_flags[7] || sd_diag_flags[3])
+                last_field=sd_init_debug_word;
+            else if(fat_state==8'd9 && sd_last_failure_info[7:4]!=0) begin
+                // D-tag: final SD failure; the 32-bit middle field is the LBA.
+                last_field={8'hD0,sd_last_failure_info};
+                middle_field=sd_last_failure_lba;
+                diag_flags[3]=1'b1;
+            end
+            else if(image_source_busy) begin
+                last_field={4'hF,image_source_status,fat_state[3:0]};
+                middle_field=sd_stream_debug;
+                diag_flags[3]=1'b1;
+            end
+            else if(fat_state==8'd2) begin
+                // E-tag: FAT is waiting for a sector while the image source
+                // is idle; return the adapter's current request/stream cursor.
+                last_field={8'hE0,fat_state};
+                middle_field=sd_stream_debug;
+                diag_flags[3]=1'b1;
+            end
+            else
+                last_field=sd_read_cycles[15:0];
+            diag_body={last_field[15:8],last_field[7:0],
+                       middle_field[31:24],middle_field[23:16],
+                       middle_field[15:8],middle_field[7:0],
+                       diag_flags,8'hA6};
+            if(serial_request)begin
+                uart_tx_pkt<=diag_body;uart_stage<=0;uart_busy_seen<=0;state<=WAIT_UART_READY;
+            end else begin
+                tx_type<=16'h0047;tx_payload_len<=16'd8;tx_pkt<=diag_body;
+                tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=WAIT_ACK_TX;
+            end
+        end
+    endtask
+
     always @(posedge clk or posedge rst) begin
         if(rst) begin
             rx_pos<=0;rx_type_lo<=0;rx_type_hi<=0;rx_len_lo<=0;rx_len_hi<=0;rx_body<=0;rx_good<=0;
@@ -219,10 +289,11 @@ module media_control_core #(
     always @(posedge clk or posedge rst) begin
         if(rst) begin
             state<=IDLE;after_req<=WAIT_SET_REPLY;cmd_seen<=0;pending_cmd<=0;pending_uart<=0;
-            uart_tx_req<=0;uart_tx_pkt<=0;uart_stage<=0;uart_busy_seen<=0;
+            pending_source<=0;subtitle_source<=0;
+            uart_tx_req<=0;bt_tx_req<=0;uart_tx_pkt<=0;uart_stage<=0;uart_busy_seen<=0;
             image_next_pulse<=0;image_prev_pulse<=0;
             sequence_id<=0;pending_sequence<=0;pending_op<=0;pending_value<=0;
-            subtitle_active<=0;subtitle_source_uart<=0;subtitle_success<=0;subtitle_swap_ack<=0;
+            subtitle_active<=0;subtitle_success<=0;subtitle_swap_ack<=0;
             subtitle_parse_state<=0;subtitle_remaining<=0;subtitle_sum_hi<=0;subtitle_length<=0;
             subtitle_checksum<=0;subtitle_calc_checksum<=0;subtitle_rx_count<=0;
             subtitle_offset<=0;subtitle_attempts<=0;
@@ -232,7 +303,7 @@ module media_control_core #(
             debug_request<=0;pc_snapshot_request<=0;auto_on<=0;auto_period_s<=1;volume<=8;brightness<=4;
             contrast<=2;effect<=0;osd_mode<=1;spectrum_on<=0;spectrum_sensitivity<=1;last_control_error<=0;
         end else begin
-            debug_request<=0;pc_snapshot_request<=0;uart_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
+            debug_request<=0;pc_snapshot_request<=0;uart_tx_req<=0;bt_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
             if(local_auto_toggle)auto_on<=~auto_on;
             if(!cmd_pending)cmd_seen<=0;
             if(state==WAIT_SET_REPLY || state==WAIT_STATUS_REPLY || state==WAIT_REQ_TX) begin
@@ -241,7 +312,8 @@ module media_control_core #(
             case(state)
                 IDLE: begin
                     if(subtitle_ack_pulse && subtitle_active) begin
-                        subtitle_active<=0;pending_cmd<=8'h54;pending_uart<=subtitle_source_uart;subtitle_success<=0;
+                        subtitle_active<=0;pending_cmd<=8'h54;pending_source<=subtitle_source;
+                        pending_uart<=(subtitle_source!=0);subtitle_success<=0;
                         if(subtitle_ack_ok && subtitle_commit_len==subtitle_length) begin
                             pending_value<=subtitle_commit_len;pending_op<=8;last_control_error<=6;
                             pending_sequence<=sequence_id;sequence_id<=sequence_id+1'b1;
@@ -254,10 +326,15 @@ module media_control_core #(
                             subtitle_swap_ack<=~subtitle_swap_ack;
                             state<=PREP_ACK;
                         end
+                    end else if(eth_blocked) begin
+                        // A subtitle transaction owns its originating transport.
+                        // Consume competing Ethernet bytes as rejected commands
+                        // so they cannot be replayed as controls after commit.
+                        cmd_seen<=1;cmd_ack_t<=~cmd_ack_t;last_control_error<=5;
                     end else if(event_valid && subtitle_consume) begin
                         if(eth_event)begin cmd_seen<=1;cmd_ack_t<=~cmd_ack_t;end
                         if(event_cmd==8'h54 && !subtitle_active) begin
-                            subtitle_active<=1;subtitle_source_uart<=event_from_uart;subtitle_success<=0;
+                            subtitle_active<=1;subtitle_source<=event_source;pending_source<=event_source;subtitle_success<=0;
                             last_control_error<=5;
                             pending_cmd<=8'h54;pending_uart<=event_from_uart;suppress_cmd_ack<=!event_from_uart;
                             subtitle_parse_state<=0;subtitle_remaining<=0;subtitle_length<=0;subtitle_checksum<=0;
@@ -278,7 +355,8 @@ module media_control_core #(
                         end
                     end else if(event_valid) begin
                         if(eth_event)cmd_seen<=1;
-                        pending_cmd<=event_cmd;pending_uart<=event_from_uart;suppress_cmd_ack<=0;last_control_error<=0;subtitle_success<=0;
+                        pending_cmd<=event_cmd;pending_uart<=event_from_uart;pending_source<=event_source;
+                        suppress_cmd_ack<=0;last_control_error<=0;subtitle_success<=0;
                         case(event_cmd)
                         8'h2B:start_display_set(event_cmd,1,(volume < 4'd8) ? ({4'd0,volume}+8'd1) : 8'd8);
                         8'h2D:start_display_set(event_cmd,1,(volume > 4'd0) ? ({4'd0,volume}-8'd1) : 8'd0);
@@ -304,6 +382,7 @@ module media_control_core #(
                             if(!event_from_uart)pc_snapshot_request<=1'b1;
                             state<=PREP_ACK;
                         end
+                        8'h49:send_sd_diagnostics(event_from_uart);
                         8'h4C:begin if(!event_from_uart)cmd_ack_t<=~cmd_ack_t;state<=IDLE;end // V1 lean diagnostic: no response packet
                         8'h4E:begin image_next_pulse<=1;state<=PREP_ACK;end
                         8'h50:begin image_prev_pulse<=1;state<=PREP_ACK;end
@@ -405,9 +484,12 @@ module media_control_core #(
                     if(!pending_uart && !suppress_cmd_ack)cmd_ack_t<=~cmd_ack_t;
                     suppress_cmd_ack<=0;state<=IDLE;
                 end
-                WAIT_UART_READY:if(uart_tx_ready)begin uart_tx_req<=1;uart_busy_seen<=0;state<=WAIT_UART_BUSY;end
-                WAIT_UART_BUSY:if(!uart_tx_ready)begin uart_busy_seen<=1;state<=WAIT_UART_DONE;end
-                WAIT_UART_DONE:if(uart_busy_seen && uart_tx_ready)begin
+                WAIT_UART_READY:if(selected_uart_tx_ready)begin
+                    if(pending_source==2'd2)bt_tx_req<=1;else uart_tx_req<=1;
+                    uart_busy_seen<=0;state<=WAIT_UART_BUSY;
+                end
+                WAIT_UART_BUSY:if(!selected_uart_tx_ready)begin uart_busy_seen<=1;state<=WAIT_UART_DONE;end
+                WAIT_UART_DONE:if(uart_busy_seen && selected_uart_tx_ready)begin
                     if(uart_stage)begin uart_stage<=0;start_app_ack(pending_cmd,0);end
                     else state<=IDLE;
                 end

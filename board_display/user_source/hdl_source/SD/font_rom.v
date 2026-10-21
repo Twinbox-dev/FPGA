@@ -1,21 +1,24 @@
-// Synchronous 8x16 printable-ASCII font ROM (95 glyphs, 2048 x 8 bits).
-// The MEM_FILE parameter is relative to the synthesis/simulation working directory.
-module font_rom #(
+// Shared synchronous font storage for two independent raster consumers.
+// The OSD panel and subtitle renderer use the same font.mem and video clock,
+// so a true dual-read-port RAM preserves both one-cycle read latencies while
+// avoiding two copies of the 2048 x 8 bitmap.
+module font_rom_2r #(
     parameter MEM_FILE = "../user_source/hdl_source/SD/font.mem"
 )(
     input  wire        video_clk,
-    input  wire [6:0]  ascii,        // 字符 ASCII 码（0~127）
-    input  wire [3:0]  row,          // 字符内行号（0~15）
-    output reg  [7:0]  row_data      // 该行 8bit 位图（读延迟 1 拍）
+    input  wire [6:0]  ascii_a,
+    input  wire [3:0]  row_a,
+    output reg  [7:0]  row_data_a,
+    input  wire [6:0]  ascii_b,
+    input  wire [3:0]  row_b,
+    output reg  [7:0]  row_data_b
 );
+    reg [7:0] font_mem [0:2047]; /* fehdl force_ram=1, ram_style="bram_32k" */
 
-  reg [7:0] font_mem [0:2047];  /* fehdl force_ram=1, ram_style="bram" */
+    initial $readmemh(MEM_FILE, font_mem);
 
-  initial $readmemh(MEM_FILE, font_mem);
-
-  //同步读
-  always @(posedge video_clk) begin
-      row_data <= font_mem[{ascii, row}];
-  end
-
+    always @(posedge video_clk) begin
+        row_data_a <= font_mem[{ascii_a, row_a}];
+        row_data_b <= font_mem[{ascii_b, row_b}];
+    end
 endmodule

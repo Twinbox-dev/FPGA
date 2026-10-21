@@ -139,6 +139,48 @@ module tb_media_image_tx_flags;
         if(error_code!=8'd12)
             $fatal(1,"checksum reject reason was lost: error=%0d",error_code);
         $display("PASS: detailed display reject result is retried and exposed as error 12");
+
+        // An explicit audio RESULT=1 after exhausting retries is distinct from
+        // the two-second missing-result timeout (error 6).
+        @(negedge clk);dut.state=4'd14;dut.frame_id=16'h1234;
+        dut.audio_attempts=2'd3;dut.pc_snapshot_active=0;dut.wait_count=0;
+        @(negedge clk);rx_data=8'haa;rx_valid=1;
+        @(negedge clk);rx_data=8'hbb;
+        @(negedge clk);rx_data=8'hcc;
+        @(negedge clk);rx_data=8'hdd;
+        @(negedge clk);rx_data=8'h33;
+        @(negedge clk);rx_data=8'h00;
+        @(negedge clk);rx_data=8'h03;
+        @(negedge clk);rx_data=8'h00;
+        @(negedge clk);rx_data=8'h34;
+        @(negedge clk);rx_data=8'h12;
+        @(negedge clk);rx_data=8'h15;
+        @(negedge clk);rx_valid=0;rx_data=0;
+        wait(state_code==4'd9);
+        if(error_code!=8'h75)
+            $fatal(1,"audio reject reason was not retained: error=%02x",error_code);
+        $display("PASS: exhausted AUDIO_RESULT reason is retained for status");
+
+        // Legacy display firmware uses generic RESULT=1. Keep that path
+        // retryable and expose it as reason 0 after exhausting retries.
+        @(negedge clk);dut.state=4'd14;dut.frame_id=16'h2234;
+        dut.audio_attempts=2'd3;dut.pc_snapshot_active=0;dut.wait_count=0;
+        @(negedge clk);rx_data=8'haa;rx_valid=1;
+        @(negedge clk);rx_data=8'hbb;
+        @(negedge clk);rx_data=8'hcc;
+        @(negedge clk);rx_data=8'hdd;
+        @(negedge clk);rx_data=8'h33;
+        @(negedge clk);rx_data=8'h00;
+        @(negedge clk);rx_data=8'h03;
+        @(negedge clk);rx_data=8'h00;
+        @(negedge clk);rx_data=8'h34;
+        @(negedge clk);rx_data=8'h22;
+        @(negedge clk);rx_data=8'h01;
+        @(negedge clk);rx_valid=0;rx_data=0;
+        wait(state_code==4'd9);
+        if(error_code!=8'h70)
+            $fatal(1,"legacy audio RESULT=1 path failed: error=%02x",error_code);
+        $display("PASS: generic legacy audio rejection remains retryable");
         $finish;
     end
 

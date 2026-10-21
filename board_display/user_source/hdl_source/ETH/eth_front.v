@@ -534,7 +534,9 @@ module tap_afifo #(
     reg [AW:0] rbin, rgray;
     reg [AW:0] rgray_w1, rgray_w2;       // 读指针 → 写域
     reg [AW:0] wgray_r1, wgray_r2;       // 写指针 → 读域
-    reg [DW-1:0] mem [0:(1<<AW)-1]; /* fehdl force_ram=1, ram_style="bram" */
+    // All display-board instances are 512 x 32-bit FIFOs. A single 32K block
+    // holds one FIFO, replacing the two 9K blocks required by the old mapping.
+    reg [DW-1:0] mem [0:(1<<AW)-1]; /* fehdl force_ram=1, ram_style="bram_32k" */
 
     // ⚠ full/empty 必须**寄存**：组合式 `next == 对侧同步指针` 判据与指针推进
     //   互为组合环（"恰好剩一个字且使能有效"时振荡——Verilator 直接拒绝收敛）。

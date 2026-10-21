@@ -2,8 +2,6 @@
 module top(
     input                       clk,
     input                       rst_n,
-    input                       uart_rx,        // CH340G USB-UART（1Mbaud 8N1）
-    output                      uart_tx,
 
     // 以太网 RGMII（板载 RTL8211 PHY，引脚见 pin.adc）
     input                       eth_rgmii_rxc,
@@ -45,11 +43,6 @@ parameter BUF2_ADDR     = 24'd921600;
 parameter BUF3_ADDR     = 24'd1509376;
 parameter MEDIA_PEER_IP = 32'hc0a88903;  // 媒体板 UDP 目标地址
 parameter MEDIA_PEER_PORT = 16'h0001;    // 媒体板正式应用端口
-parameter PC_RETURN_PORT = 16'h0002;     // PC 预览与诊断回包端口
-// D 的采样时钟：1=mem_clk 域（返回数据或请求地址），0=视频 FIFO 读出口。
-// 1=图像写口双流诊断（A 数据/B 地址）；0=正常写侧 A + D 触发的读侧 B。
-// 在 mem_clk 域下，D 的 B 源：1=送进 SDRAM IP 的读地址，0=控制器返回数据。
-localparam DUMP_READ_REQUEST_ADDR = 1'b0;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -83,6 +76,9 @@ wire signed [11:0] subtitle_ox;
 wire [9:0] subtitle_oy;
 wire [7:0] subtitle_char_index, subtitle_char_data, subtitle_active_len;
 wire subtitle_text_changed;
+wire [6:0] subtitle_font_ascii, panel_font_ascii;
+wire [3:0] subtitle_font_row, panel_font_row;
+wire [7:0] subtitle_font_row_data, panel_font_row_data;
 wire subtitle_consume = 1'b0;
 wire subtitle_ack_pulse = 1'b0;
 wire subtitle_ack_ok = 1'b0;
@@ -92,8 +88,8 @@ reg [7:0] subtitle_wr_index, subtitle_wr_char, subtitle_commit_len;
 wire        display_valid;
 
 wire [3:0]  state_code;
-wire [4:0]  img_idx_w;        // UART 遥测：当前图索引
-wire        img_wav_w;        // UART 遥测：该图是否配同名 WAV
+wire [4:0]  img_idx_w;        // 当前媒体图索引（显示状态/数码管）
+wire        img_wav_w;        // 当前图是否配同名 WAV
 reg         auto_play_w;      // 通过远端媒体元数据同步的自动轮播状态
 // ---- 板级调试面板（数码管 6 位，只读，不影响功能）----
 wire [7:0]  dbg_fat_state;   // fat32_ro FSM 状态（0=RST 1=ISSUE 2=STREAM 3=MOUNT
@@ -319,16 +315,8 @@ always @(posedge clk) begin
 end
 assign dbg_underrun = {vid_und_stick, aud_und_stick, 2'b00};
 
-// ===================== 控制通道（分层：传输前端 + 传输无关核心）=====================
-// ctrl_core 持有命令语义与控制参数（虚拟按键/音量），任何传输前端（现在的 UART、
-// 将来的以太网）只要把命令翻译成「字节 + valid」即可复用；详见 ctrl_core.v。
-wire vk_next_n, vk_auto_n, vk_prev_n;
+// ===================== 显示设置（由媒体板通过正式控制协议下发）=====================
 wire touch_swipe_next, touch_swipe_prev;
-wire [7:0]  cmd_byte;
-wire        cmd_val_w, tx_req_w;
-wire [63:0] tx_pkt_w;
-wire [7:0]  uart_cmd;        // UART 前端命令出口
-wire        uart_cmd_val;
 reg [7:0]   media_cmd_byte;
 reg         media_cmd_toggle;
 // 以太网（RGMII ↔ 板载 RTL8211 PHY）
@@ -345,42 +333,27 @@ wire [3:0]  ct_gray;         // 对比度档位（格雷码，跨时钟域到 vi
 wire        bar_en;          // 音频脉动条开关（pulse_bar）
 wire [19:0] media_row_offset; // Full-frame network transfer uses row offset zero.
 wire [1:0]  bar_sens_gray;   // 脉动灵敏度 0..3（格雷码，跨时钟域）
-wire        pl_dump_start_w; // Legacy playlist dump command has no source on the display board.
-wire [63:0] pl_pkt_w;
-wire        pl_pkt_val_w;
-wire [7:0]  ld_diag_w;       // 装载诊断快照 → ACK pkt[5]
-wire [31:0] tap_word_w;      // 写侧分叉：图像发射字 → 以太网流
-wire        tap_val_w;
-wire        tap_end_w;       // 图像会话结束脉冲（eth 侧冲洗 FIFO 触发）
-wire [31:0] tap2_word_w;     // 读侧 dump：显示读数据捕获 → 以太网流（type 0x0004）
-wire        tap2_val_w;
-wire        tap2_end_w;
-wire        tap2_clk_w;
-wire        tap_clk_eth, tap_val_eth, tap_end_eth;
-wire [31:0] tap_word_eth;
-wire        rdump_start_w;   // 'D' 手动读回触发（ctrl_core）
-wire        dmp_trig_w;      // 读回捕获触发（sd_card_clk 域脉冲，'D' 或装载自动）
 
 ctrl_core #(
     .VK_PULSE_CYC   (10_000_000)
 ) ctrl_core_m0(
     .clk            (sd_card_clk),
     .rst            (rst_all),
-    .cmd            (cmd_byte),
-    .cmd_val        (cmd_val_w),
+    .cmd            (8'd0),
+    .cmd_val        (1'b0),
     .set_valid      (set_valid_sd),
     .set_op         (set_op_sd),
     .set_value      (set_value_sd),
-    .touch_next     (touch_swipe_next),
-    .touch_prev     (touch_swipe_prev),
+    .touch_next     (1'b0),
+    .touch_prev     (1'b0),
     .subtitle_consume (subtitle_consume),
     .subtitle_ack_pulse (subtitle_ack_pulse),
     .subtitle_ack_ok (subtitle_ack_ok),
-    .vk_next_n      (vk_next_n),
-    .vk_auto_n      (vk_auto_n),
-    .vk_prev_n      (vk_prev_n),
-    .tx_req         (tx_req_w),
-    .tx_pkt         (tx_pkt_w),
+    .vk_next_n      (),
+    .vk_auto_n      (),
+    .vk_prev_n      (),
+    .tx_req         (),
+    .tx_pkt         (),
     .vol_gain       (vol_gain),
     .brightness_value (brightness_value),
     .contrast_value (contrast_value),
@@ -401,36 +374,17 @@ ctrl_core #(
     .img_idx        (img_idx_w),
     .img_wav        (img_wav_w),
     .auto_on        (auto_play_w),
-    .pl_pkt         (pl_pkt_w),
-    .pl_pkt_val     (pl_pkt_val_w),
-    .pl_dump_start  (pl_dump_start_w),
-    .rdump_start    (rdump_start_w),
-    .ld_diag        (ld_diag_w)
-);
-
-// UART 前端：只管 8N1 收发与 [CMD,~CMD] 成帧（命令表在 ctrl_core.v）
-uart_link #(
-    .CLK_FREQ_HZ    (100_000_000),
-    .BAUD           (1_000_000)
-) uart_link_m0(
-    .clk            (sd_card_clk),
-    .rst            (rst_all),
-    .rx             (uart_rx),
-    .tx             (uart_tx),
-    .cmd            (uart_cmd),
-    .cmd_val        (uart_cmd_val),
-    .tx_req         (tx_req_w),
-    .tx_pkt         (tx_pkt_w)
+    .pl_pkt         (64'd0),
+    .pl_pkt_val     (1'b0),
+    .pl_dump_start  (),
+    .rdump_start    (),
+    .ld_diag        (8'd0)
 );
 
 always @(posedge sd_card_clk or posedge rst_all) begin
     if (rst_all) begin
         media_cmd_byte <= 8'd0;
         media_cmd_toggle <= 1'b0;
-    end else if (uart_cmd_val &&
-                 (uart_cmd == 8'h4e || uart_cmd == 8'h41 || uart_cmd == 8'h50)) begin
-        media_cmd_byte <= uart_cmd;
-        media_cmd_toggle <= ~media_cmd_toggle;
     end else if (touch_swipe_next) begin
         media_cmd_byte <= 8'h4e;
         media_cmd_toggle <= ~media_cmd_toggle;
@@ -440,13 +394,7 @@ always @(posedge sd_card_clk or posedge rst_all) begin
     end
 end
 
-// ===================== 以太网前端（官方 TEMAC + UDP 栈，RGMII PHY）=====================
-// 子系统内 udp_clk（千兆 125M / 百兆 12.5M，见 eth_subsys 的 GIGABIT）与
-// ctrl_core(sd_card_clk) 的命令/应答用握手/toggle 跨域。
-wire        eth_cmd_pending;
-wire [7:0]  eth_cmd;
-wire        eth_cmd_ack_t;
-reg         eth_tx_tog;
+// ===================== 显示板以太网（正式媒体链路）=====================
 wire        eth_app_clk;
 wire [7:0]  eth_rx_data;
 wire        eth_rx_valid;
@@ -470,6 +418,7 @@ wire        media_audio_begin_valid;
 wire [15:0] media_audio_frame_id;
 wire [31:0] media_audio_sample_count;
 wire        media_audio_end_valid, media_audio_end_ok;
+wire [3:0]  media_audio_end_reason;
 wire [15:0] media_audio_end_id;
 wire        media_protocol_error_toggle;
 wire        media_image_result_valid, media_audio_result_valid;
@@ -515,8 +464,7 @@ reg         subtitle_ack_valid_eth, status_valid_eth;
 reg [7:0]   subtitle_ack_seq_eth, subtitle_ack_value_eth;
 reg [63:0]  status_payload_eth;
 
-eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT),
-             .DST_UDP_PORT(PC_RETURN_PORT)) u_eth_subsys(
+eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT)) u_eth_subsys(
     .clk_50              (clk),
     .rst_all             (rst_all),
     .phy1_rgmii_rx_clk   (eth_rgmii_rxc),
@@ -529,37 +477,12 @@ eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT
     .app_clk_out         (eth_app_clk),
     .app_rx_data_out     (eth_rx_data),
     .app_rx_data_valid_out(eth_rx_valid),
-    .cmd                 (eth_cmd),
-    .cmd_pending         (eth_cmd_pending),
-    .cmd_ack_t           (eth_cmd_ack_t),
-    .tx_tog              (eth_tx_tog),
-    .tx_pkt              (eth_tx_pkt_r),
     .media_packet_request(media_packet_request),
     .media_packet_valid  (media_packet_valid),
     .media_packet_data   (media_packet_data),
     .media_packet_length (media_packet_length),
     .media_packet_ack    (media_packet_ack),
-    .media_packet_ready  (media_packet_ready),
-    .sys_rst             (rst_all),
-    .tap_clk             (tap_clk_eth),
-    .tap_val             (tap_val_eth),
-    .tap_word            (tap_word_eth),
-    .tap_end             (tap_end_eth),
-    .tap2_clk            (tap2_clk_w),
-    .tap2_val            (tap2_val_w),
-    .tap2_word           (tap2_word_w),
-    .tap2_end            (tap2_end_w)
-);
-
-cmd_arb u_cmd_arb (
-    .clk          (sd_card_clk),
-    .eth_pending  (eth_cmd_pending),
-    .eth_cmd      (eth_cmd),
-    .eth_ack_tog  (eth_cmd_ack_t),
-    .uart_cmd     (uart_cmd),
-    .uart_cmd_val (uart_cmd_val),
-    .cmd_val      (cmd_val_w),
-    .cmd_byte     (cmd_byte)
+    .media_packet_ready  (media_packet_ready)
 );
 
 always @(posedge sd_card_clk or posedge rst_all) begin
@@ -567,8 +490,6 @@ always @(posedge sd_card_clk or posedge rst_all) begin
         auto_play_w <= 1'b0;
     else if (frame_commit_pulse)
         auto_play_w <= media_auto_play_status;
-    else if (cmd_val_w && cmd_byte == 8'h41)
-        auto_play_w <= ~auto_play_w;
 end
 
 media_protocol_rx u_media_protocol_rx (
@@ -587,6 +508,7 @@ media_protocol_rx u_media_protocol_rx (
     .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
     .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
+    .audio_end_reason (media_audio_end_reason),
     .audio_end_id (media_audio_end_id), .protocol_error_toggle (media_protocol_error_toggle)
 );
 
@@ -624,6 +546,7 @@ media_transaction_writer u_media_transaction_writer (
     .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
     .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
+    .audio_end_reason (media_audio_end_reason),
     .audio_end_id (media_audio_end_id),
     .write_clk (sd_card_clk), .write_rst (rst_all),
     .frame_finish_toggle (frame_write_toggle_mem), .effect_mode (transition_mode_cfg),
@@ -799,13 +722,6 @@ end
 assign state_code = 4'd0;
 assign dbg_fat_state = 8'd0;
 assign dbg_fat_err = 1'b0;
-assign pl_pkt_w = 64'd0;
-assign pl_pkt_val_w = 1'b0;
-assign ld_diag_w = 8'd0;
-assign dmp_trig_w = rdump_start_w | frame_commit_pulse;
-assign tap_word_w = 32'd0;
-assign tap_val_w = 1'b0;
-assign tap_end_w = 1'b0;
 assign aud_play_done = 1'b0;
 
 wire signed [23:0] aud_l_s = $signed(aud_l);
@@ -1047,6 +963,8 @@ subtitle_text_renderer u_subtitle_renderer (
     .ox (subtitle_ox), .oy (subtitle_oy),
     .text_len (subtitle_active_len),
     .char_index (subtitle_char_index), .char_data (subtitle_char_data),
+    .font_ascii (subtitle_font_ascii), .font_row (subtitle_font_row),
+    .font_row_data (subtitle_font_row_data),
     .text_on (subtitle_text_on), .in_band (subtitle_band)
 );
 
@@ -1065,7 +983,17 @@ osd_panel_levels u_osd_panel (
     .brightness_level (panel_bri_level),
     .contrast_level (panel_ct_level),
     .volume_level (panel_vol_level),
+    .font_ascii (panel_font_ascii), .font_row (panel_font_row),
+    .font_row_data (panel_font_row_data),
     .text_on (panel_text_on), .in_band (panel_band)
+);
+
+font_rom_2r u_shared_font (
+    .video_clk (video_clk),
+    .ascii_a (subtitle_font_ascii), .row_a (subtitle_font_row),
+    .row_data_a (subtitle_font_row_data),
+    .ascii_b (panel_font_ascii), .row_b (panel_font_row),
+    .row_data_b (panel_font_row_data)
 );
 
 osd_composite u_osd_composite (
@@ -1078,7 +1006,7 @@ osd_composite u_osd_composite (
     .video_out (osd_rgb), .de_out (osd_de), .vs_out (osd_vs)
 );
 
-// Cursor is HDMI-only. PC pixel probes still observe the pre-OSD frame data.
+// Cursor is HDMI-only. PC D snapshots are generated by the media board.
 gt911_cursor_overlay u_gt911_cursor (
     .video_clk (video_clk), .rst (rst_all),
     .video_in (osd_rgb), .de_in (osd_de), .vs_in (osd_vs),
@@ -1089,76 +1017,6 @@ gt911_cursor_overlay u_gt911_cursor (
     .cursor_ack_toggle (cursor_ack_toggle),
     .video_out (cursor_rgb), .de_out (cursor_de), .vs_out (cursor_vs)
 );
-
-// ================== 读侧 dump 捕获窗（video_clk 域，第二十一轮）==================
-// 触发（'D' 或装载提交自动）后捕获一帧。保留 video FIFO 出口的旧探针；
-// D-command capture reads the display board local SDRAM return path.
-// 由 DUMP_READ_REQUEST_ADDR 决定；上轮的 FIFO 出口探针仍保留。
-reg         cap_tog;                    // sd_card_clk 脉冲 → toggle
-// display_valid 门控：装载提交瞬间显示流水线尚未起帧（首图提交拍上还是旧值
-// 0），那时开窗只能抓到启动期零星几个字（105 字黑帧的根因）
-always @(posedge sd_card_clk or posedge rst_all)
-    if (rst_all) cap_tog <= 1'b0;
-    else if (dmp_trig_w && (display_valid || frame_commit_pulse)) cap_tog <= ~cap_tog;
-reg  cap_s0, cap_s1, cap_s2;            // video_clk 域同步 + 边沿
-always @(posedge video_clk or posedge rst_all) begin
-    if (rst_all) begin
-        cap_s0 <= 1'b0; cap_s1 <= 1'b0; cap_s2 <= 1'b0;
-    end else begin
-        cap_s0 <= cap_tog; cap_s1 <= cap_s0; cap_s2 <= cap_s1;
-    end
-end
-wire cap_req_v = (cap_s1 != cap_s2);
-reg  cap_win, cap_pend, cap_end_r;
-// vs_0/vs_0_d 在下方 video_clk 域诊断块维护，此处复用其值（同域读，无竞争）
-wire vs_rise_v = vs_0 && !vs_0_d;
-always @(posedge video_clk or posedge rst_all) begin
-    if (rst_all) begin
-        cap_win <= 1'b0; cap_pend <= 1'b0; cap_end_r <= 1'b0;
-    end else begin
-        if (cap_req_v)
-            cap_pend <= 1'b1;           // 窗已开期间的重复触发也记一笔
-        cap_end_r <= 1'b0;
-        if (vs_rise_v) begin
-            if (cap_pend) begin
-                cap_win  <= 1'b1;       // vsync 开窗：圈一帧
-                cap_pend <= 1'b0;
-            end
-            else if (cap_win) begin
-                cap_win   <= 1'b0;      // 下一 vsync 关窗
-                cap_end_r <= 1'b1;      // 通知 eth 侧冲洗 FIFO
-            end
-        end
-    end
-end
-// rfifo 的 dout 在 read_en 上升沿之后才更新；有效脉冲延后一拍，
-// 让以太网 FIFO 采到刚弹出的字，而非上一个字。
-reg tap2_val_r;
-always @(posedge video_clk or posedge rst_all)
-    if (rst_all) tap2_val_r <= 1'b0;
-    else         tap2_val_r <= cap_win && video_read_en;
-wire        mem_tap_val, mem_tap_end;
-wire [31:0] mem_tap_word;
-mem_return_dump #(.WORDS(FRAME_WORDS)) u_mem_return_dump (
-    .mem_clk      (ext_mem_clk),
-    .rst          (rst_all),
-    .start_tog    (cap_tog),
-    .video_ack    (video_read_req_ack),
-    .rd_valid     (DUMP_READ_REQUEST_ADDR ? App_rd_en : frame_sdr_rd_valid),
-    .rd_word      (DUMP_READ_REQUEST_ADDR ? {11'd0, App_rd_addr} : Sdr_rd_dout),
-    .rd_audio     (mem_rd_audio),
-    .tap_val      (mem_tap_val),
-    .tap_word     (mem_tap_word),
-    .tap_end      (mem_tap_end)
-);
-assign tap_clk_eth = sd_card_clk;
-assign tap_val_eth = 1'b0;
-assign tap_word_eth = 32'd0;
-assign tap_end_eth = 1'b0;
-assign tap2_clk_w = ext_mem_clk;
-assign tap2_val_w = mem_tap_val;
-assign tap2_word_w = mem_tap_word;
-assign tap2_end_w = mem_tap_end;
 
 frame_read_write #(
     // Media board sends BMP rows in source order (bottom-up); preserve the

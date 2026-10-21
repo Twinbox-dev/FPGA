@@ -93,20 +93,20 @@ PC 到媒体板的 V1 字幕仍用 T 字节流：0x54、length XOR 0x80、各 AS
 
 PC 以太网 D 命令请求“当前已提交图像”的正式快照：媒体板从 SD 重读该 BMP，经 `media_frame_format` 补黑边后，将 `0x0021–0x0023` 图像事务发给 PC `.1:2`。PC 校验后返回图像 RESULT；媒体板再发零样本静音事务 `0x0030/0x0032`，PC 返回音频 RESULT 和最终 RESULT=2。快照不写显示板 SDRAM，也不改变显示板当前提交图像。普通下一张/上一张/自动切换优先，PC 快照在媒体链路空闲后处理。
 
-UART D 保留原始 BMP 调试 tap `type=0x0003`；显示板 SDRAM 读回 `type=0x0004` 仍是独立的调试探针。两种探针都不参与正式图像提交。
+媒体板 UART D 保留原始 BMP 调试 tap `type=0x0003`，不参与正式图像提交。网页 D 正式快照仍走媒体板 SD 重读路径。显示板曾有独立 SDRAM 读回 `type=0x0004` 诊断探针；它与正式 PC 快照用途重复，已在双板资源优化中移除。移除该硬件探针不影响网页 D 按钮。
 
 eth_front 的发送完成 toggle 在 UDP mux 返回 ready 后回传；mux 仲裁时先等 `stack_ack` 再发送，确保 PC V1 ACK/状态、显示控制请求和图像流之间不会互相占用一个数据包。
 
 ## PC 媒体模拟器对接显示板
 
-`scripts/pc_display_media_probe.py` 临时扮演媒体板，向显示板发送正式 `0x20–0x33` 图像/PCM 事务，在 PC 侧检查 RESULT、控制回包与 SDRAM D 读回。测试显示板参数为 `MEDIA_PEER_IP=192.168.137.1`、`MEDIA_PEER_PORT=2`、`PC_RETURN_PORT=3`；PC 收 formal replies 于 `.1:2`，D 读回于 `.1:3`。
+`scripts/pc_display_media_probe.py` 临时扮演媒体板，向显示板发送正式 `0x20–0x33` 图像/PCM 事务，在 PC 侧检查事务 RESULT、控制回包、状态和字幕。测试显示板时只需将 `MEDIA_PEER_IP=192.168.137.1`、`MEDIA_PEER_PORT=2`；PC 在 `.1:2` 接收正式回包。该模拟脚本不读取显示板 SDRAM；正式 PC D 快照仍由媒体板提供，像素画面由 HDMI 板级确认。网页的 D 命令及 OSD 三种模式属于产品控制功能，均保留在正式媒体链路中。
 
 ```powershell
 python scripts/pc_display_media_probe.py --bmp img/golden/IMG1.BMP --wav img/wav/IMG001.WAV
-python scripts/pc_display_media_probe.py --bmp img/golden/IMG3.BMP --wav img/wav/no-paired-file.wav --frame-id 0x2402 --capture-prefix boardtest/captures/display_pc_probe_nowav
+python scripts/pc_display_media_probe.py --bmp img/golden/IMG3.BMP --wav img/wav/no-paired-file.wav --frame-id 0x2402
 ```
 
-PC 显示板模拟通过后，正式双板参数应恢复为 `MEDIA_PEER_IP=192.168.137.3`、`MEDIA_PEER_PORT=1`、`PC_RETURN_PORT=2`。
+PC 显示板模拟通过后，正式双板参数应恢复为 `MEDIA_PEER_IP=192.168.137.3`、`MEDIA_PEER_PORT=1`。
 
 ## PC 模拟显示端测试媒体板
 

@@ -158,6 +158,8 @@ transitionpair: $(SIM)
 
 # HDMI-only subtitle/OSD units. Kept independent of the full SD-card image test.
 OSD_FONT := $(TSD)/font_rom.v $(TSD)/font.mem
+build_font_rom_2r/sim_font_rom_2r: vsrc/tb_font_rom_2r.v $(OSD_FONT)
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_font_rom_2r $(filter %.v,$^) --Mdir build_font_rom_2r -o sim_font_rom_2r
 build_subtitle_cmd/sim_subtitle_cmd: vsrc/tb_subtitle_cmd.v $(TSD)/subtitle_cmd.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_cmd $^ --Mdir build_subtitle_cmd -o sim_subtitle_cmd
 build_subtitle_ctrl/sim_subtitle_ctrl: vsrc/tb_subtitle_ctrl.v $(TSD)/subtitle_cmd.v $(TSD)/ctrl_core.v
@@ -175,7 +177,8 @@ build_osd_composite/sim_osd_composite: vsrc/tb_osd_composite.v $(TSD)/osd_compos
 build_osd_panel/sim_osd_panel: vsrc/tb_osd_panel_levels.v $(TSD)/osd_panel_levels.v $(OSD_FONT)
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_panel_levels $(filter %.v,$^) --Mdir build_osd_panel -o sim_osd_panel
 .PHONY: osd-unit
-osd-unit: build_subtitle_cmd/sim_subtitle_cmd build_subtitle_ctrl/sim_subtitle_ctrl build_subtitle_store/sim_subtitle_store build_subtitle_scroll/sim_subtitle_scroll build_subtitle_text/sim_subtitle_text build_osd_visibility/sim_osd_visibility build_osd_composite/sim_osd_composite build_osd_panel/sim_osd_panel
+osd-unit: build_font_rom_2r/sim_font_rom_2r build_subtitle_cmd/sim_subtitle_cmd build_subtitle_ctrl/sim_subtitle_ctrl build_subtitle_store/sim_subtitle_store build_subtitle_scroll/sim_subtitle_scroll build_subtitle_text/sim_subtitle_text build_osd_visibility/sim_osd_visibility build_osd_composite/sim_osd_composite build_osd_panel/sim_osd_panel
+	./build_font_rom_2r/sim_font_rom_2r
 	./build_subtitle_cmd/sim_subtitle_cmd
 	./build_subtitle_ctrl/sim_subtitle_ctrl
 	./build_subtitle_store/sim_subtitle_store
@@ -202,10 +205,65 @@ build_gt911_trackpad/sim_gt911_trackpad: vsrc/tb_gt911_trackpad.v $(TSD)/gt911_t
 build_gt911_cursor/sim_gt911_cursor: vsrc/tb_gt911_cursor.v $(TSD)/gt911_cursor_overlay.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_gt911_cursor $^ --Mdir build_gt911_cursor -o sim_gt911_cursor
 
-.PHONY: gt911-unit
+.PHONY: gt911-unit sd-native media-sd-image-source media-uart-arbiter bt-uart-unit
 gt911-unit: build_gt911_trackpad/sim_gt911_trackpad build_gt911_cursor/sim_gt911_cursor
 	./build_gt911_trackpad/sim_gt911_trackpad
 	./build_gt911_cursor/sim_gt911_cursor
+
+# Native 4-bit SD host and pin-level card model. The first run reads LBA0 from
+# the real image and injects a dropped response, delayed response and CRC error;
+# later runs cover 25 MHz fallback and SDSC byte-addressing.
+SD_NATIVE_RTL := ../board_media/user_source/hdl_source/SD/sd_native_cmd.v \
+	../board_media/user_source/hdl_source/SD/sd_native_host.v \
+	../board_media/user_source/hdl_source/SD/sd_native_adapter.v
+build_sd_native_host/sim_sd_native_host: vsrc/tb_sd_native_host.sv vsrc/sd_native_card_model.sv $(SD_NATIVE_RTL)
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-BLKSEQ \
+	  --top-module tb_sd_native_host $^ --Mdir build_sd_native_host -o sim_sd_native_host
+
+sd-native: build_sd_native_host/sim_sd_native_host build_sd_native_host_25/sim_sd_native_host_25
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +DROP_READ_RESPONSE=1 +BAD_CRC_ONCE=1 +READ_RESPONSE_DELAY=8
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +HS=0
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +HC=0
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +V1=1
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +DROP_CMD55=1
+	./build_sd_native_host_25/sim_sd_native_host_25 +CARD=../img/card_user_real.img +DROP_READ_RESPONSE=1 +BAD_CRC_ONCE=1 +READ_RESPONSE_DELAY=8
+
+build_sd_native_host_25/sim_sd_native_host_25: vsrc/tb_sd_native_host.sv vsrc/sd_native_card_model.sv $(SD_NATIVE_RTL)
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-BLKSEQ \
+	  --top-module tb_sd_native_host -GFORCE_25MHZ=1 $^ --Mdir build_sd_native_host_25 -o sim_sd_native_host_25
+
+SD_IMAGE_SOURCE_RTL := ../board_media/user_source/hdl_source/SD/sd_native_cmd.v \
+	../board_media/user_source/hdl_source/SD/sd_native_host.v \
+	../board_media/user_source/hdl_source/SD/sd_native_adapter.v \
+	../board_media/user_source/hdl_source/SD/fat32_ro.v \
+	../board_media/user_source/hdl_source/SD/bmp_dec.v \
+	../board_media/user_source/hdl_source/SD/wav_reader.v \
+	../board_media/user_source/hdl_source/media_frame_format.v \
+	../board_media/user_source/hdl_source/media_image_source.v
+build_media_sd_image_source/sim_media_sd_image_source: vsrc/tb_media_sd_image_source.sv vsrc/sd_native_card_model.sv $(SD_IMAGE_SOURCE_RTL)
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-BLKSEQ \
+	  --top-module tb_media_sd_image_source $^ --Mdir build_media_sd_image_source -o sim_media_sd_image_source
+
+media-sd-image-source: build_media_sd_image_source/sim_media_sd_image_source
+	./build_media_sd_image_source/sim_media_sd_image_source +CARD=../img/card_user_real.img +CARD_FULL_IMAGE=1
+
+build_media_uart_arbiter/sim_media_uart_arbiter: vsrc/tb_media_uart_arbiter.sv ../board_media/user_source/hdl_source/media_uart_arbiter.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_uart_arbiter $^ --Mdir build_media_uart_arbiter -o sim_media_uart_arbiter
+
+media-uart-arbiter: build_media_uart_arbiter/sim_media_uart_arbiter
+	./build_media_uart_arbiter/sim_media_uart_arbiter
+
+build_media_bt_control/sim_media_bt_control: vsrc/tb_media_bt_control.sv \
+	../board_media/user_source/hdl_source/uart_link.v \
+	../board_media/user_source/hdl_source/media_uart_arbiter.v \
+	../board_media/user_source/hdl_source/media_control_core.v \
+	../board_media/user_source/hdl_source/subtitle_cmd.v
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH -Wno-UNUSEDSIGNAL \
+	  --top-module tb_media_bt_control $^ --Mdir build_media_bt_control -o sim_media_bt_control
+
+bt-uart-unit: build_media_uart_arbiter/sim_media_uart_arbiter build_media_bt_control/sim_media_bt_control
+	./build_media_uart_arbiter/sim_media_uart_arbiter
+	./build_media_bt_control/sim_media_bt_control
 
 
 

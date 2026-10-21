@@ -46,7 +46,7 @@ AUTO_CONNECT = not os.environ.get("WEB_NOAUTO")             # 唯一串口是否
 CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
-        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44,
+        "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44, "i": 0x49,
         "0": 0x30, "1": 0x31, "2": 0x32,
         "3": 0x33, "4": 0x34, "5": 0x35}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
@@ -54,11 +54,50 @@ HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
         "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "当前显示图片快照",
         "0": "直接切", "1": "交叉溶解", "2": "柔边滑动",
-        "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示"}
+        "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示",
+        "i": "SD 卡状态诊断"}
 
 
 def decode_dump(pkt: bytes) -> str:
     """转储包（'L'）：高 2 位 01=条目 / 10=收口 / 11=装载快照，见 docs/uart_link.md。"""
+    if len(pkt) >= 8 and pkt[0] == 0xA6:
+        flags = pkt[1]
+        initialized = bool(flags & 0x80)
+        sd_type = "SDHC/SDXC" if flags & 0x40 else "SDSC 或未识别"
+        hs_supported, hs_active = bool(flags & 0x20), bool(flags & 0x10)
+        debug_active = bool(flags & 0x08)
+        state = flags & 0x07
+        fail = {1: "命令响应起始超时", 2: "R2 帧格式错误", 3: "R2 CRC7 错误",
+                4: "R1 帧/命令号错误", 5: "R1 CRC7 错误", 6: "CMD55 未置 APP_CMD"}.get(state, "")
+        image_s = int.from_bytes(pkt[2:6], "little") / 50_000_000
+        sector_us = int.from_bytes(pkt[6:8], "little") / 100
+        text = (f"SD 卡：初始化={'完成' if initialized else '失败'}，类型={sd_type}，"
+                f"High Speed={'已启用' if hs_active else '支持' if hs_supported else '未支持/未协商'}，"
+                f"host-state={state}")
+        if fail:
+            text += f"，原因={fail}"
+        last_field = int.from_bytes(pkt[6:8], "little")
+        live_host_state = (((last_field >> 13) & 0x7) << 3) | state
+        if initialized and debug_active:
+            cmd_state = (last_field >> 10) & 7
+            cmd_error = (last_field >> 7) & 7
+            response_tail = last_field & 0x7F
+            cmd_states = {0: "IDLE", 1: "PREPARE", 2: "SEND", 3: "RELEASE",
+                          4: "WAIT_REPLY", 5: "READ_REPLY", 6: "GAP", 7: "FINISH"}
+            text += (f"；host-state={live_host_state} CMD={cmd_states[cmd_state]} "
+                     f"error={cmd_error} response-tail=0x{response_tail:02X}")
+        elif initialized:
+            text += f"，最近图片读卡 {image_s:.3f}s，扇区事务 {sector_us:.2f}us"
+        elif state == 1:
+            last_field = int.from_bytes(pkt[6:8], "little")
+            mismatch_position = (last_field >> 10) & 0x3F
+            expected_bit = (last_field >> 9) & 1
+            sampled_bit = (last_field >> 8) & 1
+            response_tail = last_field & 0xFF
+            mismatch_text = "无" if mismatch_position == 0x3F else (
+                f"bit{mismatch_position} 期望{expected_bit}/采样{sampled_bit}")
+            text += f"，CMD55 发送线首个不匹配={mismatch_text}，响应末八次采样=0x{response_tail:02X}"
+        return text
     v = int.from_bytes(pkt, "big")
     tag = v >> 62
     if tag == 0b01:
@@ -157,10 +196,16 @@ def decode_pkt(pkt: bytes) -> str:
                     6: "image-end-gap", 7: "wait-image-result", 8: "wait-commit",
                     9: "idle", 10: "read-wav-header", 11: "load-audio-chunk",
                     12: "wait-wav-source", 13: "audio-end-gap", 14: "wait-audio-result"}
-        reject_names = {9: "frame-id/state", 10: "END length/reserved",
+        reject_names = {6: "audio result timeout/invalid",
+                        9: "frame-id/state", 10: "END length/reserved",
                         11: "word-count", 12: "checksum", 13: "earlier packet",
                         14: "receiver still draining previous packet"}
-        error_text = reject_names.get(media_tx_error, str(media_tx_error))
+        audio_reasons = {1: "receiver not in audio transaction", 2: "frame id mismatch",
+                         3: "END length/reserved", 4: "sample count mismatch",
+                         5: "PCM checksum mismatch", 6: "bad audio DATA packet",
+                         7: "previous packet still draining"}
+        error_text = (f"audio rejected: {audio_reasons.get(media_tx_state, 'unknown reason')}"
+                      if media_tx_error == 7 else reject_names.get(media_tx_error, str(media_tx_error)))
         source = (f"media-TX={tx_names.get(media_tx_state, str(media_tx_state))} "
                   f"error={error_text}({media_tx_error}) FAT=0x{fat:02X} | ")
 
@@ -403,8 +448,8 @@ class SerialLink:
                                     "text": text,
                                     "ts": time.strftime("%H:%M:%S")})
                     continue
-                ia, ib = buf.find(b"\xA5"), buf.find(b"\x5A")
-                cand = [x for x in (ia, ib) if x >= 0]
+                ia, ib, ic = buf.find(b"\xA5"), buf.find(b"\x5A"), buf.find(b"\xA6")
+                cand = [x for x in (ia, ib, ic) if x >= 0]
                 if not cand:
                     buf.clear()
                     break
@@ -415,8 +460,8 @@ class SerialLink:
                 pkt = bytes(buf[:8])
                 del buf[:8]
                 msg = {"type": "pkt",
-                       "kind": "status" if pkt[0] == 0xA5 else "ack",
-                       "text": decode_pkt(pkt) if pkt[0] == 0xA5 else decode_ack(pkt),
+                       "kind": "status" if pkt[0] == 0xA5 else "diag" if pkt[0] == 0xA6 else "ack",
+                       "text": decode_pkt(pkt) if pkt[0] == 0xA5 else decode_dump(pkt) if pkt[0] == 0xA6 else decode_ack(pkt),
                        "ts": time.strftime("%H:%M:%S")}
                 self.broadcast(msg)
         self.broadcast(self.link_msg(False))
@@ -854,6 +899,11 @@ class EthTransport:
             else:
                 continue
             if pkt[0] not in (0xA5, 0x5A):
+                if pkt[0] == 0xA6:
+                    self.broadcast({"type": "pkt", "kind": "diag",
+                                    "text": decode_dump(pkt),
+                                    "ts": time.strftime("%H:%M:%S")})
+                    continue
                 if (pkt[0] >> 6) in (0b01, 0b10, 0b11):   # 转储包
                     self.broadcast({"type": "pkt", "kind": "dump",
                                     "text": decode_dump(pkt),
@@ -929,7 +979,7 @@ def api_ports():
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
     order = ["p", "n", "a", "s", "0", "1", "2", "3", "4", "5", "-", "+", "<", ">", "[", "]",
-             ";", "'", "q", "l", "d"]
+             ",", ".", ";", "'", "q", "i", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
                ("切换特效", ["0", "1", "2"]),
                ("OSD 面板", ["3", "4", "5"]),
@@ -937,7 +987,8 @@ def api_keys():
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
               ("音频频谱", [";", "'", "q"]),
-              ("调试", ["l", "d"])]
+              ("SD 卡诊断", ["i"]),
+              ("调试", ["l"])]
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 

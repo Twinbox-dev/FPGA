@@ -95,8 +95,12 @@ PC 行为级对端已分别验证过媒体板发送到显示板、显示板接�
 
 | 板卡 | bit 文件 | SHA-256 | LUT / FF | BRAM9K / BRAM32K | DSP / PLL | Setup WNS / Hold WNS |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | D18320D95667E626A5822A2F8A1AE9D51D510C3556B54DFD8EAA1410961EB8F6 | 14,255 / 10,364 | 55 / 2 | 10 / 4 | −5.699 ns / −2.924 ns |
+| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | 813606D23222F03A415DFCB3F6B45FC5E90AD22B46B2D4010F1CF10A6968D9B7 | 13,178 / 9,825 | 48 / 3 | 10 / 4 | −5.699 ns / −3.200 ns |
 | 媒体板 | board_media/td_project/media_net_Runs/phy_1/media_net.bit | 0DE75D333FE0D0FE85A0C375B7502B75DAB86782B7247BB43689CA36568B72AB | 12,411 / 8,500 | 22 / 2 | 2 / 2 | −3.560 ns / −3.056 ns |
+
+当前优化分支相较 dual-V1 显示板少 1,077 LUT、539 FF 和 7 块 BRAM9K，新增使用 1 块 BRAM32K。该版移除了显示板不再使用的旧 UART 控制通路、旧 PC 直连控制入口，以及显示板本地 SDRAM 诊断读回探针；PC 网页 D 正式快照仍由媒体板处理，OSD“关闭/调节后 3 秒/始终显示”也继续保留。OSD 与字幕字体改为共用一块双读口 BRAM32K。用户已在新 bit 上确认功能正常。
+
+板间控制可用 `python scripts/dual_board_cmd_probe.py --count 1` 快速检查：脚本通过媒体板查询当前音量，发送一次音量变化并恢复原值，验证显示板 ACK 经媒体板返回。先关闭占用 PC UDP `:2` 的 Web 控制台。
 
 2026-10-20 的黑边图、单步命令、按键启动和最终 RESULT 重试修复及逐图验收见 [双板实时联调记录](dual_board_live_debug_20261020.md)。
 
@@ -109,6 +113,6 @@ PC 行为级对端已分别验证过媒体板发送到显示板、显示板接�
 1. 确认媒体板 `.3`、显示板 `.2`、PC `.1` 可互通；显示板上电后发 READY，媒体板就绪后开始送图。
 2. 检查 HDMI 图像与黑边、配对 WAV 音频；轮换至少一张有 WAV 和一张无 WAV 的图。
 3. 从 PC 网页测试上一张、下一张、自动轮播、音量/亮度/对比度、切换效果、OSD、频谱和字幕，并确认 ACK/状态回包。
-4. 测试 GT911 光标移动及已实现的触控滑动切图；需要像素诊断时再运行 `scripts/pc_display_media_probe.py` 的 D 读回流程。
+4. 测试 GT911 光标移动及已实现的触控滑动切图；PC 模拟器验证正式协议/回包，HDMI 目视确认显示效果。PC D 正式快照由媒体板提供，显示板不再有旧式本地 D 读回通路。
 
 `docs/media_link_protocol.md` 记录字段、校验、方向和 PC 模拟步骤；`docs/td_cli_programming.md` 记录 TD 综合、布局布线、SRAM 下载命令。

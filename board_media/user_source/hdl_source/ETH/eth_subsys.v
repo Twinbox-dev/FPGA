@@ -159,6 +159,7 @@ module eth_subsys(
     assign app_rx_valid=app_rx_data_valid;
     wire ctrl_ready,ctrl_ack,ctrl_request,ctrl_valid;
     wire temac_tx_ready,temac_tx_valid,temac_tx_sof,temac_tx_eof;wire [7:0] temac_tx_data;
+    wire temac_rx_ready,temac_rx_valid_n,temac_rx_sof,temac_rx_eof;wire [7:0] temac_rx_data;
     wire late_ack_seen,packet_active,media_in_flight,media_packet_drained;
     wire mac_capture_val,mac_capture_end;wire [31:0] mac_capture_word;
     wire tx_fifo_overflow;
@@ -241,8 +242,6 @@ module eth_subsys(
     // 必须在 udp_ip_protocol_stack 例化之前声明：否则例化端口上的名字会被
     // 隐式声明成 1bit 线网（TD 报 HDL-7225 critical），与后面的显式声明冲突，
     // 且隐式线网会静默截断位宽。
-    wire        temac_rx_ready, temac_rx_valid_n, temac_rx_sof, temac_rx_eof;
-    wire [7:0]  temac_rx_data;
     wire        tx_collision, tx_retransmit, tx_rdy_w;
     wire        tx_clk_int, rx_clk_int;
     wire [7:0]  tx_ifg_val = 8'h00;
