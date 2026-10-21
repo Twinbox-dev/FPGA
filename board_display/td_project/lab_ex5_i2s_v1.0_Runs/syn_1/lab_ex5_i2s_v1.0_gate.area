@@ -12,20 +12,20 @@ IO Statistics
   #inout                    0
 
 LUT Statistics
-#Total_luts              9152
-  #lut4                  8042
-  #lut5                  1110
+#Total_luts              9153
+  #lut4                  8049
+  #lut5                  1104
   #lut6                     0
   #lut5_mx41                0
   #lut4_alu1b               0
 
 Utilization Statistics
-#lut                    12564   out of  19600   64.10%
+#lut                    12565   out of  19600   64.11%
 #reg                     9833   out of  19600   50.17%
-#bram                      40   out of     64   62.50%
-  #bram9k                  40
+#bram                      36   out of     64   56.25%
+  #bram9k                  36
   #fifo9k                   0
-#bram32k                    5   out of     16   31.25%
+#bram32k                    9   out of     16   56.25%
 #dsp                       10   out of     29   34.48%
 #pad                       40   out of    188   21.28%
   #ireg                     7
@@ -38,7 +38,7 @@ Report Hierarchy Area:
 +------------------------------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |lut     |ripple  |seq     |bram    |dsp     |
 +------------------------------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |10858   |1706    |9867    |45      |10      |
+|top                                       |top                                               |10859   |1706    |9867    |45      |10      |
 |  U3                                      |sdram                                             |123     |9       |485     |0       |0       |
 |    u2_ram                                |sdr_as_ram                                        |123     |9       |485     |0       |0       |
 |      u1_init_ref                         |sdr_init_ref                                      |31      |9       |96      |0       |0       |
@@ -141,7 +141,7 @@ Report Hierarchy Area:
 |  u_media_audio_playback                  |media_audio_playback                              |175     |12      |166     |0       |0       |
 |  u_media_display_control_rx              |media_display_control_rx                          |234     |51      |194     |0       |0       |
 |  u_media_display_tx                      |media_display_tx                                  |224     |9       |183     |0       |0       |
-|  u_media_protocol_rx                     |media_protocol_rx                                 |1001    |184     |536     |2       |0       |
+|  u_media_protocol_rx                     |media_protocol_rx                                 |1002    |184     |536     |2       |0       |
 |  u_media_transaction_writer              |media_transaction_writer                          |480     |69      |615     |4       |0       |
 |    u_audio_rx_fifo                       |tap_afifo                                         |43      |6       |80      |2       |0       |
 |    u_frame_rx_fifo                       |tap_afifo                                         |43      |6       |80      |2       |0       |

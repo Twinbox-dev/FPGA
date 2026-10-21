@@ -132,3 +132,22 @@ for 45 seconds. Status showed TX `LOAD_IMAGE`, FAT `S_STREAM`, and no TX error;
 the source timer saturated at 85.9 seconds. This is now the active blocker to
 trace in the media image-source/FAT stream. The earlier JTAG USB-access failure
 was cleared by the board power cycle and no longer blocks downloads.
+
+### Verified follow-up — 2026-10-21
+
+The later six-image board runs supersede the earlier stalled-stream note. The
+failure after IMG5 was an audio DATA drain gap: the display receiver dropped a
+new packet if the prior stream was still active, while the media sender paced
+image DATA but sent audio DATA back-to-back. Adding the same 100 us gap between
+non-final audio DATA packets fixed the IMG5 -> IMG0 wrap. Two complete six-image
+cycles passed at the production 50 MHz SD clock, including byte-exact D
+snapshots, paired WAV commit status, and silent transactions; detailed records
+are in [media SD audio rejection investigation](media_sd_audio_reject_debug.md).
+
+The first resource candidate, disabling the media MAC capture, was reverted:
+it saved 323 LUT and 3 BRAM9K but worsened hold WNS by 0.350 ns, just beyond the
+0.300 ns limit. A display-board FIFO mapping candidate moved four 512x32 FIFOs
+from BRAM9K to BRAM32K, saving four BRAM9K with setup/hold WNS unchanged; its
+report and multi-window capacity assessment are in
+[resource balance results](resource_balance_20261021.md) and
+[multi-window feasibility](multiwindow_feasibility.md).
