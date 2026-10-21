@@ -4,8 +4,9 @@
 // CMD6 group-1 support/current-function fields use stream positions derived
 // from the SD Association Physical Layer Simplified Specification.
 // It speaks CMD/R1/R2/R3, CMD6 status blocks, 4-bit CMD17 data and per-lane
-// CRC16.  The first sector is read from CARD=... (binary); other LBAs use a
-// deterministic pattern so address conversion can be checked independently.
+// CRC16. By default LBA0 is read from CARD=... (binary) and other LBAs use a
+// deterministic pattern for address-conversion tests. CARD_FULL_IMAGE=1 uses
+// seek-based reads of all LBAs without allocating the full image in HDL RAM.
 module sd_native_card_model (
     input  wire       sd_clk,
     inout  wire       sd_cmd,
@@ -41,6 +42,7 @@ module sd_native_card_model (
     integer read_response_delay;
     reg [7:0] card_file [0:511];
     integer card_fd, card_byte, card_i, card_file_i;
+    reg full_image_mode;
     reg trace_enabled;
 
     localparam [2:0] DATA_IDLE=0,DATA_TOKEN=1,DATA_PAYLOAD=2,DATA_CRC=3,DATA_END=4;
@@ -124,10 +126,25 @@ module sd_native_card_model (
         input [31:0] lba;
         input integer byte_index;
         begin
-            if(lba==0) sector_byte=card_file[byte_index];
+            if(full_image_mode || lba==0) sector_byte=card_file[byte_index];
             else sector_byte=lba[7:0]^byte_index[7:0]^(byte_index[8]?8'hA5:8'h00);
         end
     endfunction
+
+    task automatic load_full_image_sector(input [31:0] lba);
+        integer seek_result,byte_index,loaded_byte;
+        begin
+            if(full_image_mode && card_fd!=0) begin
+                seek_result=$fseek(card_fd,lba*512,0);
+                for(byte_index=0;byte_index<512;byte_index=byte_index+1) begin
+                    loaded_byte=$fgetc(card_fd);
+                    card_file[byte_index]=(loaded_byte<0)?8'h00:loaded_byte[7:0];
+                end
+                if(seek_result!=0 && trace_enabled)
+                    $display("SD_MODEL: seek failed for LBA %0d",lba);
+            end
+        end
+    endtask
 
     function status_stream_bit;
         input integer bit_position;
@@ -186,6 +203,9 @@ module sd_native_card_model (
     initial begin
         image_path="../img/card_user_real.img";
         if($value$plusargs("CARD=%s",image_path)) begin end
+        full_image_mode=0;
+        card_i=0;
+        if($value$plusargs("CARD_FULL_IMAGE=%d",card_i)) full_image_mode=(card_i!=0);
         for(card_file_i=0;card_file_i<512;card_file_i=card_file_i+1) card_file[card_file_i]=0;
         card_fd=$fopen(image_path,"rb");
         if(card_fd!=0) begin
@@ -193,7 +213,7 @@ module sd_native_card_model (
                 card_byte=$fgetc(card_fd);
                 if(card_byte>=0) card_file[card_file_i]=card_byte[7:0];
             end
-            $fclose(card_fd);
+            if(!full_image_mode) begin $fclose(card_fd);card_fd=0;end
         end else $display("SD_MODEL: image file not found; sector 0 is zero-filled (%0s)",image_path);
     end
 
@@ -331,6 +351,7 @@ module sd_native_card_model (
                     end else if(index_value==17) begin
                         read_count<=read_count+1'b1;
                         data_lba<=card_high_capacity?argument_value:(argument_value>>9);
+                        load_full_image_sector(card_high_capacity?argument_value:(argument_value>>9));
                         data_is_switch_status<=0;
                         if(drop_read_response_once) begin
                             drop_read_response_once<=0;response_pending<=0;response_after_data<=0;

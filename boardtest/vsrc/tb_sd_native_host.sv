@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module tb_sd_native_host;
+module tb_sd_native_host #(parameter integer FORCE_25MHZ=0);
     reg sd_clk100=0;
     reg app_clk50=0;
     always #5 sd_clk100=~sd_clk100;
@@ -16,6 +16,8 @@ module tb_sd_native_host;
     wire [7:0] sd_diag_flags;
     wire [15:0] init_debug_word;
     wire [31:0] last_read_cycles;
+    wire [31:0] last_failure_lba;
+    wire [7:0] last_failure_info;
     wire [7:0] data;
     wire data_valid,data_done,data_error;
     wire [15:0] cmd_count,cmd_crc_errors,read_count;
@@ -24,10 +26,12 @@ module tb_sd_native_host;
     integer image_fd,image_value,expected_i,hs_expected,hc_expected,v1_expected;
     integer read_count_before,read_response_injection,bad_crc_injection,fail_cmd55;
 
-    sd_native_adapter #(.DATA_TIMEOUT_CYCLES(1024)) dut (
+    sd_native_adapter #(.DATA_TIMEOUT_CYCLES(1024),.FORCE_25MHZ(FORCE_25MHZ)) dut (
         .clk(app_clk50),.sd_clk_100m(sd_clk100),.pll_locked(pll_locked),.rst(rst),
         .sd_clk(sd_clk),.sd_cmd(sd_cmd),.sd_dat(sd_dat),.sd_init_done(sd_init_done),
         .sd_diag_flags(sd_diag_flags),.init_debug_word(init_debug_word),.last_read_cycles(last_read_cycles),
+        .last_failure_lba(last_failure_lba),.last_failure_info(last_failure_info),
+        .stream_debug(),
         .o_lba(request_lba),.o_req(request),.i_ready(ready),.i_data(data),
         .i_dval(data_valid),.i_done(data_done),.i_err(data_error)
     );
@@ -77,6 +81,10 @@ module tb_sd_native_host;
             end
             if(!data_error) $fatal(1,"persistent CRC error did not return i_err");
             if(j!=0) $fatal(1,"adapter exposed %0d bytes from a bad sector",j);
+            if(last_failure_lba!==lba || last_failure_info[7:4]!==4'd3 ||
+               last_failure_info[3:2]!==2'd2)
+                $fatal(1,"failed read diagnostics LBA=%0d code=%0d retries=%0d",
+                    last_failure_lba,last_failure_info[7:4],last_failure_info[3:2]);
             $display("PASS: bad LBA %0d withheld and reported",lba);
         end
     endtask
@@ -96,6 +104,7 @@ module tb_sd_native_host;
     endtask
 
     initial begin
+        $display("FORCE_25MHZ=%0d",FORCE_25MHZ);
         image_path="../img/card_user_real.img";
         if($value$plusargs("CARD=%s",image_path)) begin end
         image_fd=$fopen(image_path,"rb");
@@ -141,7 +150,8 @@ module tb_sd_native_host;
         if(cmd_crc_errors!=0) $fatal(1,"card model saw %0d bad command CRCs",cmd_crc_errors);
         if(dut.u_host.high_capacity!==(hc_expected!=0))
             $fatal(1,"card OCR CCS mismatch: got %0b expected %0d",dut.u_host.high_capacity,hc_expected);
-        if(dut.u_host.high_speed_supported!==(hs_expected!=0) || dut.u_host.high_speed_active!==(hs_expected!=0))
+        if(dut.u_host.high_speed_supported!==(hs_expected!=0) ||
+           dut.u_host.high_speed_active!==(hs_expected!=0))
             $fatal(1,"High Speed negotiation mismatch: support=%0b active=%0b expected=%0d",
                 dut.u_host.high_speed_supported,dut.u_host.high_speed_active,hs_expected);
         $display("PASS: native init, bus4=%0b HC=%0b High Speed active=%0b",

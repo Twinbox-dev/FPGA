@@ -17,6 +17,11 @@ module media_control_core #(
     input wire [15:0] sd_init_debug_word,
     input wire [31:0] image_read_cycles,
     input wire [31:0] sd_read_cycles,
+    input wire [7:0] image_source_status,
+    input wire image_source_busy,
+    input wire [31:0] sd_last_failure_lba,
+    input wire [7:0] sd_last_failure_info,
+    input wire [31:0] sd_stream_debug,
     input wire uart_tx_ready,
     input wire bt_tx_ready,
     input wire local_auto_toggle,
@@ -194,17 +199,40 @@ module media_control_core #(
     task automatic send_sd_diagnostics(input serial_request);
         reg [63:0] diag_body;
         reg [15:0] last_field;
+        reg [31:0] middle_field;
+        reg [7:0] diag_flags;
         begin
             // A6 | SD flags | image-source cycles (u32 LE) | last CMD17 cycles
-            // (u16 LE). Flag bit3 marks a live host-state/CMD debug word.
+            // (u16 LE). A busy image source uses F|source-status|FAT-state in
+            // the final field so a stuck source can be diagnosed in place.
+            diag_flags=sd_diag_flags;
+            middle_field=image_read_cycles;
             if (!sd_diag_flags[7] || sd_diag_flags[3])
                 last_field=sd_init_debug_word;
+            else if(fat_state==8'd9 && sd_last_failure_info[7:4]!=0) begin
+                // D-tag: final SD failure; the 32-bit middle field is the LBA.
+                last_field={8'hD0,sd_last_failure_info};
+                middle_field=sd_last_failure_lba;
+                diag_flags[3]=1'b1;
+            end
+            else if(image_source_busy) begin
+                last_field={4'hF,image_source_status,fat_state[3:0]};
+                middle_field=sd_stream_debug;
+                diag_flags[3]=1'b1;
+            end
+            else if(fat_state==8'd2) begin
+                // E-tag: FAT is waiting for a sector while the image source
+                // is idle; return the adapter's current request/stream cursor.
+                last_field={8'hE0,fat_state};
+                middle_field=sd_stream_debug;
+                diag_flags[3]=1'b1;
+            end
             else
                 last_field=sd_read_cycles[15:0];
             diag_body={last_field[15:8],last_field[7:0],
-                       image_read_cycles[31:24],image_read_cycles[23:16],
-                       image_read_cycles[15:8],image_read_cycles[7:0],
-                       sd_diag_flags,8'hA6};
+                       middle_field[31:24],middle_field[23:16],
+                       middle_field[15:8],middle_field[7:0],
+                       diag_flags,8'hA6};
             if(serial_request)begin
                 uart_tx_pkt<=diag_body;uart_stage<=0;uart_busy_seen<=0;state<=WAIT_UART_READY;
             end else begin

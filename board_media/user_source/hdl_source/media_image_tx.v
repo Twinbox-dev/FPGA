@@ -46,10 +46,10 @@ module media_image_tx #(
         WAIT_SOURCE=5,IMAGE_END_GAP=6,WAIT_RESULT=7,WAIT_COMMIT=8,IDLE=9,
         AUDIO_WAIT_HEADER=10,AUDIO_LOAD=11,AUDIO_WAIT_SOURCE=12,
         AUDIO_END_GAP=13,AUDIO_WAIT_RESULT=14,IMAGE_PACKET_GAP=15;
-    // media_protocol_rx drains a 253-word packet into the display-side frame
-    // FIFO. A 100 us pause gives the SDRAM writer time to start consuming that
-    // FIFO before later DATA packets arrive and fill its 512-word capacity.
-    localparam integer IMAGE_PACKET_GAP_CYCLES =
+    // The display receiver has one packet staging buffer and rejects a packet
+    // that begins while the previous DATA stream is still draining. Leave the
+    // same 100 us drain window between image and audio DATA packets.
+    localparam integer DATA_PACKET_GAP_CYCLES =
         (CLK_HZ/10000) > 0 ? (CLK_HZ/10000) : 1;
     localparam [7:0] READY=8'h20,BEGIN_IMAGE=8'h21,IMAGE_DATA=8'h22,END_IMAGE=8'h23;
     localparam [7:0] AUDIO_BEGIN=8'h30,AUDIO_DATA=8'h31,AUDIO_END=8'h32,AUDIO_RESULT=8'h33;
@@ -303,7 +303,8 @@ module media_image_tx #(
                             sequence_id<=sequence_id+1'b1;loaded<=0;
                             if(audio_samples_remaining>audio_packet_samples) begin
                                 audio_samples_remaining<=audio_samples_remaining-audio_packet_samples;
-                                audio_prep_phase<=0;state<=AUDIO_LOAD;
+                                audio_prep_phase<=0;return_state<=AUDIO_LOAD;
+                                wait_count<=0;state<=IMAGE_PACKET_GAP;
                             end else begin
                                 audio_samples_remaining<=0;state<=AUDIO_WAIT_SOURCE;
                             end
@@ -315,8 +316,8 @@ module media_image_tx #(
                     else begin wait_count<=0;state<=IMAGE_END_GAP;end
                 end
                 IMAGE_PACKET_GAP: begin
-                    if(wait_count>=IMAGE_PACKET_GAP_CYCLES-1) begin
-                        wait_count<=0;state<=LOAD_IMAGE;
+                    if(wait_count>=DATA_PACKET_GAP_CYCLES-1) begin
+                        wait_count<=0;state<=return_state;
                     end else wait_count<=wait_count+1'b1;
                 end
                 IMAGE_END_GAP: begin

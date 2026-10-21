@@ -33,6 +33,8 @@ def main() -> None:
     parser.add_argument("--pc-ip", default="192.168.137.1")
     parser.add_argument("--board-ip", default=MEDIA_IP)
     parser.add_argument("--timeout", type=float, default=3.0)
+    parser.add_argument("--allow-25mhz", action="store_true",
+                        help="accept High Speed supported but not active for a forced-25MHz diagnostic build")
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("timeout must be positive")
@@ -85,14 +87,56 @@ def main() -> None:
                     f"bit{mismatch_position} expected={expected_bit} sampled={sampled_bit}")
                 print(f"timeout command=CMD55 tx_mismatch={mismatch} response_tail=0x{response_tail:02X}")
             elif initialized and debug_active:
-                live_host_state = (((sector_cycles >> 13) & 0x7) << 3) | state
-                cmd_state=(sector_cycles >> 10) & 0x7
-                cmd_error=(sector_cycles >> 7) & 0x7
-                response_tail=sector_cycles & 0x7F
-                cmd_states={0:"IDLE",1:"PREPARE",2:"SEND",3:"RELEASE",
-                            4:"WAIT_REPLY",5:"READ_REPLY",6:"GAP",7:"FINISH"}
-                print(f"live host-state={live_host_state} CMD state={cmd_states[cmd_state]} "
-                      f"error_code={cmd_error} response_tail=0x{response_tail:02X}")
+                if sector_cycles >> 12 == 0xD:
+                    failure_info=sector_cycles & 0xFF
+                    error_code=(failure_info >> 4) & 0xF
+                    retries=(failure_info >> 2) & 0x3
+                    reasons={1:"CMD17 response",2:"data-token timeout",3:"data CRC/end mismatch"}
+                    print(f"SD read failure LBA={image_cycles} reason={reasons.get(error_code,error_code)} "
+                          f"(code={error_code}) retries={retries}")
+                elif sector_cycles >> 8 == 0xE0:
+                    adapter_state=(image_cycles >> 30) & 0x3
+                    print(f"FAT waits in state 0x{sector_cycles & 0xFF:02X}; SD adapter state={adapter_state}")
+                    if adapter_state==1:
+                        print(f"SD adapter waiting for CMD17 result, LBA={image_cycles & 0x3FFFFFFF}")
+                    elif adapter_state==2:
+                        print(f"SD adapter streaming: fetch={((image_cycles >> 20) & 0x3FF)}/512 "
+                              f"emitted={((image_cycles >> 10) & 0x3FF)}/512 "
+                              f"last-read={image_cycles & 0x3FF} x100MHz cycles")
+                elif sector_cycles >> 12 == 0xF:
+                    source_status=(sector_cycles >> 4) & 0xFF
+                    fat_low=sector_cycles & 0xF
+                    source_state=(source_status >> 4) & 0x7
+                    source_states={0:"IDLE",1:"HEADER",2:"FULL",3:"RAW",4:"CANCEL",
+                                   5:"PAIR_NAME",6:"PAIR_SCAN",7:"AUDIO"}
+                    print(f"image-source state={source_states[source_state]} "
+                          f"error={(source_status >> 7) & 1} file_done={(source_status >> 3) & 1} "
+                          f"format_done={(source_status >> 2) & 1} img_ok={(source_status >> 1) & 1} "
+                          f"format_error={source_status & 1} FAT-state=0x{fat_low:X}")
+                    adapter_state=(image_cycles >> 30) & 0x3
+                    if adapter_state==1:
+                        print(f"SD adapter waiting for CMD17 result, LBA={image_cycles & 0x3FFFFFFF}")
+                    elif adapter_state==2:
+                        print(f"SD adapter streaming: fetch={((image_cycles >> 20) & 0x3FF)}/512 "
+                              f"emitted={((image_cycles >> 10) & 0x3FF)}/512 "
+                              f"last-read={image_cycles & 0x3FF} x100MHz cycles")
+                    else:
+                        print(f"SD adapter state={adapter_state} diag=0x{image_cycles:08X}")
+                else:
+                    live_host_state = (((sector_cycles >> 13) & 0x7) << 3) | state
+                    cmd_state=(sector_cycles >> 10) & 0x7
+                    cmd_error=(sector_cycles >> 7) & 0x7
+                    response_tail=sector_cycles & 0x7F
+                    cmd_states={0:"IDLE",1:"PREPARE",2:"SEND",3:"RELEASE",
+                                4:"WAIT_REPLY",5:"READ_REPLY",6:"GAP",7:"FINISH"}
+                    print(f"live host-state={live_host_state} CMD state={cmd_states[cmd_state]} "
+                          f"error_code={cmd_error} response_tail=0x{response_tail:02X}")
+                    if live_host_state in (28,31):
+                        print(f"command handoff: start_req={(sector_cycles >> 6) & 1} "
+                              f"cmd_busy={(sector_cycles >> 5) & 1} "
+                              f"cmd_accepted={(sector_cycles >> 4) & 1} "
+                              f"req_sync={(sector_cycles >> 3) & 1} "
+                              f"wait_tail=0x{sector_cycles & 0x7:01X}")
             elif initialized:
                 if sector_cycles != 0:
                     print(f"latest successful sector transaction={sector_cycles / 100:.2f}us (u16 counter)")
@@ -100,10 +144,12 @@ def main() -> None:
                     print("no completed sector yet")
             if not initialized:
                 raise RuntimeError("SD host is not initialized")
-            if supported and not active:
+            if supported and not active and not args.allow_25mhz:
                 raise RuntimeError("card supports High Speed but the host did not switch to it")
             if not supported:
                 print("NOTE: card is operating in native 25 MHz mode; High Speed is not validated")
+            elif not active:
+                print("NOTE: card supports High Speed; current diagnostic bit intentionally holds 25 MHz")
             return
 
 

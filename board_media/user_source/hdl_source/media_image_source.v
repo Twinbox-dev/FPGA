@@ -14,6 +14,9 @@ module media_image_source (
     output wire [7:0] sd_diag_flags,
     output wire [15:0] sd_init_debug_word,
     output wire [31:0] sd_last_read_cycles,
+    output wire [31:0] sd_last_failure_lba,
+    output wire [7:0] sd_last_failure_info,
+    output wire [31:0] sd_stream_debug,
     output reg [31:0] image_read_cycles,
     output wire [5:0] file_count, bmp_count, wav_count, first_bmp,
     output wire [191:0] bmp_next, bmp_prev,
@@ -44,11 +47,19 @@ module media_image_source (
     wire [31:0] lba;
     wire req, ready, dval, sec_done, sec_error;
     wire [7:0] data;
+    wire [31:0] last_failure_lba;
+    wire [7:0] last_failure_info;
+    wire [31:0] stream_debug;
+    assign sd_last_failure_lba=last_failure_lba;
+    assign sd_last_failure_info=last_failure_info;
+    assign sd_stream_debug=stream_debug;
     sd_native_adapter u_sd_card (
         .clk(clk),.sd_clk_100m(sd_clk_100m),.pll_locked(sd_pll_locked),.rst(rst),
         .sd_clk(sd_clk),.sd_cmd(sd_cmd),.sd_dat(sd_dat),.sd_init_done(sd_init_done),
         .sd_diag_flags(sd_diag_flags),.last_read_cycles(sd_last_read_cycles),
-        .init_debug_word(sd_init_debug_word),
+        .init_debug_word(sd_init_debug_word),.last_failure_lba(last_failure_lba),
+        .last_failure_info(last_failure_info),
+        .stream_debug(stream_debug),
         .o_lba(lba),.o_req(req),.i_ready(ready),.i_data(data),
         .i_dval(dval),.i_done(sec_done),.i_err(sec_error)
     );

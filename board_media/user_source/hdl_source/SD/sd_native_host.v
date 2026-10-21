@@ -7,7 +7,8 @@
 // while negotiating High Speed, and 50 MHz after CMD6 confirms function 1.
 // Data is kept in a dual-clock sector RAM until its CRC has passed.
 module sd_native_host #(
-    parameter integer DATA_TIMEOUT_CYCLES = 10000000
+    parameter integer DATA_TIMEOUT_CYCLES = 10000000,
+    parameter integer FORCE_25MHZ = 0
 ) (
     input  wire         clk,
     input  wire         rst,
@@ -28,6 +29,9 @@ module sd_native_host #(
     output wire [5:0]   state_code,
     output reg  [15:0]  init_debug_word,
     output reg  [31:0]  last_read_cycles,
+    output reg  [31:0]  last_failed_lba,
+    output reg  [3:0]   last_read_error_code,
+    output reg  [1:0]   last_read_retry_count,
 
     input  wire         ram_rd_clk,
     input  wire         ram_rd_en,
@@ -61,6 +65,8 @@ module sd_native_host #(
     reg [7:0] sd_half_period;
     reg [7:0] sd_div_count;
     reg       sd_clk_reg;
+    reg       sd_clk_rise_q;
+    reg [3:0] sd_dat_sampled;
     reg [7:0] preclock_count;
     wire sd_clk_rise = pll_locked && !rst && !sd_clk_reg &&
                        (sd_div_count == sd_half_period-1'b1);
@@ -68,7 +74,18 @@ module sd_native_host #(
                        (sd_div_count == sd_half_period-1'b1);
     assign sd_clk=sd_clk_reg;
 
+    // In High Speed mode, sample DAT halfway through the high phase instead
+    // of at the generated SDCLK edge. The returned sample is consumed on the
+    // following 100 MHz edge; this gives a 5 ns phase shift at 50 MHz while
+    // preserving one sample per SD clock.
+    always @(negedge clk or posedge rst) begin
+        if(rst) sd_dat_sampled<=4'hF;
+        else sd_dat_sampled<=sd_dat;
+    end
+
     reg         cmd_start;
+    wire        cmd_busy;
+    reg         cmd_accepted;
     reg [5:0]   cmd_index;
     reg [31:0]  cmd_argument;
     reg [1:0]   cmd_response_kind;
@@ -90,7 +107,7 @@ module sd_native_host #(
         .cmd_out(cmd_out), .cmd_oe(cmd_oe), .start(cmd_start),
         .command_index(cmd_index), .command_argument(cmd_argument),
         .response_kind(cmd_response_kind), .open_drain(cmd_open_drain),
-        .busy(), .done(cmd_done), .error(cmd_error),.error_code(cmd_error_code),
+        .busy(cmd_busy), .done(cmd_done), .error(cmd_error),.error_code(cmd_error_code),
         .response_wait_trace(cmd_response_wait_trace),
         .last_tx_mismatch_position(cmd_tx_mismatch_position),
         .last_tx_mismatch_expected(cmd_tx_mismatch_expected),
@@ -154,19 +171,22 @@ module sd_native_host #(
             cmd_response_kind <= response_kind;
             cmd_open_drain <= open_drain;
             cmd_start <= 1'b1;
+            cmd_accepted <= 1'b0;
         end
     endtask
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            sd_clk_reg<=0; sd_div_count<=0; sd_half_period<=8'd250;
+            sd_clk_reg<=0; sd_div_count<=0; sd_half_period<=8'd250;sd_clk_rise_q<=0;
             state<=ST_WAIT_PLL;fail_state<=ST_WAIT_PLL;preclock_count<=0;cmd_start<=0;
             cmd_index<=0; cmd_argument<=0; cmd_response_kind<=0; cmd_open_drain<=1;
+            cmd_accepted<=0;
             acmd41_retry<=0; read_retry<=0; read_lba<=0;
             read_cycle_counter<=0; req_sync<=0; req_seen<=0; rca<=0;high_capacity_support_req<=0;
             init_debug_word<=0;
             initialized<=0; high_speed_supported<=0; high_speed_active<=0;
             high_capacity<=0; result_toggle<=0; result_error<=0; last_read_cycles<=0;
+            last_failed_lba<=0;last_read_error_code<=0;last_read_retry_count<=0;
             hs_support_status<=0;hs_selected_function<=0;
             data_is_sector<=0; data_is_switch<=0; data_bus_4bit<=0;
             data_count<=0; crc_count<=0; data_high_nibble<=0;serial_shift_byte<=0;sector_byte_index<=0;
@@ -174,12 +194,23 @@ module sd_native_host #(
             lane_crc0<=0; lane_crc1<=0; lane_crc2<=0; lane_crc3<=0;
             lane_recv0<=0; lane_recv1<=0; lane_recv2<=0; lane_recv3<=0;
         end else begin
-            cmd_start<=0;
+            sd_clk_rise_q<=sd_clk_rise;
+            // Hold a request until the shifter is idle and can accept it. A
+            // one-cycle pulse can otherwise be lost across the final response
+            // gap, leaving the host in *_WAIT with the command engine idle.
+            if(cmd_start && !cmd_busy) begin cmd_start<=0;cmd_accepted<=1;end
+            if(cmd_done && cmd_accepted) cmd_accepted<=0;
             // During host activity, expose the full state, CMD shifter state,
             // error code, and response tail through the existing diagnostic.
-            if (state!=ST_READY && state!=ST_INIT_FAIL)
-                init_debug_word<={state[5:3],cmd_debug_state,cmd_error_code,
-                                 cmd_response_wait_trace[6:0]};
+            if (state!=ST_READY && state!=ST_INIT_FAIL) begin
+                if(state==ST_READ_CMD_WAIT || state==ST_ACMD6_WAIT)
+                    init_debug_word<={state[5:3],cmd_debug_state,cmd_error_code,
+                                     cmd_start,cmd_busy,cmd_accepted,req_sync[2],
+                                     cmd_response_wait_trace[2:0]};
+                else
+                    init_debug_word<={state[5:3],cmd_debug_state,cmd_error_code,
+                                     cmd_response_wait_trace[6:0]};
+            end
             if(state!=ST_INIT_FAIL)fail_state<=state;
             req_sync<={req_sync[1:0],req_toggle_async};
             if (state!=ST_READY && initialized && read_cycle_counter!=32'hFFFFFFFF)
@@ -208,11 +239,11 @@ module sd_native_host #(
                         else preclock_count<=preclock_count+1'b1;
                     end
                     ST_CMD0: begin start_command(6'd0,32'd0,2'd0,1'b1); state<=ST_CMD0_WAIT; end
-                    ST_CMD0_WAIT: if (cmd_done) begin
+                    ST_CMD0_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_CMD0; else state<=ST_CMD8;
                     end
                     ST_CMD8: begin start_command(6'd8,32'h000001AA,2'd1,1'b1); state<=ST_CMD8_WAIT; end
-                    ST_CMD8_WAIT: if (cmd_done) begin
+                    ST_CMD8_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL;
                         else if(cmd_response[30]) begin
                             // SD v1.x may reject CMD8 as ILLEGAL_COMMAND; then
@@ -223,7 +254,7 @@ module sd_native_host #(
                         end else state<=ST_INIT_FAIL;
                     end
                     ST_CMD55_OCR: begin start_command(6'd55,32'd0,2'd1,1'b1); state<=ST_CMD55_OCR_WAIT; end
-                    ST_CMD55_OCR_WAIT: if (cmd_done) begin
+                    ST_CMD55_OCR_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error || !cmd_response[13]) begin
                             fail_state<=cmd_error?{3'd0,cmd_error_code}:6'd6;state<=ST_INIT_FAIL;
                             if(cmd_error) init_debug_word<={cmd_tx_mismatch_position,
@@ -236,26 +267,26 @@ module sd_native_host #(
                         start_command(6'd41,high_capacity_support_req?32'h40FF8000:32'h00FF8000,2'd3,1'b1);
                         state<=ST_ACMD41_WAIT;
                     end
-                    ST_ACMD41_WAIT: if (cmd_done) begin
+                    ST_ACMD41_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error || acmd41_retry==11'd2047) state<=ST_INIT_FAIL;
                         else if (!cmd_response[39]) begin acmd41_retry<=acmd41_retry+1'b1; state<=ST_CMD55_OCR; end
                         else begin high_capacity<=cmd_response[38]; state<=ST_CMD2; end
                     end
                     ST_CMD2: begin start_command(6'd2,32'd0,2'd2,1'b1); state<=ST_CMD2_WAIT; end
-                    ST_CMD2_WAIT: if (cmd_done) begin
+                    ST_CMD2_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL; else state<=ST_CMD3;
                     end
                     ST_CMD3: begin start_command(6'd3,32'd0,2'd1,1'b1); state<=ST_CMD3_WAIT; end
-                    ST_CMD3_WAIT: if (cmd_done) begin
+                    ST_CMD3_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error || cmd_response[39:8]==0) state<=ST_INIT_FAIL;
                         else begin rca<=cmd_response[39:24]; state<=ST_CMD7; end
                     end
                     ST_CMD7: begin start_command(6'd7,{rca,16'd0},2'd1,1'b0); state<=ST_CMD7_WAIT; end
-                    ST_CMD7_WAIT: if (cmd_done) begin
+                    ST_CMD7_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL; else begin data_timeout<=0; state<=ST_BUSY; end
                     end
                     ST_BUSY: begin
-                        if (sd_clk_rise && sd_dat[0]) begin
+                        if (sd_clk_rise_q && sd_dat_sampled[0]) begin
                             data_timeout<=0;
                             if (high_capacity) state<=ST_CMD6_CHECK;
                             else state<=ST_CMD16;
@@ -263,11 +294,11 @@ module sd_native_host #(
                         else data_timeout<=data_timeout+1'b1;
                     end
                     ST_CMD16: begin start_command(6'd16,32'd512,2'd1,1'b0); state<=ST_CMD16_WAIT; end
-                    ST_CMD16_WAIT: if (cmd_done) begin
+                    ST_CMD16_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL; else state<=ST_CMD6_CHECK;
                     end
                     ST_CMD6_CHECK: begin start_command(6'd6,32'h00FFFFF1,2'd1,1'b0); state<=ST_CMD6_CHECK_WAIT; end
-                    ST_CMD6_CHECK_WAIT: if (cmd_done) begin
+                    ST_CMD6_CHECK_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL;
                         else if(cmd_response[30]) begin
                             // Cards predating CMD6 stay at native 25 MHz.
@@ -277,7 +308,7 @@ module sd_native_host #(
                         else begin data_is_sector<=0;data_is_switch<=0;data_bus_4bit<=0;data_timeout<=0;state<=ST_CMD6_CHECK_DATA; end
                     end
                     ST_CMD6_SWITCH: begin start_command(6'd6,32'h80FFFFF1,2'd1,1'b0); state<=ST_CMD6_SWITCH_WAIT; end
-                    ST_CMD6_SWITCH_WAIT: if (cmd_done) begin
+                    ST_CMD6_SWITCH_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL;
                         else if(cmd_response[30]) begin
                             high_speed_active<=0;sd_half_period<=8'd2;state<=ST_CMD55_WIDTH;
@@ -287,11 +318,15 @@ module sd_native_host #(
                     ST_CMD6_CHECK_DATA,ST_CMD6_SWITCH_DATA,ST_READ_TOKEN: begin
                         if (data_timeout==DATA_TIMEOUT_CYCLES-1) begin
                             if (data_is_sector && read_retry<2) begin read_retry<=read_retry+1'b1; state<=ST_READ_CMD; end
-                            else if (data_is_sector) begin result_error<=1;result_toggle<=~result_toggle;state<=ST_READY; end
+                            else if (data_is_sector) begin
+                                result_error<=1;result_toggle<=~result_toggle;state<=ST_READY;
+                                last_failed_lba<=read_lba;last_read_error_code<=4'd2;
+                                last_read_retry_count<=read_retry;
+                            end
                             else state<=ST_INIT_FAIL;
                         end else begin
                             data_timeout<=data_timeout+1'b1;
-                            if (sd_clk_rise && ((data_bus_4bit && sd_dat==4'b0000) || (!data_bus_4bit && !sd_dat[0]))) begin
+                            if (sd_clk_rise_q && ((data_bus_4bit && sd_dat_sampled==4'b0000) || (!data_bus_4bit && !sd_dat_sampled[0]))) begin
                                 data_count<=0;crc_count<=0;sector_byte_index<=0;serial_shift_byte<=0;
                                 lane_crc0<=0;lane_crc1<=0;lane_crc2<=0;lane_crc3<=0;
                                 lane_recv0<=0;lane_recv1<=0;lane_recv2<=0;lane_recv3<=0;
@@ -299,40 +334,40 @@ module sd_native_host #(
                             end
                         end
                     end
-                    ST_DATA_RX: if (sd_clk_rise) begin
+                    ST_DATA_RX: if (sd_clk_rise_q) begin
                         data_timeout<=0;
                         if (data_is_sector) begin
                             if (data_bus_4bit) begin
-                                lane_crc0<=crc16_bit(lane_crc0,sd_dat[0]);
-                                lane_crc1<=crc16_bit(lane_crc1,sd_dat[1]);
-                                lane_crc2<=crc16_bit(lane_crc2,sd_dat[2]);
-                                lane_crc3<=crc16_bit(lane_crc3,sd_dat[3]);
-                                if (!data_count[0]) data_high_nibble<=sd_dat;
+                                lane_crc0<=crc16_bit(lane_crc0,sd_dat_sampled[0]);
+                                lane_crc1<=crc16_bit(lane_crc1,sd_dat_sampled[1]);
+                                lane_crc2<=crc16_bit(lane_crc2,sd_dat_sampled[2]);
+                                lane_crc3<=crc16_bit(lane_crc3,sd_dat_sampled[3]);
+                                if (!data_count[0]) data_high_nibble<=sd_dat_sampled;
                                 else begin
-                                    sector_buffer[sector_byte_index]<={data_high_nibble,sd_dat};
+                                    sector_buffer[sector_byte_index]<={data_high_nibble,sd_dat_sampled};
                                     sector_byte_index<=sector_byte_index+1'b1;
                                 end
                                 if (data_count==11'd1023) begin crc_count<=0;state<=ST_DATA_CRC; end
                             end else begin
-                                lane_crc0<=crc16_bit(lane_crc0,sd_dat[0]);
-                                serial_shift_byte<={serial_shift_byte[6:0],sd_dat[0]};
+                                lane_crc0<=crc16_bit(lane_crc0,sd_dat_sampled[0]);
+                                serial_shift_byte<={serial_shift_byte[6:0],sd_dat_sampled[0]};
                                 if(data_count[2:0]==3'd7)begin
-                                    sector_buffer[sector_byte_index]<={serial_shift_byte[6:0],sd_dat[0]};
+                                    sector_buffer[sector_byte_index]<={serial_shift_byte[6:0],sd_dat_sampled[0]};
                                     sector_byte_index<=sector_byte_index+1'b1;
                                 end
                                 if(data_count==12'd4095)begin crc_count<=0;state<=ST_DATA_CRC;end
                             end
                             data_count<=data_count+1'b1;
                         end else begin
-                            lane_crc0<=crc16_bit(lane_crc0,sd_dat[0]);
-                            if (data_count==HS_SUPPORT_STREAM_INDEX) hs_support_status<=sd_dat[0];
+                            lane_crc0<=crc16_bit(lane_crc0,sd_dat_sampled[0]);
+                            if (data_count==HS_SUPPORT_STREAM_INDEX) hs_support_status<=sd_dat_sampled[0];
                             if (data_count>=HS_SELECT_FIRST_STREAM_INDEX && data_count<=HS_SELECT_LAST_STREAM_INDEX)
-                                hs_selected_function<={hs_selected_function[2:0],sd_dat[0]};
+                                hs_selected_function<={hs_selected_function[2:0],sd_dat_sampled[0]};
                             if (data_count==11'd511) begin crc_count<=0;state<=ST_DATA_CRC; end
                             data_count<=data_count+1'b1;
                         end
                     end
-                    ST_DATA_CRC: if (sd_clk_rise) begin
+                    ST_DATA_CRC: if (sd_clk_rise_q) begin
                         lane_recv0<=lane_recv0_next;
                         if (data_bus_4bit) begin
                             lane_recv1<=lane_recv1_next;lane_recv2<=lane_recv2_next;lane_recv3<=lane_recv3_next;
@@ -340,12 +375,16 @@ module sd_native_host #(
                         if (crc_count==4'd15) state<=ST_DATA_END;
                         else crc_count<=crc_count+1'b1;
                     end
-                    ST_DATA_END: if (sd_clk_rise) begin
+                    ST_DATA_END: if (sd_clk_rise_q) begin
                         if (data_bus_4bit) begin
-                            if (sd_dat!=4'hF || lane_recv0!=lane_crc0 || lane_recv1!=lane_crc1 ||
+                            if (sd_dat_sampled!=4'hF || lane_recv0!=lane_crc0 || lane_recv1!=lane_crc1 ||
                                 lane_recv2!=lane_crc2 || lane_recv3!=lane_crc3) begin
                                 if (data_is_sector && read_retry<2) begin read_retry<=read_retry+1'b1;state<=ST_READ_CMD; end
-                                else if (data_is_sector) begin result_error<=1;result_toggle<=~result_toggle;state<=ST_READY; end
+                                else if (data_is_sector) begin
+                                    result_error<=1;result_toggle<=~result_toggle;state<=ST_READY;
+                                    last_failed_lba<=read_lba;last_read_error_code<=4'd3;
+                                    last_read_retry_count<=read_retry;
+                                end
                                 else state<=ST_INIT_FAIL;
                             end else if (data_is_sector) begin
                                 result_error<=0;result_toggle<=~result_toggle;
@@ -364,11 +403,13 @@ module sd_native_host #(
                                 end
                             end
                         end else begin
-                            if (sd_dat[0]!=1'b1 || lane_recv0!=lane_crc0) begin
+                            if (sd_dat_sampled[0]!=1'b1 || lane_recv0!=lane_crc0) begin
                                 if(data_is_sector && read_retry<2)begin
                                     read_retry<=read_retry+1'b1;state<=ST_READ_CMD;
                                 end else if(data_is_sector)begin
                                     result_error<=1;result_toggle<=~result_toggle;state<=ST_READY;
+                                    last_failed_lba<=read_lba;last_read_error_code<=4'd3;
+                                    last_read_retry_count<=read_retry;
                                 end else state<=ST_INIT_FAIL;
                             end
                             else if (data_is_sector) begin
@@ -389,15 +430,15 @@ module sd_native_host #(
                         end
                     end
                     ST_CMD55_WIDTH: begin start_command(6'd55,{rca,16'd0},2'd1,1'b0);state<=ST_CMD55_WIDTH_WAIT;end
-                    ST_CMD55_WIDTH_WAIT: if (cmd_done) begin
+                    ST_CMD55_WIDTH_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error || !cmd_response[13]) state<=ST_INIT_FAIL; else state<=ST_ACMD6;
                     end
                     ST_ACMD6: begin start_command(6'd6,32'd2,2'd1,1'b0);state<=ST_ACMD6_WAIT;end
-                    ST_ACMD6_WAIT: if (cmd_done) begin
+                    ST_ACMD6_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error) state<=ST_INIT_FAIL;
                         else begin
                             data_bus_4bit<=!cmd_response[30];
-                            if (high_speed_active) sd_half_period<=8'd1;
+                            if (high_speed_active) sd_half_period<=FORCE_25MHZ?8'd2:8'd1;
                             else sd_half_period<=8'd2;
                             initialized<=1;state<=ST_READY;
                         end
@@ -405,6 +446,7 @@ module sd_native_host #(
                     ST_READY: begin
                         if (req_sync[2]!=req_seen && initialized) begin
                             req_seen<=req_sync[2];read_lba<=req_lba_async;read_retry<=0;
+                            last_read_error_code<=0;last_read_retry_count<=0;
                             read_cycle_counter<=0;state<=ST_READ_CMD;
                         end
                     end
@@ -412,10 +454,14 @@ module sd_native_host #(
                         start_command(6'd17,high_capacity?read_lba:(read_lba<<9),2'd1,1'b0);
                         state<=ST_READ_CMD_WAIT;
                     end
-                    ST_READ_CMD_WAIT: if (cmd_done) begin
+                    ST_READ_CMD_WAIT: if (cmd_done && cmd_accepted) begin
                         if (cmd_error || |cmd_response[39:24]) begin
                             if (read_retry<2) begin read_retry<=read_retry+1'b1;state<=ST_READ_CMD; end
-                            else begin result_error<=1;result_toggle<=~result_toggle;state<=ST_READY;end
+                            else begin
+                                result_error<=1;result_toggle<=~result_toggle;state<=ST_READY;
+                                last_failed_lba<=read_lba;last_read_error_code<=4'd1;
+                                last_read_retry_count<=read_retry;
+                            end
                         end else begin data_is_sector<=1;data_timeout<=0;state<=ST_READ_TOKEN;end
                     end
                     ST_INIT_FAIL: begin initialized<=0;high_speed_active<=0;end

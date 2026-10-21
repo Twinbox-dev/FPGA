@@ -38,6 +38,9 @@ module top (
     wire media_request,media_valid,media_ack;wire [7:0] media_data;wire [15:0] media_length;
     wire sd_init_done,fat_mounted,fat_error,source_busy,source_error;
     wire [7:0] sd_diag_flags;wire [15:0] sd_init_debug_word;wire [31:0] sd_last_read_cycles,image_read_cycles;
+    wire [31:0] sd_last_failure_lba;wire [7:0] sd_last_failure_info;
+    wire [31:0] sd_stream_debug;
+    wire [7:0] image_source_status;
     wire [5:0] file_count,bmp_count,wav_count,first_bmp;
     wire [191:0] bmp_next,bmp_prev;wire [7:0] fat_state;
     wire tap_val,tap_end;wire [31:0] tap_word;
@@ -56,6 +59,9 @@ module top (
     wire committed_wav;reg [7:0] fat_state_s0,fat_state_s1;reg fat_error_s0,fat_error_s1;
     reg [7:0] sd_diag_s0,sd_diag_s1;reg [15:0] sd_debug_s0,sd_debug_s1;
     reg [31:0] image_cycles_s0,image_cycles_s1,sd_cycles_s0,sd_cycles_s1;
+    reg [31:0] fail_lba_s0,fail_lba_s1;reg [7:0] fail_info_s0,fail_info_s1;
+    reg [31:0] sd_stream_debug_s0,sd_stream_debug_s1;
+    reg [7:0] source_status_s0,source_status_s1;
     wire auto_on;wire [3:0] auto_period_s,auto_next_pulse;
     wire usb_cmd_valid,bt_cmd_valid;wire [7:0] usb_cmd,bt_cmd;
     wire serial_cmd_valid,serial_cmd_ready;wire [7:0] serial_cmd;wire [1:0] serial_cmd_source,serial_source_lock;
@@ -130,7 +136,9 @@ module top (
         .sd_clk(sd_clk),.sd_clk_100m(sd_clk_100m),.sd_pll_locked(sd_pll_locked),.sd_cmd(sd_cmd),.sd_dat(sd_dat),
         .sd_init_done(sd_init_done),.fat_mounted(fat_mounted),.fat_error(fat_error),
         .sd_diag_flags(sd_diag_flags),.sd_init_debug_word(sd_init_debug_word),
-        .sd_last_read_cycles(sd_last_read_cycles),.image_read_cycles(image_read_cycles),
+        .sd_last_read_cycles(sd_last_read_cycles),.sd_last_failure_lba(sd_last_failure_lba),
+        .sd_last_failure_info(sd_last_failure_info),.sd_stream_debug(sd_stream_debug),
+        .image_read_cycles(image_read_cycles),
         .file_count(file_count),.bmp_count(bmp_count),.wav_count(wav_count),.first_bmp(first_bmp),
         .bmp_next(bmp_next),.bmp_prev(bmp_prev),.fat_state(fat_state),.busy(source_busy),.error(source_error),
         .prepared_toggle(prepared_toggle),.done_toggle(done_toggle),.audio_prepared_toggle(audio_prepared_toggle),
@@ -138,7 +146,7 @@ module top (
         .audio_source_error(audio_source_error),.paired_wav_valid(source_has_wav),
         .paired_wav_index(source_wav_index),.frame_clear(frame_clear),
         .image_width(image_width),.image_height(image_height),.frame_data(frame_data),.frame_valid(frame_valid),
-        .frame_ready(frame_ready),.source_status(),.tap_val(tap_val),.tap_end(tap_end),.tap_word(tap_word)
+        .frame_ready(frame_ready),.source_status(image_source_status),.tap_val(tap_val),.tap_end(tap_end),.tap_word(tap_word)
     );
     reg [1:0] clear_sync,busy_sync,error_sync,prepared_sync,done_sync;
     reg [2:0] mounted_sync;
@@ -152,6 +160,9 @@ module top (
             fat_state_s0<=0;fat_state_s1<=0;fat_error_s0<=0;fat_error_s1<=0;
             sd_diag_s0<=0;sd_diag_s1<=0;sd_debug_s0<=0;sd_debug_s1<=0;
             image_cycles_s0<=0;image_cycles_s1<=0;sd_cycles_s0<=0;sd_cycles_s1<=0;
+            source_status_s0<=0;source_status_s1<=0;
+            fail_lba_s0<=0;fail_lba_s1<=0;fail_info_s0<=0;fail_info_s1<=0;
+            sd_stream_debug_s0<=0;sd_stream_debug_s1<=0;
             first_s0<=0;first_s1<=0;next_s0<=0;next_s1<=0;prev_s0<=0;prev_s1<=0;
         end else begin
             clear_sync<={clear_sync[0],frame_clear};mounted_sync<={mounted_sync[1:0],fat_mounted};
@@ -160,6 +171,10 @@ module top (
             sd_debug_s0<=sd_init_debug_word;sd_debug_s1<=sd_debug_s0;
             image_cycles_s0<=image_read_cycles;image_cycles_s1<=image_cycles_s0;
             sd_cycles_s0<=sd_last_read_cycles;sd_cycles_s1<=sd_cycles_s0;
+            source_status_s0<=image_source_status;source_status_s1<=source_status_s0;
+            fail_lba_s0<=sd_last_failure_lba;fail_lba_s1<=fail_lba_s0;
+            fail_info_s0<=sd_last_failure_info;fail_info_s1<=fail_info_s0;
+            sd_stream_debug_s0<=sd_stream_debug;sd_stream_debug_s1<=sd_stream_debug_s0;
             first_s0<=first_bmp;first_s1<=first_s0;
             next_s0<=bmp_next;next_s1<=next_s0;prev_s0<=bmp_prev;prev_s1<=prev_s0;
             busy_sync<={busy_sync[0],source_busy};error_sync<={error_sync[0],source_error};
@@ -214,6 +229,9 @@ module top (
         .uart_tx_req(usb_tx_req),.bt_tx_req(bt_tx_req),.uart_tx_pkt(serial_tx_pkt),
         .sd_diag_flags(sd_diag_s1),.sd_init_debug_word(sd_debug_s1),
         .image_read_cycles(image_cycles_s1),.sd_read_cycles(sd_cycles_s1),
+        .image_source_status(source_status_s1),.image_source_busy(busy_sync[1]),
+        .sd_last_failure_lba(fail_lba_s1),.sd_last_failure_info(fail_info_s1),
+        .sd_stream_debug(sd_stream_debug_s1),
         .image_next_pulse(local_next_pulse),.image_prev_pulse(local_prev_pulse),.local_auto_toggle(key_auto_app_pulse),
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),
         .first_bmp(first_s1),.committed_index(committed_s1),.committed_valid(committed_valid_sync[1]),

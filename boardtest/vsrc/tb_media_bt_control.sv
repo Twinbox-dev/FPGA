@@ -37,6 +37,10 @@ module tb_media_bt_control;
     reg [7:0] fat_state=0,media_state=0;
     reg [7:0] sd_diag_test=8'hFD;
     reg [15:0] sd_init_debug_test=16'hFCFF;
+    reg [7:0] source_status_test=0;
+    reg source_busy_test=0;
+    reg [31:0] sd_failure_lba_test=0;
+    reg [7:0] sd_failure_info_test=0;
     reg hold_next_display=0,display_hold_active=0,release_display=0;
     reg [7:0] usb_packet [0:7],bt_packet0 [0:7],bt_packet1 [0:7];
     reg [7:0] command_table [0:18];
@@ -64,6 +68,9 @@ module tb_media_bt_control;
         .uart_cmd_ready(serial_ready),.uart_source_lock(serial_source_lock),
         .sd_diag_flags(sd_diag_test),.sd_init_debug_word(sd_init_debug_test),
         .image_read_cycles(32'h12345678),.sd_read_cycles(32'h00001ABC),
+        .image_source_status(source_status_test),.image_source_busy(source_busy_test),
+        .sd_last_failure_lba(sd_failure_lba_test),.sd_last_failure_info(sd_failure_info_test),
+        .sd_stream_debug(32'h12345678),
         .uart_tx_ready(usb_ready),.bt_tx_ready(bt_ready),
         .local_auto_toggle(1'b0),.uart_tx_req(usb_tx_req),.bt_tx_req(bt_tx_req),.uart_tx_pkt(serial_tx_pkt),
         .image_next_pulse(next_pulse),.image_prev_pulse(prev_pulse),
@@ -279,7 +286,59 @@ module tb_media_bt_control;
         while(eth_cmd_ack==old_eth_ack && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
         if(eth_cmd_ack==old_eth_ack)$fatal(1,"Ethernet SD diagnostic ACK was not returned");
         eth_cmd_pending=0;
+        repeat(2)@(posedge clk);
         $display("BT test stage: Ethernet SD diagnostic");$fflush;
+
+        // A6 uses a tagged field to report a stuck source/FAT state while the
+        // SD host itself remains initialized and idle.
+        wait(u_core.state==0);
+        sd_diag_test=8'hF5;source_status_test=8'h25;source_busy_test=1;fat_state=8'h02;
+        old_tx_tog=tx_tog;old_eth_ack=eth_cmd_ack;eth_cmd=8'h49;eth_cmd_pending=1;
+        diag_wait=0;
+        while(tx_tog==old_tx_tog && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
+        if(tx_tog==old_tx_tog)$fatal(1,"busy-source A6 diagnostic response was not emitted");
+        #1;
+        if(tx_pkt[15:8]!==8'hFD || tx_pkt[63:48]!==16'hF252 || tx_pkt[47:16]!==32'h12345678)
+            $fatal(1,"busy-source A6 field mismatch flags=%02x field=%04x stream=%08x",
+                tx_pkt[15:8],tx_pkt[63:48],tx_pkt[47:16]);
+        diag_wait=0;
+        while(eth_cmd_ack==old_eth_ack && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
+        if(eth_cmd_ack==old_eth_ack)$fatal(1,"busy-source A6 ACK was not returned");
+        eth_cmd_pending=0;source_busy_test=0;repeat(2)@(posedge clk);
+        $display("BT test stage: source/FAT diagnostic");$fflush;
+
+        wait(u_core.state==0);
+        sd_diag_test=8'hF5;source_busy_test=0;fat_state=8'h02;
+        old_tx_tog=tx_tog;old_eth_ack=eth_cmd_ack;eth_cmd=8'h49;eth_cmd_pending=1;
+        diag_wait=0;
+        while(tx_tog==old_tx_tog && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
+        if(tx_tog==old_tx_tog)$fatal(1,"adapter-state A6 diagnostic response was not emitted");
+        #1;
+        if(tx_pkt[63:48]!==16'hE002 || tx_pkt[47:16]!==32'h12345678 || tx_pkt[15:8]!==8'hFD)
+            $fatal(1,"adapter-state A6 field mismatch marker=%04x stream=%08x flags=%02x",
+                tx_pkt[63:48],tx_pkt[47:16],tx_pkt[15:8]);
+        diag_wait=0;
+        while(eth_cmd_ack==old_eth_ack && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
+        if(eth_cmd_ack==old_eth_ack)$fatal(1,"adapter-state A6 ACK was not returned");
+        eth_cmd_pending=0;repeat(2)@(posedge clk);
+        $display("BT test stage: SD adapter state diagnostic");$fflush;
+
+        wait(u_core.state==0);
+        sd_diag_test=8'hF5;source_busy_test=1;fat_state=8'h09;
+        sd_failure_lba_test=32'd1234;sd_failure_info_test=8'h38;
+        old_tx_tog=tx_tog;old_eth_ack=eth_cmd_ack;eth_cmd=8'h49;eth_cmd_pending=1;
+        diag_wait=0;
+        while(tx_tog==old_tx_tog && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
+        if(tx_tog==old_tx_tog)$fatal(1,"failed-LBA A6 diagnostic response was not emitted");
+        #1;
+        if(tx_pkt[63:48]!==16'hD038 || tx_pkt[47:16]!==32'd1234 || tx_pkt[15:8]!==8'hFD)
+            $fatal(1,"failed-LBA A6 field mismatch marker=%04x lba=%0d flags=%02x",
+                tx_pkt[63:48],tx_pkt[47:16],tx_pkt[15:8]);
+        diag_wait=0;
+        while(eth_cmd_ack==old_eth_ack && diag_wait<1000)begin @(posedge clk);diag_wait=diag_wait+1;end
+        if(eth_cmd_ack==old_eth_ack)$fatal(1,"failed-LBA A6 ACK was not returned");
+        eth_cmd_pending=0;source_busy_test=0;
+        $display("BT test stage: failed SD LBA diagnostic");$fflush;
 
         // Upload the maximum 160-character ASCII subtitle over the real UART
         // waveform, then verify successful commit ACK is routed back to BT.

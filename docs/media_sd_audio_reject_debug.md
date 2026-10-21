@@ -100,3 +100,50 @@ current issue is a stalled image-source/FAT stream after programming, before the
 audio END result can be evaluated. The previous note about JTAG access being
 blocked is obsolete; board download is available again. Resume with read-only
 state inspection and targeted source-path diagnosis before another full sweep.
+
+## Follow-up: six-image wrap fixed at 50 MHz
+
+The 25 MHz bit used during this investigation was a diagnostic comparison build:
+it still negotiated High Speed with the card but intentionally held SDCLK at
+25 MHz. It was not the intended production clock and did not resolve the
+wraparound failure. The production build below runs the card at High Speed
+50 MHz.
+
+The first complete loop on the diagnostic build transferred IMG2, IMG3, IMG4,
+and IMG5 correctly, then stalled on IMG5 -> IMG0. Media status carried the
+display's audio END rejection for reason `0x14`: received PCM byte count did
+not match `AUDIO_BEGIN`. This was after the image END had passed; the display
+keeps the previous frame selected until the optional audio transaction also
+commits. Therefore the visible symptom was an image that appeared not to switch,
+even though the card read and image packet stream were sound.
+
+`media_protocol_rx` has one packet staging buffer and marks an incoming DATA
+packet dropped if the preceding stream is still draining. Image DATA already
+had a 100 us inter-packet drain window; audio DATA had none. The media sender
+now uses that same 100 us window between non-final audio DATA packets. The
+existing `media-tx-gap` regression checks both image and audio pacing. The
+board acceptance script also supports targeted runs from one through six
+images and now writes its pass report after the requested run succeeds.
+
+The 50 MHz production media bit was programmed to cable1 SRAM on 2026-10-21.
+Its SHA-256 is
+`F9B4FF20D184173BD181A574D64270BCC82E7D94249890E94DF03779FD217A06`.
+The P&R report lists 14,367 LUT, 9,625 registers, 23 BRAM9K, 2 BRAM32K, and 2
+DSP, with setup/hold WNS `-4.351/-2.850 ns`. A6 reported SDHC, High Speed
+supported and active, a full image-source time of about 1.414 s, and a last
+sector transaction near 347 us. Two consecutive six-transition runs passed,
+each covering IMG2 -> IMG3 -> IMG4 -> IMG5 -> IMG0 -> IMG1:
+
+- Every D snapshot contained 460,800 words, zero sequence gaps, and matched its
+  BMP golden frame byte-for-byte.
+- All four paired-WAV images reported successful audio commit; the two images
+  without WAV files committed as silent transactions.
+- IMG5 -> IMG0 succeeded in both runs, including IMG0's 480,000-byte PCM
+  transaction. The first run's measurements and per-image results are saved
+  under ignored `boardtest/captures/20261021_171138_sd_board_acceptance.json`;
+  the repeat is `20261021_171221_sd_board_acceptance.json`.
+
+This confirms the missing audio packet pacing was the wraparound blocker. The
+final candidate retains 50 MHz SD High Speed; the 25 MHz experiment is not a
+production fallback. Boardtest continues to retain the native-SD card models
+and prior SPI-era simulations.

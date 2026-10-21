@@ -50,7 +50,29 @@ module tb_media_image_tx_gap;
         if(dut.state!=4'd2 || cycles<12499 || cycles>12501)
             $fatal(1,"packet gap state=%0d cycles=%0d",dut.state,cycles);
         $display("PASS: image packet sender waits %0d cycles (100 us) for receiver drain",cycles);
+
+        // Audio DATA uses the same one-buffer receiver. A non-final audio
+        // packet must wait before the next packet is requested as well.
+        @(negedge clk);
+        dut.state=4'd4;
+        dut.kind=8'h31;
+        dut.byte_index=0;
+        dut.tx_length=16;
+        dut.audio_samples_remaining=2024;
+        dut.audio_packet_samples=1012;
+        dut.return_state=4'd11;
+        dut.wait_count=0;
+        cycles=0;
+        while(dut.state==4'd4) @(negedge clk);
+        if(dut.state!=4'd15) $fatal(1,"audio DATA packet did not enter shared gap");
+        while(dut.state==4'd15) begin
+            @(negedge clk);
+            cycles=cycles+1;
+        end
+        if(dut.state!=4'd11 || cycles<12499 || cycles>12501)
+            $fatal(1,"audio packet gap state=%0d cycles=%0d",dut.state,cycles);
+        $display("PASS: non-final audio packet also waits %0d cycles (100 us)",cycles);
         $finish;
     end
-    initial begin #200000;$fatal(1,"timeout");end
+    initial begin #500000;$fatal(1,"timeout");end
 endmodule
