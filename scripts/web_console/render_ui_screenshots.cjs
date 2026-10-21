@@ -32,8 +32,7 @@ const mockKeys = {
     {name:'轮播周期',keys:['<','>']},
     {name:'亮度 / 对比度',keys:['[',']',',','.']},
     {name:'音频频谱',keys:[';',"'",'q']},
-    {name:'SD 卡诊断',keys:['i']},
-    {name:'调试',keys:['l']},
+    {name:'\u8c03\u8bd5',keys:['i','l']},
   ],
 };
 
@@ -157,7 +156,7 @@ async function capture(cdp, name, width, height) {
     await cdp.command('Page.enable');
     await cdp.command('Runtime.enable');
     await cdp.command('Emulation.setDeviceMetricsOverride', {
-      width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false,
+      width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false,
     });
     await cdp.command('Page.navigate', {url: fileUrl});
     await sleep(700);
@@ -209,15 +208,33 @@ async function capture(cdp, name, width, height) {
       await new Promise(resolve => setTimeout(resolve, 0));
       if (!data.some(item => item.url === '/api/subtitle' && item.body.text === ''))
         throw new Error('clear subtitle button did not send an empty upload');
+      const logBeforePreview = !!(document.getElementById('logDetails').compareDocumentPosition(
+        document.getElementById('frameCard')) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const statusColumns = getComputedStyle(document.querySelector('.metrics')).gridTemplateColumns.split(' ').length;
+      const cvColumns = getComputedStyle(document.querySelector('.btns.q6')).gridTemplateColumns.split(' ').length;
+      const compactColumns = getComputedStyle(document.querySelector('.btns.q3')).gridTemplateColumns.split(' ').length;
+      if (!logBeforePreview) throw new Error('board log must precede image preview');
+      if (statusColumns !== 6) throw new Error('wide status panel should use six columns: '+statusColumns);
+      if (cvColumns !== 6) throw new Error('wide CV controls should use six columns: '+cvColumns);
+      if (compactColumns !== 3) throw new Error('three-option controls should use one row: '+compactColumns);
+      const debugButtonsTogether = document.querySelector('#pad button[data-k="i"]').closest('.grp') ===
+        document.querySelector('#pad button[data-k="l"]').closest('.grp');
+      if (!debugButtonsTogether) throw new Error('SD status and playlist diagnostics should share one group');
+      const subtitleField = document.getElementById('subtitleText');
+      const subtitleRect = subtitleField.getBoundingClientRect();
+      if (subtitleField.tagName !== 'INPUT' || subtitleField.maxLength !== 160 ||
+          subtitleRect.height > 48 || subtitleRect.width < 500)
+        throw new Error('subtitle field should be a wide one-line 160-character input');
       document.querySelector('[data-frame-view="wr"]').click();
       if (document.getElementById('frameViewWr').hidden) throw new Error('write preview tab did not open');
       document.querySelector('[data-frame-view="rb"]').click();
       if (document.getElementById('frameViewRb').hidden) throw new Error('readback preview tab did not open');
       document.getElementById('toast').className = 'toast';
       return {controls:padKeys.length, d:snapshot.body.key, subtitleLength:subtitle.body.text.length,
-              typedKeySent:false};
+              typedKeySent:false, logBeforePreview, statusColumns, cvColumns, compactColumns,
+              debugButtonsTogether, subtitleWidth:subtitleRect.width, subtitleHeight:subtitleRect.height};
     })()`);
-    const desktop = await capture(cdp, 'console-desktop.png', 1600, 2400);
+    const desktop = await capture(cdp, 'console-desktop.png', 1920, 2400);
 
     await cdp.command('Emulation.setDeviceMetricsOverride', {
       width: 390, height: 844, deviceScaleFactor: 1, mobile: true,

@@ -310,7 +310,7 @@
     --bg0:#070b12; --bg1:#0c1420; --panel:#101a28; --line:#24354a;
     --fg:#e7eef8; --dim:#91a0b4; --faint:#718198;
     --acc:#4bd4f2; --acc2:#91a8ff; --ok:#61d4a4; --err:#ff8585; --warn:#f4cc7a;
-    --mw:1560px;
+    --mw:1840px;
   }
   body { background:radial-gradient(1000px 500px at 80% -15%,#143044 0,transparent 65%),
          linear-gradient(160deg,var(--bg0),var(--bg1)); }
@@ -329,13 +329,23 @@
   .btns button { min-height:42px; background:#121e2d; border-color:#26384e; }
   .btns button:hover:not(:disabled) { background:#173044; }
   .btns.q4 button { min-height:68px; }
-  .metrics { gap:7px; }
+  .metrics { grid-template-columns:repeat(6,minmax(0,1fr)); gap:7px; }
+  .btns.q3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .btns.q6 { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .btns.q6 button { flex-direction:column; gap:5px; padding:10px 4px; min-height:68px; font-size:11px; }
+  .btns.q6 .ico { font-size:16px; }
   .m { background:#0b121d; border-color:#26384e; padding:10px 3px; }
   .m .v { font-size:20px; }
   .conn select,.conn input,textarea { background:#0b121d !important; border-color:#2b3e55 !important; }
+  #subtitleText {
+    display:block; width:100%; min-width:0; height:42px; margin:0;
+    padding:9px 12px; border:1px solid #2b3e55; border-radius:8px;
+    background:#0b121d; color:var(--fg); font:13px var(--mono);
+  }
+  #subtitleText:focus { outline:none; border-color:var(--acc); }
   .term { border-color:#26384e; background:#070b12; }
   .termbar { background:#0c1420; }
-  .log { height:min(38vh,340px); }
+  .log { height:min(30vh,300px); }
   details.card > summary { margin:0; padding:0; color:#afbdd0; }
   details.card[open] > summary { margin-bottom:14px; }
   details.card > summary::before { color:var(--acc); }
@@ -365,6 +375,15 @@
   @media (max-width:1050px) {
     main { grid-template-columns:minmax(290px,.9fr) minmax(0,1.1fr); padding:0 16px; gap:14px; }
   }
+  @media (max-width:1600px) {
+    .btns.q6 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  }
+  @media (max-width:1200px) {
+    .metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  }
+  @media (min-width:2200px) {
+    :root { --mw:2000px; }
+  }
   @media (max-width:800px) {
     main { width:100%; grid-template-columns:minmax(0,1fr); padding:0 12px; }
     .hwrap { padding:10px 12px; }
@@ -384,7 +403,7 @@
     .top-status { width:100%; }
     main > div,.card,.grp,.btns,.frame-wrap { min-width:0; width:100%; }
     .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    .btns,.btns.q4 { width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .btns,.btns.q3,.btns.q4,.btns.q6 { width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); }
     .btns button { min-width:0; white-space:normal; }
     .preview-tabs button { flex:1; min-width:0; white-space:normal; }
     .preview-head { align-items:flex-start; flex-wrap:wrap; }
@@ -425,8 +444,7 @@
 
     <section class="card" id="subtitleCard">
       <h2>HDMI 滚动字幕</h2>
-      <textarea id="subtitleText" maxlength="160" rows="3"
-        placeholder="最多 160 个可打印 ASCII 字符；留空发送可清除字幕"></textarea>
+      <input type="text" id="subtitleText" maxlength="160" autocomplete="off" spellcheck="false" placeholder="最多 160 个可打印 ASCII 字符；留空发送可清除字幕">
       <div class="conn" style="margin-top:10px">
         <button class="primary" id="btnSubtitle">发送字幕</button>
         <button class="ghost" id="btnSubtitleClear">清除字幕</button>
@@ -481,6 +499,20 @@
       </div>
     </section>
 
+
+    <details class="card log-card" id="logDetails" open>
+      <summary>板卡回包与事件 <span class="sub" id="cnt">0 条</span></summary>
+      <div class="term">
+        <div class="termbar">
+          <span class="d"></span><span class="d"></span><span class="d"></span>
+          <span class="t" id="logTitle">BOARD MONITOR</span>
+          <span class="spacer"></span>
+          <button id="btnClear" disabled>清空</button>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+    </details>
+
     <section class="card" id="frameCard">
       <div class="preview-head">
         <h2>图像预览与像素对比</h2>
@@ -509,18 +541,6 @@
       </div>
     </section>
 
-    <details class="card log-card" id="logDetails" open>
-      <summary>板卡回包与事件 <span class="sub" id="cnt">0 条</span></summary>
-      <div class="term">
-        <div class="termbar">
-          <span class="d"></span><span class="d"></span><span class="d"></span>
-          <span class="t" id="logTitle">BOARD MONITOR</span>
-          <span class="spacer"></span>
-          <button id="btnClear" disabled>清空</button>
-        </div>
-        <div class="log" id="log"></div>
-      </div>
-    </details>
   </div>
 </main>
 
@@ -542,8 +562,9 @@ const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
               "q":"🎵", "i":"▤", "l":"📋", "0":"▣", "1":"◐", "2":"⇠"};
 Object.assign(ICON, {r:"\u25c9", g:"\u25d0", b:"\u25a7", e:"\u2301", h:"\u2726", w:"\u2744"});
 const RANGE = {"播放":"", "切换特效":"约 1 秒", "音量":"0–8", "轮播周期":"1–10s",
-               "亮度 / 对比度":"亮度 0–8 · 对比度 0–6", "SD 卡诊断":"原生 SD 状态"};
+               "亮度 / 对比度":"亮度 0–8 · 对比度 0–6"};
 RANGE["\u56fe\u50cf\u6548\u679c"] = "HDMI image mode";
+RANGE["\u8c03\u8bd5"] = "SD 状态 / 辅助调试";
 
 /* ---------- toast ---------- */
 let toastT = null;
@@ -640,17 +661,19 @@ async function buildPad(){
   d.groups.forEach(g => {
     const wrap = document.createElement("div");
     wrap.className = "grp";
-    const q4 = g.keys.length >= 4;
+    const q3 = g.keys.length === 3;
+    const q4 = g.keys.length >= 4 && g.keys.length < 6;
+    const q6 = g.keys.length >= 6;
     wrap.innerHTML = `<div class="grp-t"><span class="bar"></span>${g.name}`
       + `<span class="rg">${RANGE[g.name] || ""}</span></div>`;
     const box = document.createElement("div");
-    box.className = "btns" + (q4 ? " q4" : "");
+    box.className = "btns" + (q6 ? " q6" : q4 ? " q4" : q3 ? " q3" : "");
     g.keys.forEach(k => {
       const label = (d.keys.find(x => x.key === k) || {}).label || k;
       const b = document.createElement("button");
       b.dataset.k = k; b.disabled = !connected;
       b.title = label;
-      b.innerHTML = q4
+      b.innerHTML = (q4 || q6)
         ? `<span class="ico">${ICON[k] || "●"}</span><span>${label}</span><span class="key">${k.toUpperCase()}</span>`
         : `<span class="ico">${ICON[k] || "●"}</span><span>${label}</span><span class="key">${k.toUpperCase()}</span>`;
       b.onclick = () => sendKey(k);
@@ -671,13 +694,13 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
         <button data-k="s"><span class="ico">📊</span><span>状态回读</span><span class="key">S</span></button>
        </div></div>
      <div class="grp"><div class="grp-t"><span class="bar"></span>切换特效</div>
-       <div class="btns">
+       <div class="btns q3">
          <button data-k="0"><span class="ico">▣</span><span>直接切</span><span class="key">0</span></button>
          <button data-k="1"><span class="ico">◐</span><span>交叉溶解</span><span class="key">1</span></button>
          <button data-k="2"><span class="ico">⇠</span><span>柔边滑动</span><span class="key">2</span></button>
        </div></div>
      <div class="grp"><div class="grp-t"><span class="bar"></span>OSD 面板</div>
-      <div class="btns">
+      <div class="btns q3">
         <button data-k="3"><span class="ico">⊘</span><span>关闭</span><span class="key">3</span></button>
         <button data-k="4"><span class="ico">◷</span><span>显示 3 秒</span><span class="key">4</span></button>
         <button data-k="5"><span class="ico">▤</span><span>常显</span><span class="key">5</span></button>
@@ -700,18 +723,18 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
         <button data-k="."><span class="ico">◑</span><span>对比度 +</span><span class="key">.</span></button>
       </div></div>
     <div class="grp"><div class="grp-t"><span class="bar"></span>音频频谱<span class="rg">底部 16 柱</span></div>
-      <div class="btns">
+      <div class="btns q3">
         <button data-k="q"><span class="ico">🎵</span><span>频谱 开/关</span><span class="key">Q</span></button>
         <button data-k=";"><span class="ico">▼</span><span>灵敏度 -</span><span class="key">;</span></button>
         <button data-k="'"><span class="ico">▲</span><span>灵敏度 +</span><span class="key">'</span></button>
       </div></div>
-    <div class="grp"><div class="grp-t"><span class="bar"></span>SD 卡诊断</div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>调试</div>
       <div class="btns">
         <button data-k="i"><span class="ico">▤</span><span>查询卡状态</span><span class="key">I</span></button>
         <button data-k="l"><span class="ico">📋</span><span>列表转储</span><span class="key">L</span></button>
       </div></div>`;
   host.insertAdjacentHTML("beforeend", `<div class="grp"><div class="grp-t"><span class="bar"></span>CV image effect</div>
-    <div class="btns">
+    <div class="btns q6">
       <button data-k="r"><span class="ico">◉</span><span>Raw</span><span class="key">R</span></button>
       <button data-k="g"><span class="ico">◐</span><span>Gray</span><span class="key">G</span></button>
       <button data-k="b"><span class="ico">◧</span><span>Binary</span><span class="key">B</span></button>

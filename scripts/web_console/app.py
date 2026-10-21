@@ -999,8 +999,7 @@ def api_keys():
               ("轮播周期", ["<", ">"]),
               ("亮度 / 对比度", ["[", "]", ",", "."]),
               ("音频频谱", [";", "'", "q"]),
-              ("SD 卡诊断", ["i"]),
-              ("调试", ["l"])]
+              ("调试", ["i", "l"])]
     groups.insert(2, ("\u56fe\u50cf\u6548\u679c", ["r", "g", "b", "e", "h", "w"]))
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})

@@ -62,7 +62,7 @@ class ConsoleProtocolTests(unittest.TestCase):
         groups = {group["name"]: group["keys"] for group in result["groups"]}
         self.assertIn("d", keys)  # D is a dedicated button beside the preview.
         self.assertIn("图像效果", groups)
-        self.assertIn("i", groups["SD 卡诊断"])
+        self.assertEqual(set(groups["调试"]), {"i", "l"})
 
 
 if __name__ == "__main__":
