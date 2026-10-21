@@ -6,9 +6,15 @@ module media_image_source (
     input wire audio_start_toggle_async,
     input wire [4:0] audio_file_index_async,
     input wire audio_pause,
-    output wire SD_nCS, SD_DCLK, SD_MOSI,
-    input wire SD_MISO,
+    output wire sd_clk,
+    input wire sd_clk_100m, sd_pll_locked,
+    inout wire sd_cmd,
+    input wire [3:0] sd_dat,
     output wire sd_init_done, fat_mounted, fat_error,
+    output wire [7:0] sd_diag_flags,
+    output wire [15:0] sd_init_debug_word,
+    output wire [31:0] sd_last_read_cycles,
+    output reg [31:0] image_read_cycles,
     output wire [5:0] file_count, bmp_count, wav_count, first_bmp,
     output wire [191:0] bmp_next, bmp_prev,
     output wire [7:0] fat_state,
@@ -35,22 +41,16 @@ module media_image_source (
     reg [63:0] image_name_latched;
     reg file_req, restart, header_only, format_start, wav_restart;
     reg file_done_seen, format_done_seen;
-    wire [31:0] lba, sd_addr;
+    wire [31:0] lba;
     wire req, ready, dval, sec_done, sec_error;
-    wire [7:0] data, sd_data;
-    wire sd_read, sd_valid, sd_end;
-    sd_card_top #(.SPI_LOW_SPEED_DIV(16'd248),.SPI_HIGH_SPEED_DIV(16'd0)) u_sd_card (
-        .clk(clk),.rst(rst),.SD_nCS(SD_nCS),.SD_DCLK(SD_DCLK),.SD_MOSI(SD_MOSI),.SD_MISO(SD_MISO),
-        .sd_init_done(sd_init_done),.sd_sec_read(sd_read),.sd_sec_read_addr(sd_addr),
-        .sd_sec_read_data(sd_data),.sd_sec_read_data_valid(sd_valid),.sd_sec_read_end(sd_end),
-        .sd_sec_write(1'b0),.sd_sec_write_addr(32'd0),.sd_sec_write_data(8'd0),
-        .sd_sec_write_data_req(),.sd_sec_write_end()
-    );
-    sd_adapter u_sd_adapter (
-        .clk(clk),.rst(rst),.sd_init_done(sd_init_done),.o_lba(lba),.o_req(req),
-        .i_ready(ready),.i_data(data),.i_dval(dval),.i_done(sec_done),.i_err(sec_error),
-        .sd_sec_read(sd_read),.sd_sec_read_addr(sd_addr),.sd_sec_read_data(sd_data),
-        .sd_sec_read_data_valid(sd_valid),.sd_sec_read_end(sd_end)
+    wire [7:0] data;
+    sd_native_adapter u_sd_card (
+        .clk(clk),.sd_clk_100m(sd_clk_100m),.pll_locked(sd_pll_locked),.rst(rst),
+        .sd_clk(sd_clk),.sd_cmd(sd_cmd),.sd_dat(sd_dat),.sd_init_done(sd_init_done),
+        .sd_diag_flags(sd_diag_flags),.last_read_cycles(sd_last_read_cycles),
+        .init_debug_word(sd_init_debug_word),
+        .o_lba(lba),.o_req(req),.i_ready(ready),.i_data(data),
+        .i_dval(dval),.i_done(sec_done),.i_err(sec_error)
     );
 
     wire [7:0] file_byte;
@@ -134,6 +134,7 @@ module media_image_source (
             audio_sample_count<=0;audio_source_error<=0;paired_wav_valid<=0;paired_wav_index<=0;
             frame_clear<=1;image_width<=0;image_height<=0;
             file_done_seen<=0;format_done_seen<=0;img_ok_d<=0;half_pixel<=0;raw_low<=0;
+            image_read_cycles<=0;
             tap_val<=0;tap_end<=0;tap_word<=0;audio_start_sync<=0;
             audio_header_seen<=0;audio_finish_seen<=0;audio_reset_guard<=0;pcm_pack_count<=0;
             pcm_pack<=0;pcm_word<=0;pcm_word_valid<=0;
@@ -141,6 +142,11 @@ module media_image_source (
             file_req<=0;restart<=0;format_start<=0;wav_restart<=0;frame_clear<=0;
             tap_val<=0;tap_end<=0;img_ok_d<=img_ok;
             audio_start_sync<={audio_start_sync[1:0],audio_start_toggle_async};
+            if (state==IDLE) begin
+                if ((start && fat_mounted && fat_idle) || (debug_start && fat_mounted && fat_idle))
+                    image_read_cycles<=0;
+            end else if (state!=AUDIO && image_read_cycles!=32'hFFFFFFFF)
+                image_read_cycles<=image_read_cycles+1'b1;
 
             if (pcm_word_valid && frame_ready) pcm_word_valid<=0;
             if (state==AUDIO && !audio_reset_guard && wav_sample_valid && !audio_source_error) begin

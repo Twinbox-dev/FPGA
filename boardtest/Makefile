@@ -205,10 +205,45 @@ build_gt911_trackpad/sim_gt911_trackpad: vsrc/tb_gt911_trackpad.v $(TSD)/gt911_t
 build_gt911_cursor/sim_gt911_cursor: vsrc/tb_gt911_cursor.v $(TSD)/gt911_cursor_overlay.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_gt911_cursor $^ --Mdir build_gt911_cursor -o sim_gt911_cursor
 
-.PHONY: gt911-unit
+.PHONY: gt911-unit sd-native media-uart-arbiter bt-uart-unit
 gt911-unit: build_gt911_trackpad/sim_gt911_trackpad build_gt911_cursor/sim_gt911_cursor
 	./build_gt911_trackpad/sim_gt911_trackpad
 	./build_gt911_cursor/sim_gt911_cursor
+
+# Native 4-bit SD host and pin-level card model. The first run reads LBA0 from
+# the real image and injects a dropped response, delayed response and CRC error;
+# later runs cover 25 MHz fallback and SDSC byte-addressing.
+SD_NATIVE_RTL := ../board_media/user_source/hdl_source/SD/sd_native_cmd.v \
+	../board_media/user_source/hdl_source/SD/sd_native_host.v \
+	../board_media/user_source/hdl_source/SD/sd_native_adapter.v
+build_sd_native_host/sim_sd_native_host: vsrc/tb_sd_native_host.sv vsrc/sd_native_card_model.sv $(SD_NATIVE_RTL)
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-BLKSEQ \
+	  --top-module tb_sd_native_host $^ --Mdir build_sd_native_host -o sim_sd_native_host
+
+sd-native: build_sd_native_host/sim_sd_native_host
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +DROP_READ_RESPONSE=1 +BAD_CRC_ONCE=1 +READ_RESPONSE_DELAY=8
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +HS=0
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +HC=0
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +V1=1
+	./build_sd_native_host/sim_sd_native_host +CARD=../img/card_user_real.img +DROP_CMD55=1
+
+build_media_uart_arbiter/sim_media_uart_arbiter: vsrc/tb_media_uart_arbiter.sv ../board_media/user_source/hdl_source/media_uart_arbiter.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_uart_arbiter $^ --Mdir build_media_uart_arbiter -o sim_media_uart_arbiter
+
+media-uart-arbiter: build_media_uart_arbiter/sim_media_uart_arbiter
+	./build_media_uart_arbiter/sim_media_uart_arbiter
+
+build_media_bt_control/sim_media_bt_control: vsrc/tb_media_bt_control.sv \
+	../board_media/user_source/hdl_source/uart_link.v \
+	../board_media/user_source/hdl_source/media_uart_arbiter.v \
+	../board_media/user_source/hdl_source/media_control_core.v \
+	../board_media/user_source/hdl_source/subtitle_cmd.v
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH -Wno-UNUSEDSIGNAL \
+	  --top-module tb_media_bt_control $^ --Mdir build_media_bt_control -o sim_media_bt_control
+
+bt-uart-unit: build_media_uart_arbiter/sim_media_uart_arbiter build_media_bt_control/sim_media_bt_control
+	./build_media_uart_arbiter/sim_media_uart_arbiter
+	./build_media_bt_control/sim_media_bt_control
 
 
 

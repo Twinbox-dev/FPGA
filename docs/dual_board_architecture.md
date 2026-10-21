@@ -44,4 +44,4 @@
 
 媒体板正式图像/PCM/控制链路由 `board_media` 提供；显示板接收媒体、写入双缓冲 SDRAM、播放并回送提交/控制结果。网页 D 正式快照仍由媒体板从 SD 重读已提交图片提供。优化移除的是显示板本地 SDRAM 诊断读回探针，未移除网页 D 功能。OSD 的“关闭、调节后 3 秒、始终显示”模式也继续由 PC 经媒体板转发控制。当前优化版已上板，用户确认功能正常。
 
-资源、WNS、最终 bit 路径及上板验收清单见 [双板媒体实施计划](dual_board_media_plan.md)；逐字段协议和 PC 模拟步骤见 [媒体链路协议](media_link_protocol.md)。
+资源、WNS、最终 bit 路径及上板验收清单见 [双板媒体实施计划](dual_board_media_plan.md)；逐字段协议和 PC 模拟步骤见 [媒体链路协议](media_link_protocol.md)。下一阶段 SD、HC-08、资源优化、多窗口评估及前端计划见 [媒体板与双板后续计划](next_phase_media_expansion_plan.md)。

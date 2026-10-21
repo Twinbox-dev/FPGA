@@ -25,8 +25,10 @@ module tb_media_subtitle_roundtrip;
 
     media_control_core #(.CLK_HZ(10000)) u_media (
         .clk(clk),.rst(rst),.cmd(cmd),.cmd_pending(cmd_pending),.cmd_ack_t(cmd_ack_t),
-        .uart_cmd(8'd0),.uart_cmd_valid(1'b0),.uart_tx_ready(1'b1),
-        .local_auto_toggle(1'b0),.uart_tx_req(uart_tx_req),.uart_tx_pkt(uart_tx_pkt),
+        .uart_cmd(8'd0),.uart_cmd_valid(1'b0),.uart_cmd_source(2'd1),.uart_cmd_ready(),.uart_source_lock(),
+        .sd_diag_flags(8'd0),.sd_init_debug_word(16'd0),.image_read_cycles(32'd0),.sd_read_cycles(32'd0),
+        .uart_tx_ready(1'b1),.bt_tx_ready(1'b0),.uart_tx_req(uart_tx_req),.bt_tx_req(),
+        .local_auto_toggle(1'b0),.uart_tx_pkt(uart_tx_pkt),
         .image_next_pulse(image_next_pulse),.image_prev_pulse(image_prev_pulse),
         .rx_data(rx_data),.rx_valid(rx_valid),.tx_done_tog(tx_done_tog),.tx_tog(tx_tog),
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),

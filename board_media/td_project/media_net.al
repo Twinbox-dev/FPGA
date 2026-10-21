@@ -147,23 +147,17 @@
                     <Attr Name="CompileOrder" Val="18"/>
                 </FileInfo>
             </File>
-            <File Path="../user_source/hdl_source/media_bmp_probe.v">
+            <File Path="../user_source/hdl_source/SD/sd_host_pll.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="20"/></FileInfo>
             </File>
-            <File Path="../user_source/hdl_source/SD/sd_card_top.v">
+            <File Path="../user_source/hdl_source/SD/sd_native_cmd.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="21"/></FileInfo>
             </File>
-            <File Path="../user_source/hdl_source/SD/sd_card_sec_read_write.v">
+            <File Path="../user_source/hdl_source/SD/sd_native_host.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="22"/></FileInfo>
             </File>
-            <File Path="../user_source/hdl_source/SD/sd_card_cmd.v">
+            <File Path="../user_source/hdl_source/SD/sd_native_adapter.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="23"/></FileInfo>
-            </File>
-            <File Path="../user_source/hdl_source/SD/spi_master.v">
-                <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="24"/></FileInfo>
-            </File>
-                    <File Path="../user_source/hdl_source/SD/sd_adapter.v">
-                <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="25"/></FileInfo>
             </File>
             <File Path="../user_source/hdl_source/SD/fat32_ro.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="26"/></FileInfo>
@@ -187,6 +181,9 @@
                 <Attr Name="CompileOrder" Val="54"/>
             </FileInfo>
         </File>
+            <File Path="../user_source/hdl_source/media_uart_arbiter.v">
+                <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="55"/></FileInfo>
+            </File>
     </Verilog>
         <ADC_FILE>
             <File Path="../user_source/constraints_source/pin.adc">
