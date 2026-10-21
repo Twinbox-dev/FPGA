@@ -11,7 +11,9 @@ module transition_line_buf (
     output reg  [31:0] rd_data
 );
     // Keep the RAM free of reset and separate from the control registers.
-    reg [31:0] mem [0:2047]; /* fehdl force_ram=1, ram_style="bram" */
+    // Each bank is exactly 1024 x 32 bits. Prefer the device's 32K-bit
+    // block RAM so the two transition banks do not consume eight 9K blocks.
+    reg [31:0] mem [0:2047]; /* fehdl force_ram=1, ram_style="bram_32k" */
 
     always @(posedge mem_clk)
         if (wr_en)
