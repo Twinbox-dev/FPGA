@@ -32,6 +32,7 @@ module media_transaction_writer #(
     input  wire [31:0] audio_sample_count,
     input  wire        audio_end_valid,
     input  wire        audio_end_ok,
+    input  wire [3:0]  audio_end_reason,
     input  wire [15:0] audio_end_id,
 
     input  wire        write_clk,
@@ -74,6 +75,7 @@ module media_transaction_writer #(
     reg [15:0] image_id_udp, image_end_id_udp, audio_id_udp, audio_end_id_udp;
     reg image_end_good_udp, audio_end_good_udp;
     reg [3:0] image_end_reason_udp;
+    reg [3:0] audio_end_reason_udp;
     reg [31:0] audio_samples_udp;
     reg image_begin_toggle_udp, image_end_toggle_udp;
     reg audio_begin_toggle_udp, audio_end_toggle_udp;
@@ -99,6 +101,7 @@ module media_transaction_writer #(
     reg frame_write_done, audio_write_done;
     reg frame_active_w, frame_end_seen_w, frame_end_good_w, frame_result_sent_w;
     reg [3:0] frame_end_reason_w;
+    reg [3:0] audio_end_reason_w;
     reg audio_active_w, audio_end_seen_w, audio_end_good_w, audio_result_sent_w;
     reg audio_retry_pending_w, audio_no_data_w;
     reg commit_pending_w, transition_pending_w, transition_done_seen_w;
@@ -179,6 +182,7 @@ module media_transaction_writer #(
             image_end_id_udp <= 16'd0; audio_id_udp <= 16'd0; audio_end_id_udp <= 16'd0;
             image_end_good_udp <= 1'b0; audio_end_good_udp <= 1'b0;
             image_end_reason_udp <= 4'd0;
+            audio_end_reason_udp <= 4'd0;
             audio_samples_udp <= 32'd0;
             image_begin_toggle_udp <= 1'b0; image_end_toggle_udp <= 1'b0;
             audio_begin_toggle_udp <= 1'b0; audio_end_toggle_udp <= 1'b0;
@@ -217,6 +221,7 @@ module media_transaction_writer #(
             if (audio_end_valid) begin
                 audio_end_id_udp <= audio_end_id;
                 audio_end_good_udp <= audio_end_ok;
+                audio_end_reason_udp <= audio_end_reason;
                 audio_end_toggle_udp <= ~audio_end_toggle_udp;
             end
         end
@@ -240,6 +245,7 @@ module media_transaction_writer #(
             frame_end_reason_w <= 4'd0;
             audio_active_w <= 1'b0; audio_end_seen_w <= 1'b0;
             audio_end_good_w <= 1'b0; audio_result_sent_w <= 1'b0;
+            audio_end_reason_w <= 4'd0;
             audio_retry_pending_w <= 1'b0; audio_no_data_w <= 1'b0;
             commit_pending_w <= 1'b0; transition_pending_w <= 1'b0;
             transition_done_seen_w <= 1'b0;
@@ -350,6 +356,7 @@ module media_transaction_writer #(
             if (audio_end_event && audio_end_id_udp == pending_frame_id_w) begin
                 audio_end_seen_w <= 1'b1;
                 audio_end_good_w <= audio_end_good_udp;
+                audio_end_reason_w <= audio_end_reason_udp;
             end
 
             if (writer_state == W_REQ && write_req_ack) begin
@@ -379,7 +386,7 @@ module media_transaction_writer #(
 
             if (audio_active_w && audio_end_seen_w && !audio_result_sent_w &&
                 (audio_no_data_w || (audio_write_done && writer_state == W_IDLE))) begin
-                audio_result_code_w <= audio_end_good_w ? 8'd0 : 8'd1;
+                audio_result_code_w <= audio_end_good_w ? 8'd0 : {4'h1,audio_end_reason_w};
                 audio_result_toggle_w <= ~audio_result_toggle_w;
                 audio_result_sent_w <= 1'b1;
                 audio_active_w <= 1'b0;

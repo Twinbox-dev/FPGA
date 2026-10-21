@@ -120,7 +120,14 @@ module media_image_tx #(
     reg [10:0] rx_pos;
     reg [7:0] rx_type_lo,rx_type_hi,rx_result;
     reg [15:0] rx_frame,rx_length;
-    reg rx_good,ready_pulse,result_pulse,audio_result_pulse;
+    reg rx_good,ready_pulse,result_pulse,audio_result_pulse,audio_result_pulse_d;
+    // Keep the audio result event on a dedicated registered path into the
+    // transaction FSM. The extra cycle is absorbed by AUDIO_WAIT_RESULT and
+    // avoids routing it through the shared control-state mux select network.
+    always @(posedge clk) begin
+        if(rst)audio_result_pulse_d<=0;
+        else audio_result_pulse_d<=audio_result_pulse;
+    end
     always @(posedge clk) begin
         if(rst) begin
             rx_pos<=0;rx_type_lo<=0;rx_type_hi<=0;rx_frame<=0;rx_result<=0;
@@ -423,9 +430,9 @@ module media_image_tx #(
                     end else wait_count<=wait_count+1'b1;
                 end
                 AUDIO_WAIT_RESULT: begin
-                    if(audio_result_pulse && rx_frame==frame_id) begin
+                    if(audio_result_pulse_d && rx_frame==frame_id) begin
                         if(rx_result==0) begin state<=WAIT_COMMIT;wait_count<=0;end
-                        else if(rx_result==1 && audio_attempts<3) begin
+                        else if((rx_result==1 || rx_result[7:4]==4'h1) && audio_attempts<3) begin
                             audio_attempts<=audio_attempts+1'b1;
                             audio_total_samples<=0;audio_samples_remaining<=0;audio_prep_phase<=0;
                             audio_sum<=0;sequence_id<=0;wait_count<=0;
@@ -437,6 +444,15 @@ module media_image_tx #(
                                 audio_packet_samples<=0;kind<=AUDIO_BEGIN;tx_length<=16;
                                 return_state<=AUDIO_LOAD;state<=ISSUE;
                             end
+                        end else if(rx_result[7:4]==4'h1) begin
+                            // Preserve the display receiver's four-bit audio
+                            // reject reason in the status high/low nibbles.
+                            error_code<={4'h7,rx_result[3:0]};state<=IDLE;
+                        end else if(rx_result==1) begin
+                            // Keep an exhausted, explicit audio rejection
+                            // distinguishable from a missing result packet.
+                            // Code 6 remains the response timeout/protocol case.
+                            error_code<=8'h70;state<=IDLE;
                         end else begin error_code<=6;state<=IDLE;end
                     end else if(wait_count>=CLK_HZ*2-1) begin error_code<=6;state<=IDLE;end
                     else wait_count<=wait_count+1'b1;

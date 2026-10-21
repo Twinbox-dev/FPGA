@@ -38,6 +38,7 @@ module media_protocol_rx #(
     output reg  [31:0] audio_sample_count,
     output reg         audio_end_valid,
     output reg         audio_end_ok,
+    output reg  [3:0]  audio_end_reason,
     output reg  [15:0] audio_end_id,
     output reg         protocol_error_toggle
 );
@@ -82,6 +83,13 @@ module media_protocol_rx #(
     wire [10:0] image_byte_offset = rx_pos - 11'd12;
     wire [7:0] incoming_word_index = image_byte_offset[9:2];
     wire [9:0] packet_audio_word_count = (packet_sample_index + 10'd3) >> 2;
+    wire [3:0] audio_end_reason_value =
+        !audio_active ? 4'd1 :
+        (packet_frame_id != active_audio_frame_id) ? 4'd2 :
+        ((payload_length != 16'd8 || packet_reserved != 16'd0) ? 4'd3 :
+        ((received_audio_samples != expected_audio_samples) ? 4'd4 :
+        ((audio_sum != packet_checksum) ? 4'd5 :
+        (audio_bad ? 4'd6 : (stream_active ? 4'd7 : 4'd0)))));
 
     always @(posedge clk) begin
         if (rx_valid && !packet_dropped && rx_pos >= 11'd12) begin
@@ -143,6 +151,7 @@ module media_protocol_rx #(
             audio_begin_valid <= 1'b0; audio_frame_id <= 16'd0;
             audio_sample_count <= 32'd0;
             audio_end_valid <= 1'b0; audio_end_ok <= 1'b0; audio_end_id <= 16'd0;
+            audio_end_reason <= 4'd0;
             protocol_error_toggle <= 1'b0;
         end else begin
             ready_request <= 1'b0;
@@ -373,14 +382,9 @@ module media_protocol_rx #(
                         TYPE_AUDIO_END: begin
                             audio_end_id <= packet_frame_id;
                             audio_end_valid <= 1'b1;
-                            audio_end_ok <= audio_active && packet_frame_id == active_audio_frame_id &&
-                                payload_length == 16'd8 && packet_reserved == 16'd0 &&
-                                received_audio_samples == expected_audio_samples &&
-                                audio_sum == packet_checksum && !audio_bad && !stream_active;
-                            if (!audio_active || packet_frame_id != active_audio_frame_id ||
-                                payload_length != 16'd8 || packet_reserved != 16'd0 ||
-                                received_audio_samples != expected_audio_samples ||
-                                audio_sum != packet_checksum || audio_bad || stream_active)
+                            audio_end_reason <= audio_end_reason_value;
+                            audio_end_ok <= audio_end_reason_value == 4'd0;
+                            if (audio_end_reason_value != 4'd0)
                                 protocol_error_toggle <= ~protocol_error_toggle;
                             audio_active <= 1'b0;
                         end

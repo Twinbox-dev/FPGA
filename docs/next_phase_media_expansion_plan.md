@@ -121,3 +121,14 @@ After wrapping from IMG5 to IMG0, the display rejected the audio END after retri
 The current reason-code display bit and media bit completed P&R, but TD cannot open either JTAG cable (PRG-9505 USB device open error) while both board IPs continue to ping. The JTAGServer service is running; restarting it failed with Windows “Access is denied.” No Flash write or PC network-setting change was performed. Reattempt SRAM download when JTAG cable access is available, then use the status reason to identify the IMG0 rejection. Do not claim IMG0 audio is fixed until the physical transaction commits.
 
 Detailed evidence and current bit hashes are in [media SD audio rejection investigation](media_sd_audio_reject_debug.md).
+
+### Follow-up after board power cycle — 2026-10-21 13:59 local
+
+The user returned and both SRAM downloads succeeded: display on cable0 and
+media on cable1. The native SD A6 query reports initialized SDHC with High Speed
+supported and active; the last sector read was about 213.82 us. The full board
+acceptance run then received the N command ACK but made no progress from IMG1
+for 45 seconds. Status showed TX `LOAD_IMAGE`, FAT `S_STREAM`, and no TX error;
+the source timer saturated at 85.9 seconds. This is now the active blocker to
+trace in the media image-source/FAT stream. The earlier JTAG USB-access failure
+was cleared by the board power cycle and no longer blocks downloads.

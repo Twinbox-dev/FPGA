@@ -418,6 +418,7 @@ wire        media_audio_begin_valid;
 wire [15:0] media_audio_frame_id;
 wire [31:0] media_audio_sample_count;
 wire        media_audio_end_valid, media_audio_end_ok;
+wire [3:0]  media_audio_end_reason;
 wire [15:0] media_audio_end_id;
 wire        media_protocol_error_toggle;
 wire        media_image_result_valid, media_audio_result_valid;
@@ -507,6 +508,7 @@ media_protocol_rx u_media_protocol_rx (
     .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
     .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
+    .audio_end_reason (media_audio_end_reason),
     .audio_end_id (media_audio_end_id), .protocol_error_toggle (media_protocol_error_toggle)
 );
 
@@ -544,6 +546,7 @@ media_transaction_writer u_media_transaction_writer (
     .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
     .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
+    .audio_end_reason (media_audio_end_reason),
     .audio_end_id (media_audio_end_id),
     .write_clk (sd_card_clk), .write_rst (rst_all),
     .frame_finish_toggle (frame_write_toggle_mem), .effect_mode (transition_mode_cfg),

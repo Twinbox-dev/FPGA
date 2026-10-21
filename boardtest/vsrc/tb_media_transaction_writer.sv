@@ -25,6 +25,7 @@ module tb_media_transaction_writer;
     reg [15:0] audio_frame_id = 0;
     reg [31:0] audio_sample_count = 0;
     reg audio_end_valid = 0, audio_end_ok = 0;
+    reg [3:0] audio_end_reason = 0;
     reg [15:0] audio_end_id = 0;
     reg [1:0] effect_mode = 0;
     reg transition_done_toggle = 0;
@@ -69,7 +70,8 @@ module tb_media_transaction_writer;
         .frame_end_reason(frame_end_reason), .frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),
         .audio_frame_id(audio_frame_id), .audio_sample_count(audio_sample_count),
-        .audio_end_valid(audio_end_valid), .audio_end_ok(audio_end_ok), .audio_end_id(audio_end_id),
+        .audio_end_valid(audio_end_valid), .audio_end_ok(audio_end_ok),
+        .audio_end_reason(audio_end_reason), .audio_end_id(audio_end_id),
         .write_clk(write_clk), .write_rst(write_rst), .frame_finish_toggle(finish_toggle),
         .effect_mode(effect_mode), .transition_done_toggle(transition_done_toggle),
         .display_valid(display_valid), .image_index_out(image_index_out),

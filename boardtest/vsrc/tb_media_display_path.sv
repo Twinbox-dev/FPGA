@@ -20,6 +20,7 @@ module tb_media_display_path;
     wire [3:0] frame_end_reason;
     wire [15:0] frame_end_id,audio_frame_id,audio_end_id;
     wire audio_begin_valid,audio_end_valid,audio_end_ok;
+    wire [3:0] audio_end_reason;
     wire [31:0] audio_sample_count;
     wire protocol_error_toggle;
     wire display_valid,image_has_wav,auto_play_status;
@@ -63,7 +64,7 @@ module tb_media_display_path;
         .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),.audio_frame_id(audio_frame_id),
         .audio_sample_count(audio_sample_count),.audio_end_valid(audio_end_valid),
-        .audio_end_ok(audio_end_ok),.audio_end_id(audio_end_id),
+        .audio_end_ok(audio_end_ok),.audio_end_reason(audio_end_reason),.audio_end_id(audio_end_id),
         .protocol_error_toggle(protocol_error_toggle)
     );
     media_transaction_writer #(.FRAME_WORDS(21'd3)) u_writer (
@@ -77,7 +78,7 @@ module tb_media_display_path;
         .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),.audio_frame_id(audio_frame_id),
         .audio_sample_count(audio_sample_count),.audio_end_valid(audio_end_valid),
-        .audio_end_ok(audio_end_ok),.audio_end_id(audio_end_id),
+        .audio_end_ok(audio_end_ok),.audio_end_reason(audio_end_reason),.audio_end_id(audio_end_id),
         .write_clk(write_clk),.write_rst(rst),.frame_finish_toggle(finish_toggle),
         .effect_mode(2'd0),.transition_done_toggle(transition_done_toggle[0]),
         .display_valid(display_valid),.image_index_out(image_index_out),
@@ -130,10 +131,10 @@ module tb_media_display_path;
             stack_ack<=0;
     end
 
-    integer output_packets=0,output_bytes=0;
+    integer output_packets=0,output_bytes=0,audio_i=0;
     reg output_in_packet=0;
-    reg [7:0] packet_types[0:6];
-    reg [7:0] packet_results[0:6];
+    reg [7:0] packet_types[0:12];
+    reg [7:0] packet_results[0:12];
     always @(posedge udp_clk) begin
         if(stack_valid) begin
             if(output_bytes==4) packet_types[output_packets]=stack_data;
@@ -166,6 +167,9 @@ module tb_media_display_path;
     endtask
     task automatic close_packet;
         begin @(negedge udp_clk);rx_valid=0;rx_data=0;repeat(20)@(negedge udp_clk);end
+    endtask
+    task automatic close_packet_drain;
+        begin @(negedge udp_clk);rx_valid=0;rx_data=0;repeat(600)@(negedge udp_clk);end
     endtask
     task automatic header(input [7:0] kind,input [15:0] length);
         begin
@@ -220,7 +224,37 @@ module tb_media_display_path;
                    packet_types[6],packet_results[6]);
         if(!display_valid || image_index_out!=2)
             $fatal(1,"rejected frame replaced committed image");
-        $display("PASS: valid frame commit and checksum reject reason round-trip");
+
+        // A valid image followed by a wrong PCM checksum returns audio reason
+        // 5 through writer CDC and media_display_tx as AUDIO_RESULT=0x15.
+        header(8'h21,8);send_byte(8'h36);send_byte(8'h12);send_byte(2);send_byte(8'h08);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        header(8'h22,16);send_byte(8'h36);send_byte(8'h12);send_byte(0);send_byte(0);
+        send_byte(8'h44);send_byte(8'h33);send_byte(8'h22);send_byte(8'h11);
+        send_byte(8'h88);send_byte(8'h77);send_byte(8'h66);send_byte(8'h55);
+        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet();
+        header(8'h23,8);send_byte(8'h36);send_byte(8'h12);send_byte(8'hbb);send_byte(8'h69);
+        send_byte(8'h36);send_byte(8'h45);send_byte(0);send_byte(0);close_packet();
+        wait(output_packets>=8);
+        header(8'h30,8);send_byte(8'h36);send_byte(8'h12);send_byte(0);send_byte(4);
+        send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        // Match the production 1012-sample packet boundary and a short final
+        // packet, as used by the 480000-sample IMG0.WAV file.
+        header(8'h31,1016);send_byte(8'h36);send_byte(8'h12);send_byte(0);send_byte(0);
+        for (audio_i=0;audio_i<1012;audio_i=audio_i+1) send_byte(1);
+        close_packet_drain();
+        header(8'h31,16);send_byte(8'h36);send_byte(8'h12);send_byte(1);send_byte(0);
+        for (audio_i=0;audio_i<12;audio_i=audio_i+1) send_byte(2);
+        close_packet();
+        header(8'h32,8);send_byte(8'h36);send_byte(8'h12);send_byte(8'h0d);send_byte(8'h04);
+        send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        wait(output_packets>=9);
+        if(packet_types[8]!=8'h33 || packet_results[8]!=8'h15)
+            $fatal(1,"audio checksum reject reason was not preserved: type=%02x result=%02x",
+                   packet_types[8],packet_results[8]);
+        if(image_index_out!=2 || !image_has_wav)
+            $fatal(1,"audio reject committed partial image metadata");
+        $display("PASS: image commit/reject and audio checksum reason round-trip");
         $finish;
     end
     initial begin #20000000;$fatal(1,"timeout");end
