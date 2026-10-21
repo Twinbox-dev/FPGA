@@ -35,6 +35,19 @@ class ConsoleProtocolTests(unittest.TestCase):
         self.assertEqual(CMDS["i"], 0x49)
         self.assertEqual(send_bytes("i"), bytes((0x49, 0xB6)))
 
+    def test_cv_mode_aliases_use_complement_frame(self):
+        expected = {"r": 0x52, "g": 0x47, "b": 0x42,
+                    "e": 0x45, "h": 0x48, "w": 0x57}
+        for key, command in expected.items():
+            self.assertEqual(CMDS[key], command)
+            self.assertEqual(send_bytes(key), bytes((command, command ^ 0xFF)))
+
+    def test_cv_mode_is_reported_in_status_and_ack(self):
+        status = bytes((0xA5, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00))
+        self.assertIn("CV=sobel", decode_pkt(status))
+        ack = bytes((0x5A, 0x45, 0, 1, 0x64, 0, 0, 0))
+        self.assertIn("CV=sobel", __import__("app").decode_ack(ack))
+
     def test_status_explains_audio_reject_reason(self):
         status = bytes((0xA5, 0x75, 0x08, 0x02, 0x00, 0x00, 0x07, 0x00))
         text = decode_pkt(status)
@@ -45,9 +58,10 @@ class ConsoleProtocolTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.get_json()
         keys = {item["key"] for item in result["keys"]}
-        self.assertTrue(set("npa012345+-<>[]s,.q;'ldi").issubset(keys))
+        self.assertTrue(set("npa012345rgb ehw+-<>[]s,.q;'ldi".replace(" ", "")).issubset(keys))
         groups = {group["name"]: group["keys"] for group in result["groups"]}
         self.assertIn("d", keys)  # D is a dedicated button beside the preview.
+        self.assertIn("图像效果", groups)
         self.assertIn("i", groups["SD 卡诊断"])
 
 

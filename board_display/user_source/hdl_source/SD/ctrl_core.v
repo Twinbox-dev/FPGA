@@ -66,6 +66,8 @@ module ctrl_core #(
     output reg [3:0]    auto_period_s,       // 轮播周期（秒，1..10）
     output reg [1:0]    transition_mode,     // 0=直接切，1=交叉溶解，2=柔边替换
     output reg [1:0]    osd_mode,            // 0=off, 1=3s after adjustment, 2=always
+    output reg [2:0]    cv_effect_mode,
+    output [2:0]        cv_effect_gray,
     output [3:0]        vol_gray,
     output [3:0]        bri_gray,            // 亮度档位（格雷码，跨时钟域用）
     output [3:0]        ct_gray,             // 对比度档位（格雷码，跨时钟域用）
@@ -131,6 +133,16 @@ module ctrl_core #(
             endcase
         end
     end
+
+    // CV selection is an absolute SET value so transport retries are
+    // idempotent. The video domain receives a Gray-coded copy and applies it
+    // at a frame boundary.
+    always @(posedge clk or posedge rst) begin
+        if (rst) cv_effect_mode <= 3'd0;
+        else if (set_valid && set_op == 8'd9 && set_value <= 8'd5)
+            cv_effect_mode <= set_value[2:0];
+    end
+    assign cv_effect_gray = (cv_effect_mode >> 1) ^ cv_effect_mode;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin

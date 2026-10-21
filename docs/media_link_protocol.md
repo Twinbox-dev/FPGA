@@ -118,3 +118,18 @@ python scripts/pc_media_display_stub.py --card-image img/card_user_real.img --fr
 ```
 
 `--card-image` 从 raw MBR/FAT32 卡镜像读取 WAV 并逐字节比较。IMG1 的 460,800 个图像字和 720,000 个 PCM 样本已与 BMP/WAV golden 完全匹配；第二条命令再验证正式 D 快照。测试后恢复媒体板目标 `.2:1` 并重新综合 bit。
+
+## Runtime CV image effects
+
+The display-board `0x0040 SET` operation 9 selects an HDMI-only image effect. Values are absolute and the display applies the value at the next input frame boundary.
+
+| Value | Effect | Legacy PC/UART key |
+| ---: | --- | --- |
+| 0 | Original RGB pass-through (default) | R |
+| 1 | Grayscale | G |
+| 2 | Binary threshold | B |
+| 3 | Sobel gradient | E |
+| 4 | Sharpen | H |
+| 5 | Moving snow | W |
+
+The existing 8-byte V1 ACK and A5 status layouts are unchanged. In non-subtitle ACKs and normal A5 status packets, the upper three bits of `image_index` carry the current CV mode and the lower five bits retain the image index. For display `0x0043 STATUS`, the upper three bits of the `volume` byte (`[6:4]`) carry CV mode while `[3:0]` remain volume. Bit 7 remains zero. Subtitle ACK `image_index` remains the subtitle RX count.

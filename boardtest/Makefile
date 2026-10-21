@@ -335,7 +335,15 @@ media-eth-subtitle-rx:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_eth_subtitle_rx vsrc/tb_media_eth_subtitle_rx.sv ../board_media/user_source/hdl_source/ETH/eth_front.v ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_eth_subtitle_rx -o sim_media_eth_subtitle_rx
 	./build_media_eth_subtitle_rx/sim_media_eth_subtitle_rx
 
-.PHONY: touch-command-path
+.PHONY: touch-command-path cv-unit
+
+# HDMI-only CV pixel effects: all modes share a deterministic raster stimulus.
+build_cv_pixel_effects/sim_cv_pixel_effects: vsrc/tb_cv_pixel_effects.sv $(TSD)/cv_pixel_effects.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_cv_pixel_effects $^ --Mdir build_cv_pixel_effects -o sim_cv_pixel_effects
+
+cv-unit: build_cv_pixel_effects/sim_cv_pixel_effects
+	./build_cv_pixel_effects/sim_cv_pixel_effects
+
 touch-command-path:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_touch_command_path vsrc/tb_touch_command_path.sv ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_media/user_source/hdl_source/ETH/eth_front.v --Mdir build_touch_command_path -o sim_touch_command_path
 	./build_touch_command_path/sim_touch_command_path

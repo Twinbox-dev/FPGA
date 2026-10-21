@@ -239,7 +239,7 @@ module top (
         .media_state(media_status_state),
         .debug_request(control_debug_request),.pc_snapshot_request(pc_snapshot_request),
         .auto_on(auto_on),.auto_period_s(auto_period_s),.volume(),.brightness(),.contrast(),
-        .effect(),.osd_mode(),.spectrum_on(),.spectrum_sensitivity(),.last_control_error()
+        .effect(),.cv_mode(),.osd_mode(),.spectrum_on(),.spectrum_sensitivity(),.last_control_error()
     );
     // Ethernet D requests use the formal on-demand snapshot transaction.
     // UART D retains the raw source probe for bench diagnostics.

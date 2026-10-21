@@ -49,6 +49,7 @@ module media_display_control_rx (
                 8'd4, 8'd5: set_value_valid = (value <= 8'd2);
                 8'd6:       set_value_valid = (value <= 8'd1);
                 8'd7:       set_value_valid = (value <= 8'd3);
+                8'd9:       set_value_valid = (value <= 8'd5);
                 default:    set_value_valid = 1'b0;
             endcase
         end

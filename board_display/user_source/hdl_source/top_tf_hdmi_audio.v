@@ -43,6 +43,9 @@ parameter BUF2_ADDR     = 24'd921600;
 parameter BUF3_ADDR     = 24'd1509376;
 parameter MEDIA_PEER_IP = 32'hc0a88903;  // 媒体板 UDP 目标地址
 parameter MEDIA_PEER_PORT = 16'h0001;    // 媒体板正式应用端口
+// Runtime CV effect reset/default: 0 bypass, 1 grayscale, 2 binary,
+// 3 Sobel, 4 sharpen, 5 moving snow.
+parameter CV_EFFECT_MODE = 0;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -60,6 +63,8 @@ wire de;
 
 wire [23:0] vout_data_raw;
 wire [23:0] vout_data;
+wire [23:0] cv_data;
+wire cv_de, cv_vs;
 wire [23:0] osd_rgb;
 wire osd_de, osd_vs;
 wire [23:0] cursor_rgb;
@@ -68,6 +73,8 @@ wire cursor_online, cursor_req_toggle, cursor_ack_toggle;
 wire [10:0] cursor_mailbox_x;
 wire [9:0] cursor_mailbox_y;
 wire [1:0] osd_mode_cfg;
+wire [2:0] cv_effect_mode_cfg;
+wire [2:0] cv_effect_gray_cfg;
 wire [3:0] vol_gray;
 wire panel_show, panel_text_on, panel_band;
 wire [3:0] panel_bri_level, panel_ct_level, panel_vol_level;
@@ -361,6 +368,8 @@ ctrl_core #(
     .auto_period_s  (auto_period_s),
     .transition_mode (transition_mode_cfg),
     .osd_mode       (osd_mode_cfg),
+    .cv_effect_mode (cv_effect_mode_cfg),
+    .cv_effect_gray (cv_effect_gray_cfg),
     .vol_gray       (vol_gray),
     .bri_gray       (bri_gray),
     .ct_gray        (ct_gray),
@@ -689,7 +698,7 @@ always @(posedge sd_card_clk or posedge rst_all) begin
                 {6'd0, sensitivity_value}, {7'd0, bar_en},
                 {6'd0, osd_mode_cfg}, {6'd0, transition_mode_cfg},
                 {4'd0, contrast_value}, {4'd0, brightness_value},
-                {4'd0, vol_gain}, status_sequence_s1
+                {1'b0, cv_effect_mode_cfg, vol_gain}, status_sequence_s1
             };
             status_snapshot_toggle_sd <= ~status_snapshot_toggle_sd;
         end
@@ -884,6 +893,15 @@ wire [3:0] bri_bin_v = {bri_gray_s1[3],
                         bri_gray_s1[3] ^ bri_gray_s1[2] ^ bri_gray_s1[1] ^ bri_gray_s1[0]};
 wire signed [9:0] bri_off = $signed({1'b0, bri_bin_v, 4'b0}) - $signed(10'd64);  // (level-4)×16
 
+reg [2:0] cv_gray_s0, cv_gray_s1;
+always @(posedge video_clk) begin
+    cv_gray_s0 <= cv_effect_gray_cfg;
+    cv_gray_s1 <= cv_gray_s0;
+end
+wire [2:0] cv_mode_video = {cv_gray_s1[2],
+                            cv_gray_s1[2] ^ cv_gray_s1[1],
+                            cv_gray_s1[2] ^ cv_gray_s1[1] ^ cv_gray_s1[0]};
+
 // 逐像素调节。对比度增益表（档位:增益）：
 //   0:0.5   1:0.75   2:1.0(原始)   3:1.25   4:1.5   5:1.75   6:2.0
 function [7:0] adj_px;
@@ -907,10 +925,6 @@ function [7:0] adj_px;
     end
 endfunction
 
-wire [23:0] vout_adj = {adj_px(vout_data_raw[23:16], ct_bin_v),
-                        adj_px(vout_data_raw[15:8],  ct_bin_v),
-                        adj_px(vout_data_raw[7:0],   ct_bin_v)};
-
 // Genuine selected-bin DFT of the played PCM. The present WAV is 24 kHz,
 // 8-bit mono expanded to 24-bit HDMI words; take one of each repeated pair.
 // A future native 24-bit source can use the same analyzer input.
@@ -918,6 +932,26 @@ wire [127:0] spectrum_levels;
 wire spectrum_done_toggle, spectrum_ack_toggle;
 wire [23:0] spectrum_rgb;
 wire spectrum_hit, spectrum_shade;
+
+// Optional HDMI-only computer-vision effects. Processing precedes brightness,
+// spectrum and OSD so line RAMs can retain exact RGB565 source pixels while
+// the UI and spectrum graphics remain aligned to the processed video timing.
+cv_pixel_effects_runtime #(
+    .H_ACTIVE   (1280),
+    .H_TOTAL    (1650),
+    .V_ACTIVE   (720),
+    .MODE_DEFAULT (CV_EFFECT_MODE)
+) u_cv_pixel_effects (
+    .clk (video_clk), .rst (rst_all),
+    .rgb_in (vout_data_raw), .de_in (de), .vs_in (vs),
+    .mode_raw (cv_mode_video),
+    .rgb_out (cv_data), .de_out (cv_de), .vs_out (cv_vs)
+);
+
+wire [23:0] vout_adj = {adj_px(cv_data[23:16], ct_bin_v),
+                        adj_px(cv_data[15:8],  ct_bin_v),
+                        adj_px(cv_data[7:0],   ct_bin_v)};
+
 spectrum_dft u_spectrum_dft (
     .clk (sd_card_clk), .rst (rst_all),
     .aud_tick (aud_tick), .aud_valid (aud_valid),
@@ -926,7 +960,7 @@ spectrum_dft u_spectrum_dft (
     .levels (spectrum_levels), .done_toggle (spectrum_done_toggle)
 );
 spectrum_overlay u_spectrum_overlay (
-    .video_clk (video_clk), .rst (rst_all), .de (de), .vs (vs),
+    .video_clk (video_clk), .rst (rst_all), .de (cv_de), .vs (cv_vs),
     .enable_raw (bar_en),
     .levels_raw (spectrum_levels), .done_toggle_raw (spectrum_done_toggle),
     .ack_toggle (spectrum_ack_toggle),
@@ -959,7 +993,7 @@ subtitle_scroll u_subtitle_scroll (
 );
 
 subtitle_text_renderer u_subtitle_renderer (
-    .video_clk (video_clk), .rst (rst_all), .de (de), .vs (vs),
+    .video_clk (video_clk), .rst (rst_all), .de (cv_de), .vs (cv_vs),
     .ox (subtitle_ox), .oy (subtitle_oy),
     .text_len (subtitle_active_len),
     .char_index (subtitle_char_index), .char_data (subtitle_char_data),
@@ -979,7 +1013,7 @@ osd_visibility u_osd_visibility (
 );
 
 osd_panel_levels u_osd_panel (
-    .video_clk (video_clk), .rst (rst_all), .de (de), .vs (vs),
+    .video_clk (video_clk), .rst (rst_all), .de (cv_de), .vs (cv_vs),
     .brightness_level (panel_bri_level),
     .contrast_level (panel_ct_level),
     .volume_level (panel_vol_level),
@@ -998,7 +1032,7 @@ font_rom_2r u_shared_font (
 
 osd_composite u_osd_composite (
     .video_clk (video_clk), .rst (rst_all),
-    .video_in (vout_data), .de_in (de), .vs_in (vs),
+    .video_in (vout_data), .de_in (cv_de), .vs_in (cv_vs),
     .panel_show (panel_show), .panel_text_on (panel_text_on),
     .panel_band (panel_band),
     .subtitle_text_on (subtitle_text_on),

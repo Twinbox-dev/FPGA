@@ -37,6 +37,12 @@ const mockKeys = {
   ],
 };
 
+mockKeys.keys.push(
+  {key:'r',label:'raw'}, {key:'g',label:'gray'}, {key:'b',label:'binary'},
+  {key:'e',label:'Sobel'}, {key:'h',label:'sharpen'}, {key:'w',label:'snow'},
+);
+mockKeys.groups.splice(2, 0, {name:'\u56fe\u50cf\u6548\u679c', keys:['r','g','b','e','h','w']});
+
 async function choosePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => {
@@ -168,9 +174,13 @@ async function capture(cdp, name, width, height) {
     })()`);
     const controls = await cdp.evaluate(`(async () => {
       await buildPad();
-      const required = ['0','1','2','3','4','5','i','l'];
+      const required = ['0','1','2','3','4','5','r','g','b','e','h','w','i','l'];
       const missing = required.filter(k => !document.querySelector('#pad button[data-k="'+k+'"]'));
       if (missing.length) throw new Error('missing controls: '+missing.join(','));
+      parseMetrics('CV=sobel');
+      if (document.getElementById('mCv').textContent !== 'Sobel' ||
+          !document.querySelector('#pad button[data-k="e"]').classList.contains('on'))
+        throw new Error('CV status did not select/highlight the reported effect');
       document.getElementById('btnSnapshot').click();
       await new Promise(resolve => setTimeout(resolve, 0));
       const padButtons = Array.from(document.querySelectorAll('#pad button[data-k]'));

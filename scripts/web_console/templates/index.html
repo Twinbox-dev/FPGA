@@ -477,6 +477,7 @@
         <div class="m"><div class="v" id="mPer">–</div><div class="k">轮播周期</div></div>
         <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度 / 对比度</div></div>
         <div class="m"><div class="v" id="mAuto">–</div><div class="k">自动轮播</div></div>
+        <div class="m"><div class="v" id="mCv">raw</div><div class="k">图像效果</div></div>
       </div>
     </section>
 
@@ -533,12 +534,16 @@ let mode = "serial";            // serial | eth
 let connected = false, count = 0, pollTimer = null;
 let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两个数
 const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
+const CV_KEY_BY_NAME = {raw:"r", gray:"g", binary:"b", sobel:"e", sharpen:"h", snow:"w"};
+const CV_LABEL_BY_NAME = {raw:"\u539f\u56fe", gray:"\u7070\u5ea6", binary:"\u4e8c\u503c\u5316", sobel:"Sobel", sharpen:"\u9510\u5316", snow:"\u96ea\u82b1"};
 const log = document.getElementById("log");
 const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
               ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅", ".":"◑", ",":"◐",
               "q":"🎵", "i":"▤", "l":"📋", "0":"▣", "1":"◐", "2":"⇠"};
+Object.assign(ICON, {r:"\u25c9", g:"\u25d0", b:"\u25a7", e:"\u2301", h:"\u2726", w:"\u2744"});
 const RANGE = {"播放":"", "切换特效":"约 1 秒", "音量":"0–8", "轮播周期":"1–10s",
                "亮度 / 对比度":"亮度 0–8 · 对比度 0–6", "SD 卡诊断":"原生 SD 状态"};
+RANGE["\u56fe\u50cf\u6548\u679c"] = "HDMI image mode";
 
 /* ---------- toast ---------- */
 let toastT = null;
@@ -705,6 +710,15 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
         <button data-k="i"><span class="ico">▤</span><span>查询卡状态</span><span class="key">I</span></button>
         <button data-k="l"><span class="ico">📋</span><span>列表转储</span><span class="key">L</span></button>
       </div></div>`;
+  host.insertAdjacentHTML("beforeend", `<div class="grp"><div class="grp-t"><span class="bar"></span>CV image effect</div>
+    <div class="btns">
+      <button data-k="r"><span class="ico">◉</span><span>Raw</span><span class="key">R</span></button>
+      <button data-k="g"><span class="ico">◐</span><span>Gray</span><span class="key">G</span></button>
+      <button data-k="b"><span class="ico">◧</span><span>Binary</span><span class="key">B</span></button>
+      <button data-k="e"><span class="ico">⌁</span><span>Sobel</span><span class="key">E</span></button>
+      <button data-k="h"><span class="ico">✦</span><span>Sharpen</span><span class="key">H</span></button>
+      <button data-k="w"><span class="ico">❄</span><span>Snow</span><span class="key">W</span></button>
+    </div></div>`);
   host.querySelectorAll("button").forEach(b => {
     b.disabled = !connected;
     b.onclick = () => sendKey(b.dataset.k);
@@ -828,6 +842,7 @@ function parseMetrics(text){
   const c = g(/对比度=(\d+)/);             // ACK flags bit[3:1] / 状态包 flagA 高 4 位
   const bar = g(/频谱=(开|关)/);           // ACK flags bit4（'Q' 应答）
   const sn  = g(/灵敏度=(\d)/);            // ACK flags bit[6:5]
+  const cv  = g(/CV=([a-z]+)/);
   if (v !== null){ document.getElementById("mVol").textContent = v; flash("mVol"); }
   if (p !== null){ document.getElementById("mPer").textContent = p; flash("mPer"); }
   if (b !== null){ briShown = b; }          // 亮度与对比度合成一个瓦片：4/2
@@ -843,6 +858,15 @@ function parseMetrics(text){
     flash("mAuto");
     const btn = document.querySelector('#pad button[data-k="a"]');
     if (btn) btn.classList.toggle("on", on);
+  }
+  if (cv !== null && cv !== "n/a"){
+    document.getElementById("mCv").textContent = CV_LABEL_BY_NAME[cv] || cv;
+    flash("mCv");
+    const activeKey = CV_KEY_BY_NAME[cv];
+    if (activeKey) document.querySelectorAll("#pad button[data-k]").forEach(btn => {
+      if (Object.values(CV_KEY_BY_NAME).includes(btn.dataset.k))
+        btn.classList.toggle("on", btn.dataset.k === activeKey);
+    });
   }
   if (bar !== null){                        // Q 按钮高亮跟随板端状态（ACK 驱动）
     const btn = document.querySelector('#pad button[data-k="q"]');

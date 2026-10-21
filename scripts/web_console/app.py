@@ -48,7 +48,9 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
         "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44, "i": 0x49,
         "0": 0x30, "1": 0x31, "2": 0x32,
-        "3": 0x33, "4": 0x34, "5": 0x35}
+        "3": 0x33, "4": 0x34, "5": 0x35,
+        "r": 0x52, "g": 0x47, "b": 0x42,
+        "e": 0x45, "h": 0x48, "w": 0x57}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
         "+": "音量+", "-": "音量-", ">": "周期+1s", "<": "周期-1s",
         "]": "亮度+", "[": "亮度-", ".": "对比度+", ",": "对比度-",
@@ -56,6 +58,10 @@ HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一
         "0": "直接切", "1": "交叉溶解", "2": "柔边滑动",
         "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示",
         "i": "SD 卡状态诊断"}
+
+HELP.update({"r": "\u539f\u56fe\u76f4\u901a", "g": "\u7070\u5ea6", "b": "\u4e8c\u503c\u5316",
+             "e": "Sobel \u68af\u5ea6", "h": "\u56fe\u50cf\u9510\u5316", "w": "\u96ea\u82b1"})
+CV_MODE_NAMES = {0: "raw", 1: "gray", 2: "binary", 3: "sobel", 4: "sharpen", 5: "snow"}
 
 
 def decode_dump(pkt: bytes) -> str:
@@ -209,8 +215,11 @@ def decode_pkt(pkt: bytes) -> str:
         source = (f"media-TX={tx_names.get(media_tx_state, str(media_tx_state))} "
                   f"error={error_text}({media_tx_error}) FAT=0x{fat:02X} | ")
 
+    cv_mode = (img >> 5) & 7
+    cv_text = CV_MODE_NAMES.get(cv_mode, "unknown") if not (und & 1) else "n/a"
     return (f"{source}buf={fb & 3} img={img & 0x1F}"
             f"{'+wav' if wav & 1 else ''} | "
+            f"CV={cv_text} | "
             f"对比度={ct}/6 特效={effect_s} 面板={osd_s} 自动轮播={'开' if auto_on else '关'} | "
             f"OK: {fa_s or '-'} {fb_s or '-'} | 异常: {und_s or '无'}")
 
@@ -232,6 +241,8 @@ def decode_ack(pkt: bytes) -> str:
             0x30: "直接切", 0x31: "交叉溶解", 0x32: "柔边滑动",
             0x33: "面板关闭", 0x34: "面板调节后 3 秒", 0x35: "面板始终显示",
             0x54: "字幕上传"}.get(cmd, f"0x{cmd:02X}")
+    if cmd in (0x52, 0x47, 0x42, 0x45, 0x48, 0x57):
+        name = f"CV {CV_MODE_NAMES.get((img >> 5) & 7, 'unknown')}"
     img_s = f"img={img & 0x1F}{'+wav' if wav & 1 else ''}"
     RESULT = {0: '进行中', 1: 'img_err', 2: '超时', 3: '成功'}
     LDNAME = {0: 'IDLE', 1: 'FILL_REQ', 2: 'FILL_RUN', 3: 'FILE',
@@ -265,7 +276,8 @@ def decode_ack(pkt: bytes) -> str:
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
                                         f"对比度={ct}/6 {bar_s} {img_s} "
                                         f"自动轮播={'开' if flags & 1 else '关'} | {diag}")
-    return f"ACK {name} | {detail}"
+    cv_text = "" if cmd == 0x54 else f" | CV={CV_MODE_NAMES.get((img >> 5) & 7, 'unknown')}"
+    return f"ACK {name} | {detail}{cv_text}"
 
 
 # ---------------------------------------------------------------------------
@@ -978,7 +990,7 @@ def api_ports():
 @app.route("/api/keys")
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
-    order = ["p", "n", "a", "s", "0", "1", "2", "3", "4", "5", "-", "+", "<", ">", "[", "]",
+    order = ["p", "n", "a", "s", "0", "1", "2", "3", "4", "5", "r", "g", "b", "e", "h", "w", "-", "+", "<", ">", "[", "]",
              ",", ".", ";", "'", "q", "i", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
                ("切换特效", ["0", "1", "2"]),
@@ -989,6 +1001,7 @@ def api_keys():
               ("音频频谱", [";", "'", "q"]),
               ("SD 卡诊断", ["i"]),
               ("调试", ["l"])]
+    groups.insert(2, ("\u56fe\u50cf\u6548\u679c", ["r", "g", "b", "e", "h", "w"]))
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 

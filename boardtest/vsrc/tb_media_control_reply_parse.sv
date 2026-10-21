@@ -11,6 +11,7 @@ module tb_media_control_reply_parse;
     reg tx_done_tog=0;
     wire [3:0] volume,brightness,contrast;
     wire [1:0] effect,osd_mode,spectrum_sensitivity;
+    wire [2:0] cv_mode;
     wire spectrum_on;
     wire debug_request,pc_snapshot_request,auto_on;
     wire [3:0] auto_period_s;
@@ -37,7 +38,7 @@ module tb_media_control_reply_parse;
         .fat_state(8'd0),.fat_error(1'b0),.media_state(4'd0),
         .debug_request(debug_request),.pc_snapshot_request(pc_snapshot_request),
         .auto_on(auto_on),.auto_period_s(auto_period_s),.volume(volume),
-        .brightness(brightness),.contrast(contrast),.effect(effect),.osd_mode(osd_mode),
+        .brightness(brightness),.contrast(contrast),.effect(effect),.cv_mode(cv_mode),.osd_mode(osd_mode),
         .spectrum_on(spectrum_on),.spectrum_sensitivity(spectrum_sensitivity),
         .last_control_error(last_control_error)
     );
@@ -80,16 +81,25 @@ module tb_media_control_reply_parse;
             $fatal(1,"0x0041 ACK was not accepted: volume=%0d err=%0d",volume,last_control_error);
 
         wait(dut.state==0);
+        send_command(8'h47); // G selects grayscale (SET op 9, value 1).
+        wait(dut.state==2);
+        if(tx_type!==16'h0040 || tx_pkt[15:8]!==8'd9 || tx_pkt[23:16]!==8'd1)
+            $fatal(1,"CV mode was not forwarded as SET op9/value1: %04x %016x",tx_type,tx_pkt);
+        send_reply(8'h41,16'd4,{32'd0,8'd1,8'd0,8'd9,tx_pkt[7:0]});
+        if(cv_mode!==3'd1 || last_control_error!==0)
+            $fatal(1,"CV mode ACK was not accepted: mode=%0d err=%0d",cv_mode,last_control_error);
+
+        wait(dut.state==0);
         send_command(8'h53);
         wait(dut.state==3);
         if(tx_type!==16'h0042)$fatal(1,"expected STATUS request, got %04x",tx_type);
         // [0x00,0x43] STATUS returns every display-side control setting.
-        send_reply(8'h43,16'd8,{8'd3,8'd1,8'd2,8'd2,8'd3,8'd5,8'd7,8'd1});
+        send_reply(8'h43,16'd8,{8'd3,8'd1,8'd2,8'd2,8'd3,8'd5,8'h47,8'd2});
         if(volume!==4'd7 || brightness!==4'd5 || contrast!==4'd3 ||
-           effect!==2'd2 || osd_mode!==2'd2 || spectrum_on!==1'b1 || spectrum_sensitivity!==2'd3)
-            $fatal(1,"0x0043 STATUS was not accepted: vol=%0d bri=%0d contrast=%0d effect=%0d osd=%0d spec=%b sens=%0d",
-                   volume,brightness,contrast,effect,osd_mode,spectrum_on,spectrum_sensitivity);
-        $display("PASS: media board accepts V1 big-endian 0x0041 ACK and 0x0043 STATUS replies");
+           effect!==2'd2 || cv_mode!==3'd4 || osd_mode!==2'd2 || spectrum_on!==1'b1 || spectrum_sensitivity!==2'd3)
+            $fatal(1,"0x0043 STATUS was not accepted: vol=%0d bri=%0d contrast=%0d effect=%0d cv=%0d osd=%0d spec=%b sens=%0d",
+                   volume,brightness,contrast,effect,cv_mode,osd_mode,spectrum_on,spectrum_sensitivity);
+        $display("PASS: media board forwards CV SET and decodes CV ACK/STATUS");
         $finish;
     end
     initial begin

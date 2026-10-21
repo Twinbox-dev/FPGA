@@ -53,6 +53,7 @@ module media_control_core #(
     output reg [3:0] brightness,
     output reg [3:0] contrast,
     output reg [1:0] effect,
+    output reg [2:0] cv_mode,
     output reg [1:0] osd_mode,
     output reg spectrum_on,
     output reg [1:0] spectrum_sensitivity,
@@ -119,7 +120,7 @@ module media_control_core #(
     wire [7:0] status_flags={1'b0,effect,auto_on,1'b0,fat_error,2'b00};
     wire [63:0] status_payload={
         {7'd0,(paired_wav)},
-        {3'd0,current_index},
+        {cv_mode,current_index},
         {2'b00,osd_mode,4'b0000},
         status_flags,
         {4'd0,contrast},
@@ -150,7 +151,7 @@ module media_control_core #(
             ack_wav=(key==8'h54) ? {3'b101,last_control_error[3:0],paired_wav} : {7'd0,paired_wav};
             ack_volume=(key==8'h54) ? subtitle_checksum : {4'd0,volume};
             ack_period=(key==8'h54) ? subtitle_length : {4'd0,auto_period_s};
-            ack_index=(key==8'h54) ? subtitle_rx_count : {3'd0,current_index};
+            ack_index=(key==8'h54) ? subtitle_rx_count : {cv_mode,current_index};
             ack_picture_byte=(key==8'h54) ? subtitle_calc_checksum : ack_picture;
             body={{subtitle_ok,spectrum_sensitivity,spectrum_on,contrast[2:0],auto_on},ack_picture_byte,
                   ack_wav,ack_index,ack_period,
@@ -301,7 +302,7 @@ module media_control_core #(
             tx_done_ref<=0;timeout_count<=0;request_attempts<=0;
             cmd_ack_t<=0;tx_tog<=0;tx_type<=16'h0002;tx_payload_len<=8;tx_pkt<=0;
             debug_request<=0;pc_snapshot_request<=0;auto_on<=0;auto_period_s<=1;volume<=8;brightness<=4;
-            contrast<=2;effect<=0;osd_mode<=1;spectrum_on<=0;spectrum_sensitivity<=1;last_control_error<=0;
+            contrast<=2;effect<=0;cv_mode<=0;osd_mode<=1;spectrum_on<=0;spectrum_sensitivity<=1;last_control_error<=0;
         end else begin
             debug_request<=0;pc_snapshot_request<=0;uart_tx_req<=0;bt_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
             if(local_auto_toggle)auto_on<=~auto_on;
@@ -370,6 +371,12 @@ module media_control_core #(
                         8'h33:start_display_set(event_cmd,5,0);
                         8'h34:start_display_set(event_cmd,5,1);
                         8'h35:start_display_set(event_cmd,5,2);
+                        8'h52:start_display_set(event_cmd,9,0); // R: original pixels
+                        8'h47:start_display_set(event_cmd,9,1); // G: grayscale
+                        8'h42:start_display_set(event_cmd,9,2); // B: binary threshold
+                        8'h45:start_display_set(event_cmd,9,3); // E: Sobel
+                        8'h48:start_display_set(event_cmd,9,4); // H: sharpen
+                        8'h57:start_display_set(event_cmd,9,5); // W: snow
                         8'h51:start_display_set(event_cmd,6,spectrum_on ? 8'd0 : 8'd1);
                         8'h27:start_display_set(event_cmd,7,(spectrum_sensitivity < 2'd3) ? ({6'd0,spectrum_sensitivity}+8'd1) : 8'd3);
                         8'h3B:start_display_set(event_cmd,7,(spectrum_sensitivity > 2'd0) ? ({6'd0,spectrum_sensitivity}-8'd1) : 8'd0);
@@ -418,6 +425,7 @@ module media_control_core #(
                                     5:osd_mode<=display_ack_value[1:0];
                                     6:spectrum_on<=display_ack_value[0];
                                     7:spectrum_sensitivity<=display_ack_value[1:0];
+                                    9:cv_mode<=display_ack_value[2:0];
                                 endcase
                             end else last_control_error<=2;
                             state<=PREP_ACK;
@@ -440,6 +448,7 @@ module media_control_core #(
                         contrast<=display_status_contrast[3:0];effect<=display_status_effect[1:0];
                         osd_mode<=display_status_osd[1:0];spectrum_on<=display_status_spectrum[0];
                         spectrum_sensitivity<=display_status_sensitivity[1:0];
+                        cv_mode<=display_status_volume[6:4];
                         state<=PREP_STATUS;
                     end else if(timeout_count>=WAIT_LIMIT) begin last_control_error<=4;state<=PREP_STATUS;end
                 end
@@ -476,7 +485,7 @@ module media_control_core #(
                 PREP_STATUS:send_status();
                 WAIT_STATUS_TX:if(tx_done_tog!=tx_done_ref)begin
                     tx_type<=16'h0002;tx_payload_len<=8;
-                    tx_pkt<={ack_flags,ack_picture,{7'd0,paired_wav},{3'd0,current_index},
+                    tx_pkt<={ack_flags,ack_picture,{7'd0,paired_wav},{cv_mode,current_index},
                              {4'd0,auto_period_s},{4'd0,volume},8'h53,8'h5A};
                     tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=WAIT_STATUS_ACK_TX;
                 end
