@@ -305,6 +305,97 @@
     .log { height:38vh; }
   }
 </style>
+<style>
+  :root {
+    --bg0:#070b12; --bg1:#0c1420; --panel:#101a28; --line:#24354a;
+    --fg:#e7eef8; --dim:#91a0b4; --faint:#718198;
+    --acc:#4bd4f2; --acc2:#91a8ff; --ok:#61d4a4; --err:#ff8585; --warn:#f4cc7a;
+    --mw:1560px;
+  }
+  body { background:radial-gradient(1000px 500px at 80% -15%,#143044 0,transparent 65%),
+         linear-gradient(160deg,var(--bg0),var(--bg1)); }
+  header { background:rgba(8,13,21,.92); border-bottom-color:#1d2b3c; }
+  .hwrap { max-width:var(--mw); padding:12px 24px; }
+  .logo h1 { font-size:18px; }
+  main { max-width:var(--mw); grid-template-columns:minmax(320px,.82fr) minmax(0,1.28fr);
+         align-items:start; gap:18px; margin-top:18px; padding:0 24px; }
+  main > div { min-width:0; }
+  .card { background:linear-gradient(165deg,rgba(17,27,42,.97),rgba(12,19,30,.97));
+          border-color:var(--line); border-radius:13px; padding:16px; margin-bottom:14px; }
+  .card h2 { color:#9cadc3; letter-spacing:.08em; font-size:12px; }
+  .grp { margin-bottom:12px; }
+  .grp-t { color:#a7b7cc; font-size:12px; }
+  .btns { gap:8px; }
+  .btns button { min-height:42px; background:#121e2d; border-color:#26384e; }
+  .btns button:hover:not(:disabled) { background:#173044; }
+  .btns.q4 button { min-height:68px; }
+  .metrics { gap:7px; }
+  .m { background:#0b121d; border-color:#26384e; padding:10px 3px; }
+  .m .v { font-size:20px; }
+  .conn select,.conn input,textarea { background:#0b121d !important; border-color:#2b3e55 !important; }
+  .term { border-color:#26384e; background:#070b12; }
+  .termbar { background:#0c1420; }
+  .log { height:min(38vh,340px); }
+  details.card > summary { margin:0; padding:0; color:#afbdd0; }
+  details.card[open] > summary { margin-bottom:14px; }
+  details.card > summary::before { color:var(--acc); }
+  .preview-head { display:flex; align-items:center; gap:12px; }
+  .preview-head h2 { margin:0; flex:1; }
+  .preview-tools { display:flex; align-items:center; gap:8px; }
+  .preview-tools button,.preview-tabs button {
+    border:1px solid #2b4059; border-radius:8px; background:#132238; color:var(--fg);
+    padding:8px 12px; font:600 12px var(--mono); cursor:pointer;
+  }
+  .preview-tools button.primary { background:linear-gradient(120deg,#43cde9,#9daeff); color:#08111c; border:0; }
+  .preview-tools button:disabled { opacity:.42; cursor:not-allowed; }
+  .preview-tabs { display:flex; gap:8px; margin:14px 0 10px; }
+  .preview-tabs button { color:var(--dim); background:#0c1420; }
+  .preview-tabs button.on { color:#07131c; background:var(--acc); border-color:var(--acc); }
+  .preview-pane[hidden] { display:none; }
+  .frame-wrap { border:1px solid #26384e; border-radius:10px; background:#03060b; overflow:hidden; }
+  .frame-wrap canvas { display:block; width:100%; height:auto; max-height:min(55vh,620px); object-fit:contain; }
+  .frame-hint { min-height:38px; margin:8px 2px 0; color:#a7b7cc; line-height:1.55; }
+  .compare-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .compare-row label { color:var(--dim); font-size:12px; }
+  .compare-row input { max-width:230px; min-width:0; color:var(--dim); }
+  #diffHint,#diffHintRb { color:var(--warn); }
+  .top-status { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+  .status-label { color:var(--faint); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  .sub { font-size:11px; }
+  @media (max-width:1050px) {
+    main { grid-template-columns:minmax(290px,.9fr) minmax(0,1.1fr); padding:0 16px; gap:14px; }
+  }
+  @media (max-width:800px) {
+    main { width:100%; grid-template-columns:minmax(0,1fr); padding:0 12px; }
+    .hwrap { padding:10px 12px; }
+    .metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .preview-tools { gap:5px; }
+    .preview-tools button { padding:7px 9px; }
+    .frame-wrap canvas { max-height:52vh; }
+    .log { height:34vh; }
+  }
+  @media (max-width:520px) {
+    html,body { width:100%; overflow-x:hidden; }
+    .hwrap { gap:9px; }
+    .hwrap > .spacer { display:none; }
+    .logo { flex:1; }
+    .toggle { order:3; width:100%; }
+    .toggle button { flex:1; padding:7px 10px; }
+    .top-status { width:100%; }
+    main > div,.card,.grp,.btns,.frame-wrap { min-width:0; width:100%; }
+    .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .btns,.btns.q4 { width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .btns button { min-width:0; white-space:normal; }
+    .preview-tabs button { flex:1; min-width:0; white-space:normal; }
+    .preview-head { align-items:flex-start; flex-wrap:wrap; }
+    .preview-tools { width:100%; }
+    .preview-tools button { flex:1; }
+    .conn { flex-wrap:wrap; }
+    .conn select { flex:1 1 100%; }
+    .conn input { flex:1 1 110px; }
+    .btns.q4 { grid-template-columns:repeat(2,1fr); }
+  }
+</style>
 </head>
 <body>
 <header>
@@ -316,139 +407,119 @@
     <button id="mEth">以太网控制</button>
   </div>
   <span class="spacer"></span>
-  <span id="linkBadge" class="badge err"><span class="d"></span>串口未连接</span>
-  <span class="sub">1M-8N1 · [CMD,~CMD]</span>
+  <div class="top-status">
+   <span class="status-label">当前通道</span>
+   <span id="linkBadge" class="badge err"><span class="d"></span>串口未连接</span>
+   <span class="sub">[CMD, ~CMD]</span>
+  </div>
  </div>
 </header>
 
 <main>
-  <!-- 左列 -->
-  <div>
-    <div class="card">
-      <h2>控制</h2>
+  <div class="control-column">
+    <section class="card control-card">
+      <h2>播放与图像设置</h2>
       <div id="pad"></div>
-      <div class="hint" id="ctlHint" style="margin-top:14px">
-        按键即发；板卡每条命令都会回 <b>ACK</b>（音量/周期/亮度当前值），
-        <b>S</b> 回系统全景状态包。
-      </div>
-    </div>
+      <div class="hint" id="ctlHint">命令按板卡 ACK 更新状态；S 查询系统状态。</div>
+    </section>
 
-    <div class="card" id="subtitleCard">
+    <section class="card" id="subtitleCard">
       <h2>HDMI 滚动字幕</h2>
       <textarea id="subtitleText" maxlength="160" rows="3"
-        placeholder="输入最多 160 个可打印 ASCII 字符；留空发送可清除字幕"
-        style="width:100%;box-sizing:border-box;resize:vertical;background:#0b111b;color:#e6edf7;border:1px solid #33435a;border-radius:8px;padding:10px;font:13px/1.5 monospace"></textarea>
+        placeholder="最多 160 个可打印 ASCII 字符；留空发送可清除字幕"></textarea>
       <div class="conn" style="margin-top:10px">
         <button class="primary" id="btnSubtitle">发送字幕</button>
-        <button class="ghost" id="btnSubtitleClear">清除</button>
+        <button class="ghost" id="btnSubtitleClear">清除字幕</button>
         <span class="hint" id="subtitleCount">0/160</span>
       </div>
-      <div class="hint" style="margin-top:8px">只叠加在 HDMI；y=504，每帧向左移动 2 像素。发送后以板卡 ACK 为准。</div>
-    </div>
+      <div class="hint" style="margin-top:8px">字幕只叠加在 HDMI；坐标 y=504，速度为每帧 2 像素。以板卡 ACK 为准。</div>
+    </section>
 
-    <div class="card" id="serialCard">
-      <h2>串口连接</h2>
+    <details class="card settings-card" id="serialCard">
+      <summary>串口配置与命令说明</summary>
       <div class="conn">
         <select id="port"><option value="">扫描中…</option></select>
-        <input id="baud" value="1000000" title="波特率">
-        <button class="primary" id="btnConn">连接</button>
+        <input id="baud" value="1000000" title="波特率" aria-label="串口波特率">
+        <button class="primary" id="btnConn">连接串口</button>
         <button class="ghost" id="btnDisc" disabled>断开</button>
       </div>
       <div class="opts">
         <label class="sw"><input type="checkbox" id="autoConn" checked> 唯一串口自动连接</label>
-        <label class="sw"><input type="checkbox" id="poll"> 自动轮询状态 (1s)</label>
-        <button class="ghost" id="btnRefresh" style="padding:4px 10px;font-size:11.5px">刷新串口</button>
+        <label class="sw"><input type="checkbox" id="poll"> 每秒查询状态</label>
+        <button class="ghost" id="btnRefresh">刷新串口</button>
       </div>
-      <div class="hint" style="margin-top:12px">
-        串口独占：使用本页前请关掉其他占用串口的程序。<br>
-        页面聚焦时可直接敲键盘发送（同面板按键）。
-      </div>
+      <p class="hint">串口使用 8N1；默认波特率 1 Mbps。串口被其他程序占用时，先关闭占用程序。</p>
       <details>
-        <summary>命令说明 / underrun 位解读</summary>
+        <summary>命令范围</summary>
         <div class="tbl">
           <table class="cmd">
-            <thead>
-              <tr><th>键位</th><th>功能</th><th>取值范围</th><th>上电默认</th></tr>
-            </thead>
+            <thead><tr><th>功能</th><th>命令</th><th>范围</th></tr></thead>
             <tbody>
-              <tr class="sep"><td colspan="4">播放控制</td></tr>
-              <tr><td class="k"><span class="key">N</span></td><td class="nm">下一张</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
-              <tr><td class="k"><span class="key">P</span></td><td class="nm">上一张</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
-              <tr><td class="k"><span class="key">A</span></td><td class="nm">自动轮播</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
-              <tr><td class="k"><span class="key">S</span></td><td class="nm">状态回读</td><td class="rg zz">—</td><td class="df zz">—</td></tr>
-              <tr class="sep"><td colspan="4">参数调节</td></tr>
-              <tr>
-                <td class="k"><span class="key">+</span><span class="key">-</span></td>
-                <td class="nm">音量 +/-</td><td class="rg">0–8</td><td class="df">8（原始）</td>
-              </tr>
-              <tr>
-                <td class="k"><span class="key">&gt;</span><span class="key">&lt;</span></td>
-                <td class="nm">轮播周期 +/-1s</td><td class="rg">1–10 s</td><td class="df">1 s</td>
-              </tr>
-              <tr>
-                <td class="k"><span class="key">]</span><span class="key">[</span></td>
-                <td class="nm">亮度 +/-</td><td class="rg">0–8</td><td class="df">4（原始 0 偏移）</td>
-              </tr>
+              <tr><td>播放/状态</td><td>N、P、A、S</td><td>下一张、上一张、轮播、状态</td></tr>
+              <tr><td>音量/周期</td><td>+ - / &lt; &gt;</td><td>音量 0–8；周期 1–10 秒</td></tr>
+              <tr><td>亮度/对比度</td><td>[ ] / , .</td><td>亮度 0–8；对比度 0–6</td></tr>
+              <tr><td>转场/OSD</td><td>0–5</td><td>直接/溶解/滑动；OSD 关闭/3 秒/常显</td></tr>
+              <tr><td>频谱</td><td>Q、;、'</td><td>开关与灵敏度 0–3</td></tr>
+              <tr><td>调试/字幕</td><td>L、D、T</td><td>探针、显示快照、ASCII 字幕</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="hint">
-          音量 <b>0</b> = 静音，<b>8</b> = 原始音量；亮度 <b>0–8</b> 共 9 档，
-          <b>4</b> 为原始亮度 0 偏移。键盘上 <code>&lt;</code> <code>&gt;</code>
-          需配合 Shift（即 Shift+, / Shift+.）。<br>
-          <b>underrun 粘滞位</b>：1 = 自复位以来显示期间读 FIFO 曾被读空过一拍，
-          保持到复位、不反映当前状态。开机首帧/切图瞬间的短暂空拍也会钉住
-          （已有稳态窗口缓解）；画面正常时亮起属历史误报，与画面异常同现才是带宽问题。
-        </div>
       </details>
-    </div>
-
-
+    </details>
   </div>
 
-  <!-- 右列 -->
-  <div>
-    <div class="card">
-      <h2>实时状态</h2>
+  <div class="view-column">
+    <section class="card status-card">
+      <h2>板卡状态</h2>
       <div class="metrics">
-        <div class="m"><div class="v" id="mVol">–</div><div class="k">音量 <span class="u">/8</span></div></div>
-        <div class="m"><div class="v" id="mPer">–</div><div class="k">周期 <span class="u">s</span></div></div>
-        <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度<span class="u">/对比度</span></div></div>
-        <div class="m"><div class="v" id="mImg">–</div><div class="k">图片 <span class="u">idx</span></div></div>
+        <div class="m"><div class="v" id="mImg">–</div><div class="k">当前图片</div></div>
+        <div class="m"><div class="v" id="mVol">–</div><div class="k">音量 /8</div></div>
+        <div class="m"><div class="v" id="mPer">–</div><div class="k">轮播周期</div></div>
+        <div class="m"><div class="v" id="mBri">–</div><div class="k">亮度 / 对比度</div></div>
         <div class="m"><div class="v" id="mAuto">–</div><div class="k">自动轮播</div></div>
       </div>
-    </div>
+    </section>
 
-    <!-- 以太网流帧预览（写侧分叉）：收到第一帧时显示 -->
-    <div class="card" id="frameCard" style="display:none">
-      <h2>以太网流帧 <span class="u">（写侧分叉预览）</span></h2>
-      <canvas id="frameCv" width="1280" height="720"
-              style="width:100%;background:#000;border-radius:8px"></canvas>
-      <div class="hint" style="margin-top:6px"><span id="frameHint">等待写侧流帧…</span>
-        <span id="diffHint" style="margin-left:8px"></span></div>
-      <canvas id="frameCvRb" width="1280" height="720"
-              style="width:100%;background:#000;border-radius:8px;margin-top:8px;display:none"></canvas>
-      <div class="hint" style="margin-top:6px"><span id="frameHintRb">PC按D获取当前图像快照</span>
-        <span id="diffHintRb" style="margin-left:8px"></span></div>
-      <div class="hint" style="margin-top:8px">对照原图（BMP）:
-        <input type="file" id="bmpFile" accept=".bmp" style="max-width:180px">
-        <span class="u" style="margin-left:8px">读回花而写侧净 → SDRAM 读/控制器；两者皆净而屏显花 → 显示读通路</span>
+    <section class="card" id="frameCard">
+      <div class="preview-head">
+        <h2>图像预览与像素对比</h2>
+        <div class="preview-tools">
+          <button id="btnSnapshot" class="primary" type="button">D 获取显示快照</button>
+        </div>
       </div>
-    </div>
+      <div class="preview-tabs" role="tablist" aria-label="图像预览类型">
+        <button type="button" class="on" data-frame-view="rb">显示板读回 / D 快照</button>
+        <button type="button" data-frame-view="wr">媒体板写入流</button>
+      </div>
+      <div class="preview-pane" id="frameViewRb">
+        <div class="frame-wrap"><canvas id="frameCvRb" width="1280" height="720"></canvas></div>
+        <div class="frame-hint"><span id="frameHintRb">按 D 获取当前显示板图像快照。</span>
+          <span id="diffHintRb"></span></div>
+      </div>
+      <div class="preview-pane" id="frameViewWr" hidden>
+        <div class="frame-wrap"><canvas id="frameCv" width="1280" height="720"></canvas></div>
+        <div class="frame-hint"><span id="frameHint">等待以太网写侧流帧。</span>
+          <span id="diffHint"></span></div>
+      </div>
+      <div class="compare-row">
+        <label for="bmpFile">BMP 原图</label>
+        <input type="file" id="bmpFile" accept=".bmp">
+        <span class="hint">覆盖、像素差异和黑边差异会分别统计。</span>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>板卡回包</h2>
+    <details class="card log-card" id="logDetails" open>
+      <summary>板卡回包与事件 <span class="sub" id="cnt">0 条</span></summary>
       <div class="term">
         <div class="termbar">
           <span class="d"></span><span class="d"></span><span class="d"></span>
-          <span class="t">SERIAL MONITOR</span>
+          <span class="t" id="logTitle">BOARD MONITOR</span>
           <span class="spacer"></span>
-          <span class="t" id="cnt">0 条</span>
-          <button id="btnClear" disabled>✕ 清空</button>
+          <button id="btnClear" disabled>清空</button>
         </div>
         <div class="log" id="log"></div>
       </div>
-    </div>
+    </details>
   </div>
 </main>
 
@@ -465,9 +536,9 @@ const connState = {serial: false, eth: false};   // 两条链路各自独立的�
 const log = document.getElementById("log");
 const ICON = {n:"⏭", p:"⏮", a:"🔁", s:"📊", "+":"🔊", "-":"🔉",
               ">":"⏱", "<":"⏩", "]":"🔆", "[":"🔅", ".":"◑", ",":"◐",
-              "q":"🎵", "l":"📋", "0":"▣", "1":"◐", "2":"⇠"};
+              "q":"🎵", "i":"▤", "l":"📋", "0":"▣", "1":"◐", "2":"⇠"};
 const RANGE = {"播放":"", "切换特效":"约 1 秒", "音量":"0–8", "轮播周期":"1–10s",
-               "亮度 / 对比度":"亮度 0–8 · 对比度 0–6"};
+               "亮度 / 对比度":"亮度 0–8 · 对比度 0–6", "SD 卡诊断":"原生 SD 状态"};
 
 /* ---------- toast ---------- */
 let toastT = null;
@@ -538,14 +609,27 @@ function setMode(m, announce=true) {
 document.getElementById("mSerial").onclick = () => setMode("serial");
 document.getElementById("mEth").onclick = () => setMode("eth");
 window.addEventListener("resize", slide);
+document.querySelectorAll("[data-frame-view]").forEach(button => {
+  button.onclick = () => selectFrameView(button.dataset.frameView);
+});
+document.getElementById("btnSnapshot").onclick = () => {
+  selectFrameView("rb");
+  sendKey("d");
+};
+function selectFrameView(view) {
+  if (typeof document.querySelectorAll !== "function") return;
+  const panes = document.querySelectorAll(".preview-pane");
+  const buttons = document.querySelectorAll("[data-frame-view]");
+  if (!panes.length) return;
+  panes.forEach(pane => { pane.hidden = pane.id !== (view === "wr" ? "frameViewWr" : "frameViewRb"); });
+  buttons.forEach(button => button.classList.toggle("on", button.dataset.frameView === view));
+}
 
 /* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
-let PADKEYS = new Set("npa012345+-<>[]s,.q;'l".split(""));
 async function buildPad(){
   let d;
   try { d = await (await fetch("/api/keys")).json(); }
   catch(e){ return fallbackPad(); }
-  PADKEYS = new Set(d.keys.map(x => x.key));
   const host = document.getElementById("pad");
   host.innerHTML = "";
   d.groups.forEach(g => {
@@ -587,6 +671,12 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
          <button data-k="1"><span class="ico">◐</span><span>交叉溶解</span><span class="key">1</span></button>
          <button data-k="2"><span class="ico">⇠</span><span>柔边滑动</span><span class="key">2</span></button>
        </div></div>
+     <div class="grp"><div class="grp-t"><span class="bar"></span>OSD 面板</div>
+      <div class="btns">
+        <button data-k="3"><span class="ico">⊘</span><span>关闭</span><span class="key">3</span></button>
+        <button data-k="4"><span class="ico">◷</span><span>显示 3 秒</span><span class="key">4</span></button>
+        <button data-k="5"><span class="ico">▤</span><span>常显</span><span class="key">5</span></button>
+      </div></div>
      <div class="grp"><div class="grp-t"><span class="bar"></span>音量<span class="rg">0–8</span></div>
       <div class="btns">
         <button data-k="-"><span class="ico">🔉</span><span>音量 -</span><span class="key">-</span></button>
@@ -601,12 +691,19 @@ function fallbackPad(){   // /api/keys 不可用时退化为静态面板
       <div class="btns">
         <button data-k="["><span class="ico">🔅</span><span>亮度 -</span><span class="key">[</span></button>
         <button data-k="]"><span class="ico">🔆</span><span>亮度 +</span><span class="key">]</span></button>
+        <button data-k=","><span class="ico">◐</span><span>对比度 -</span><span class="key">,</span></button>
+        <button data-k="."><span class="ico">◑</span><span>对比度 +</span><span class="key">.</span></button>
       </div></div>
     <div class="grp"><div class="grp-t"><span class="bar"></span>音频频谱<span class="rg">底部 16 柱</span></div>
       <div class="btns">
         <button data-k="q"><span class="ico">🎵</span><span>频谱 开/关</span><span class="key">Q</span></button>
         <button data-k=";"><span class="ico">▼</span><span>灵敏度 -</span><span class="key">;</span></button>
         <button data-k="'"><span class="ico">▲</span><span>灵敏度 +</span><span class="key">'</span></button>
+      </div></div>
+    <div class="grp"><div class="grp-t"><span class="bar"></span>SD 卡诊断</div>
+      <div class="btns">
+        <button data-k="i"><span class="ico">▤</span><span>查询卡状态</span><span class="key">I</span></button>
+        <button data-k="l"><span class="ico">📋</span><span>列表转储</span><span class="key">L</span></button>
       </div></div>`;
   host.querySelectorAll("button").forEach(b => {
     b.disabled = !connected;
@@ -717,11 +814,6 @@ document.getElementById("btnSubtitleClear").onclick = () => {
   subtitleCount.textContent = "0/160";
   sendSubtitle("");
 };
-document.addEventListener("keydown", e => {
-  if (document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
-  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if (PADKEYS.has(k)) { e.preventDefault(); if (connected) sendKey(k); else toast("未连接", true); }
-});
 
 /* ---------- 指标：从 ACK 文本里提取 ---------- */
 function flash(id){
@@ -766,6 +858,7 @@ function setLink(on, port){
   document.getElementById("port").disabled = !!connState.serial;
   document.getElementById("baud").disabled = !!connState.serial;
   document.getElementById("btnRefresh").disabled = !!connState.serial;
+  document.getElementById("btnSnapshot").disabled = !connected;
   document.querySelectorAll("#pad button").forEach(b => b.disabled = !connected);
   if (!connected && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
   if (connected && document.getElementById("poll").checked && !pollTimer)
@@ -792,8 +885,9 @@ function listen() {
       addLog(m.connected ? "sys" : "err", "SYS",
              m.connected ? `${name}已连接 ${m.port || ""}` : `${name}已断开`);
     } else if (m.type === "pkt") {
-      addLog(m.kind === "ack" ? "ack" : "st",
-             m.kind === "ack" ? "ACK" : "STA", m.text);
+      const cls = m.kind === "ack" ? "ack" : m.kind === "diag" ? "sys" : "st";
+      const tag = m.kind === "ack" ? "ACK" : m.kind === "diag" ? "SD" : m.kind === "dump" ? "DUMP" : "STA";
+      addLog(cls, tag, m.text);
       parseMetrics(m.text);
     } else if (m.type === "frame") {
       showFrame(m);
@@ -815,6 +909,7 @@ function put565(px, o, v) {
 }
 async function showFrame(m) {
   const kind = m.kind || "wr";
+  if (typeof selectFrameView === "function") selectFrameView(kind === "wr" ? "wr" : "rb");
   const source = m.source || "probe";
   const slot = kind === "rb" && source === "snapshot" ? "snapshot" : kind;
   if (m.id === lastFrameId[slot]) return;
