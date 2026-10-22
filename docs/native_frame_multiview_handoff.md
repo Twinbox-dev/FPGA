@@ -1086,3 +1086,41 @@ Relative to checkpoint `d2b4566`, the combined display reduction is 1,986 gate L
 `4DF6DFF66A5948C1C2BFE6070AF79A5E4E2875751BCB72CF165BAC8944911088`.
 This candidate has not been downloaded or board-verified. Its source and TD reports are
 saved in this optimization branch for offline review; no media-board source was changed.
+
+
+### 19.18 Display-only resource pass 3: specialize ARP for the fixed media peer
+
+The display board only exchanges application traffic with the fixed media board
+(`192.168.137.3`, MAC `02:00:00:00:00:03`). The earlier UDP-lite implementation retained
+the requester MAC/IP and multiple ARP header fields so it could construct a reply for
+any host. The application does not use that generality. The receive parser now tracks
+only match flags for the supported Ethernet/IPv4 ARP request, the fixed media sender,
+and this board's target IP. The reply is emitted from the configured local MAC/IP to
+the fixed media MAC/IP. Requests from another sender are ignored. This is a deliberate
+fixed-topology boundary: direct ARP access to the display board from arbitrary PCs is
+not supported; PC application traffic continues through the media board. UDP command,
+image, result, and status payload handling is unchanged.
+
+`make -C boardtest display-udp-lite` passed after the change. It verifies the fixed-peer
+ARP reply, rejection of another host's ARP request, IPv4 checksum and UDP destination
+port filtering, exact delivery of the maximum 1,020-byte media payload, malformed-frame
+rejection, UDP response bytes, Ethernet padding, and the active-low TEMAC handshake.
+The full TD SYN, placement, routing, final timing report, and bit generation completed.
+This is still an offline candidate and has not been downloaded or board-verified.
+
+| Display resource | EDID-disabled baseline | Fixed-peer ARP candidate | Change |
+|---|---:|---:|---:|
+| Gate LUT | 14,242 | 13,971 | -271 |
+| Final P&R LUT | 14,775 | 14,473 | -302 |
+| FF (P&R report) | 9,925 | 9,672 | -253 |
+| BRAM9K | 35 | 35 | 0 |
+| BRAM32K | 11 | 11 | 0 |
+| DSP | 18 | 18 | 0 |
+| Final setup WNS | -5.964 ns | -5.786 ns | +0.178 ns |
+| Final hold WNS | -3.066 ns | -2.935 ns | +0.131 ns |
+
+Relative to checkpoint `d2b4566`, the cumulative display reduction is 2,257 gate LUT and
+2,330 final P&R LUT; BRAM9K is down by four. Candidate bit SHA-256:
+`F35C80302C4E7F5A27590734D54C21487FA2D1E2E43565F4588D194E1E029AE9`.
+The final routed design still has pre-existing negative setup and hold slack, so the
+improved delta is not a timing-closure claim. No media-board RTL or behavior changed.

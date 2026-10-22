@@ -118,12 +118,12 @@ module tb_display_udp_lite;
         begin
             for(k=0;k<60;k=k+1)rx_frame[k]=0;
             for(k=0;k<6;k=k+1)rx_frame[k]=8'hff;
-            {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=48'h021122334455;
+            {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=PEER_MAC;
             rx_frame[12]=8'h08;rx_frame[13]=8'h06;
             rx_frame[14]=0;rx_frame[15]=1;rx_frame[16]=8;rx_frame[17]=0;
             rx_frame[18]=6;rx_frame[19]=4;rx_frame[20]=0;rx_frame[21]=1;
-            {rx_frame[22],rx_frame[23],rx_frame[24],rx_frame[25],rx_frame[26],rx_frame[27]}=48'h021122334455;
-            {rx_frame[28],rx_frame[29],rx_frame[30],rx_frame[31]}=32'hc0a88901;
+            {rx_frame[22],rx_frame[23],rx_frame[24],rx_frame[25],rx_frame[26],rx_frame[27]}=PEER_MAC;
+            {rx_frame[28],rx_frame[29],rx_frame[30],rx_frame[31]}=PEER_IP;
             {rx_frame[38],rx_frame[39],rx_frame[40],rx_frame[41]}=LOCAL_IP;
         end
     endtask
@@ -177,17 +177,28 @@ module tb_display_udp_lite;
         repeat(5)@(posedge clk); reset=0;
         if (temac_rx_ready!==1'b0 || !udp2app_tx_ready) $fatal(1,"reset-ready state incorrect");
 
-        // ARP request from PC must be answered with an ARP reply for .2.
+        // ARP request from the fixed media peer must receive a unicast reply.
         tx_count=0;make_arp_request();send_frame(60);wait_tx(60);
-        if (tx_frame[0]!==8'h02 || tx_frame[5]!==8'h55 ||
+        if (tx_frame[0]!==8'h02 || tx_frame[5]!==8'h03 ||
             tx_frame[6]!==8'h01 || tx_frame[11]!==8'hab ||
             tx_frame[12]!==8'h08 || tx_frame[13]!==8'h06 ||
             tx_frame[20]!==0 || tx_frame[21]!==2 ||
             {tx_frame[28],tx_frame[29],tx_frame[30],tx_frame[31]}!==LOCAL_IP ||
-            {tx_frame[38],tx_frame[39],tx_frame[40],tx_frame[41]}!==32'hc0a88901 ||
+            {tx_frame[38],tx_frame[39],tx_frame[40],tx_frame[41]}!==PEER_IP ||
             temac_tx_sof!==1'b1 || temac_tx_eof!==1'b1)
             $fatal(1,"ARP reply fields invalid");
         $display("PASS: ARP request/reply, static local addressing");
+
+        // The application network is fixed to the media peer. Requests from
+        // other sender addresses are ignored instead of allocating reply
+        // state for arbitrary hosts.
+        tx_count=0;make_arp_request();
+        {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=48'h021122334455;
+        {rx_frame[22],rx_frame[23],rx_frame[24],rx_frame[25],rx_frame[26],rx_frame[27]}=48'h021122334455;
+        {rx_frame[28],rx_frame[29],rx_frame[30],rx_frame[31]}=32'hc0a88901;
+        send_frame(60);repeat(4)@(negedge clk);
+        if(tx_count!=0)$fatal(1,"non-peer ARP request unexpectedly received a reply");
+        $display("PASS: fixed-peer ARP ignores non-peer requests");
 
         // Valid IPv4/UDP frame must arrive as the original application bytes.
         app_count=0;make_udp_request();send_frame(60);

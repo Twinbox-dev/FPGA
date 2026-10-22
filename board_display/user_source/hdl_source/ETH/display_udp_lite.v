@@ -73,14 +73,11 @@ module display_udp_lite #(
     reg rx_payload_active;
 
     reg arp_pending;
-    reg [47:0] arp_target_mac;
-    reg [31:0] arp_target_ip;
-    reg [15:0] arp_hw_type, arp_proto_type, arp_opcode;
-    reg [7:0] arp_proto_hi, arp_op_hi;
-    reg [7:0] arp_hw_len, arp_proto_len;
-    reg [31:0] arp_sender_ip;
-    reg [23:0] arp_target_ip_rx;
-    reg [47:0] arp_sender_mac;
+    // The display talks to one fixed media-board peer. Remember only whether
+    // the ARP request fields match that peer and our own address; do not keep
+    // sender/target MAC and IP copies just to echo them back in the reply.
+    reg arp_header_valid, arp_sender_mac_match, arp_sender_ip_match;
+    reg arp_target_ip_match;
 
     assign temac_rx_ready = 1'b0; // Local-link ready is active low.
     assign udp2app_tx_ready = (tx_state == TX_IDLE) && !arp_pending;
@@ -175,7 +172,7 @@ module display_udp_lite #(
         input [5:0] index;
         begin
             case (index)
-                0,1,2,3,4,5: arp_frame_octet = mac_octet(arp_target_mac,index[2:0]);
+                0,1,2,3,4,5: arp_frame_octet = mac_octet(PEER_MAC,index[2:0]);
                 6,7,8,9,10,11: arp_frame_octet = mac_octet(LOCAL_MAC,index[2:0]-3'd6);
                 12: arp_frame_octet = 8'h08;
                 13: arp_frame_octet = 8'h06;
@@ -189,8 +186,8 @@ module display_udp_lite #(
                 21: arp_frame_octet = 8'h02;
                 22,23,24,25,26,27: arp_frame_octet = mac_octet(LOCAL_MAC,index[2:0]-3'd6);
                 28,29,30,31: arp_frame_octet = ip_octet(LOCAL_IP,index[1:0]);
-                32,33,34,35,36,37: arp_frame_octet = mac_octet(arp_target_mac,index[2:0]);
-                38,39,40,41: arp_frame_octet = ip_octet(arp_target_ip,index[1:0]-2'd2);
+                32,33,34,35,36,37: arp_frame_octet = mac_octet(PEER_MAC,index[2:0]);
+                38,39,40,41: arp_frame_octet = ip_octet(PEER_IP,index[1:0]-2'd2);
                 default: arp_frame_octet = 8'h00; // Pad to the 60-byte Ethernet minimum.
             endcase
         end
@@ -231,11 +228,9 @@ module display_udp_lite #(
             rx_udp_src_port <= 0; rx_udp_dst_port <= 0; rx_udp_length <= 0;
             rx_udp_port_hi <= 0; rx_udp_len_hi <= 0; rx_payload_left <= 0;
             rx_payload_active <= 0;
-            arp_pending <= 0; arp_target_mac <= PEER_MAC; arp_target_ip <= PEER_IP;
-            arp_hw_type <= 0; arp_proto_type <= 0; arp_opcode <= 0;
-            arp_proto_hi <= 0; arp_op_hi <= 0;
-            arp_hw_len <= 0; arp_proto_len <= 0;
-            arp_sender_ip <= 0; arp_target_ip_rx <= 0; arp_sender_mac <= 0;
+            arp_pending <= 0;
+            arp_header_valid <= 0; arp_sender_mac_match <= 0;
+            arp_sender_ip_match <= 0; arp_target_ip_match <= 0;
             app_rx_data_valid <= 0; app_rx_data <= 0;
             app_rx_data_length <= 0; app_rx_port_num <= 0;
             ip_rx_error <= 0;
@@ -253,9 +248,10 @@ module display_udp_lite #(
                     rx_ip_word_hi <= 0; rx_ip_valid <= 0;
                     rx_udp_src_port <= 0; rx_udp_dst_port <= 0; rx_udp_length <= 0;
                     rx_payload_left <= 0; rx_payload_active <= 0;
-                    arp_hw_type <= 0; arp_proto_type <= 0; arp_opcode <= 0;
-                    arp_hw_len <= 0; arp_proto_len <= 0;
-                    arp_sender_ip <= 0; arp_target_ip_rx <= 0; arp_sender_mac <= 0;
+                    arp_header_valid <= 1'b1;
+                    arp_sender_mac_match <= 1'b1;
+                    arp_sender_ip_match <= 1'b1;
+                    arp_target_ip_match <= 1'b1;
                 end else if (rx_active) begin
                     case (rx_index)
                         12: rx_ethertype[15:8] <= temac_rx_data;
@@ -292,17 +288,27 @@ module display_udp_lite #(
                         endcase
                     end else if (rx_ethertype == 16'h0806) begin
                         case (rx_index)
-                            14: arp_hw_type[15:8] <= temac_rx_data;
-                            15: arp_hw_type[7:0] <= temac_rx_data;
-                            16: arp_proto_hi <= temac_rx_data;
-                            17: arp_proto_type <= {arp_proto_hi,temac_rx_data};
-                            18: arp_hw_len <= temac_rx_data;
-                            19: arp_proto_len <= temac_rx_data;
-                            20: arp_op_hi <= temac_rx_data;
-                            21: arp_opcode <= {arp_op_hi,temac_rx_data};
-                            22,23,24,25,26,27: arp_sender_mac <= {arp_sender_mac[39:0],temac_rx_data};
-                            28,29,30,31: arp_sender_ip <= {arp_sender_ip[23:0],temac_rx_data};
-                            38,39,40: arp_target_ip_rx <= {arp_target_ip_rx[15:0],temac_rx_data};
+                            14: if (temac_rx_data != 8'h00) arp_header_valid <= 1'b0;
+                            15: if (temac_rx_data != 8'h01) arp_header_valid <= 1'b0;
+                            16: if (temac_rx_data != 8'h08) arp_header_valid <= 1'b0;
+                            17: if (temac_rx_data != 8'h00) arp_header_valid <= 1'b0;
+                            18: if (temac_rx_data != 8'h06) arp_header_valid <= 1'b0;
+                            19: if (temac_rx_data != 8'h04) arp_header_valid <= 1'b0;
+                            20: if (temac_rx_data != 8'h00) arp_header_valid <= 1'b0;
+                            21: if (temac_rx_data != 8'h01) arp_header_valid <= 1'b0;
+                            22: if (temac_rx_data != PEER_MAC[47:40]) arp_sender_mac_match <= 1'b0;
+                            23: if (temac_rx_data != PEER_MAC[39:32]) arp_sender_mac_match <= 1'b0;
+                            24: if (temac_rx_data != PEER_MAC[31:24]) arp_sender_mac_match <= 1'b0;
+                            25: if (temac_rx_data != PEER_MAC[23:16]) arp_sender_mac_match <= 1'b0;
+                            26: if (temac_rx_data != PEER_MAC[15:8]) arp_sender_mac_match <= 1'b0;
+                            27: if (temac_rx_data != PEER_MAC[7:0]) arp_sender_mac_match <= 1'b0;
+                            28: if (temac_rx_data != PEER_IP[31:24]) arp_sender_ip_match <= 1'b0;
+                            29: if (temac_rx_data != PEER_IP[23:16]) arp_sender_ip_match <= 1'b0;
+                            30: if (temac_rx_data != PEER_IP[15:8]) arp_sender_ip_match <= 1'b0;
+                            31: if (temac_rx_data != PEER_IP[7:0]) arp_sender_ip_match <= 1'b0;
+                            38: if (temac_rx_data != LOCAL_IP[31:24]) arp_target_ip_match <= 1'b0;
+                            39: if (temac_rx_data != LOCAL_IP[23:16]) arp_target_ip_match <= 1'b0;
+                            40: if (temac_rx_data != LOCAL_IP[15:8]) arp_target_ip_match <= 1'b0;
                             default: ;
                         endcase
                     end
@@ -315,12 +321,9 @@ module display_udp_lite #(
                         rx_ip_sum <= rx_ip_sum + {16'd0,rx_ip_word_hi,temac_rx_data};
 
                     if (rx_index == 11'd41 && rx_ethertype == 16'h0806) begin
-                        dest_ip_next = {arp_target_ip_rx[23:0],temac_rx_data};
-                        if ((arp_hw_type == 16'd1) && (arp_proto_type == 16'h0800) &&
-                            (arp_hw_len == 8'd6) && (arp_proto_len == 8'd4) &&
-                            (arp_opcode == 16'd1) && (dest_ip_next == LOCAL_IP)) begin
-                            arp_target_mac <= arp_sender_mac;
-                            arp_target_ip <= arp_sender_ip;
+                        if (arp_header_valid && arp_sender_mac_match &&
+                            arp_sender_ip_match && arp_target_ip_match &&
+                            (temac_rx_data == LOCAL_IP[7:0])) begin
                             arp_pending <= 1'b1;
                         end
                     end else if (rx_index == 11'd41 && rx_ethertype == 16'h0800) begin
