@@ -161,6 +161,7 @@ module eth_subsys(
     wire temac_tx_ready,temac_tx_valid,temac_tx_sof,temac_tx_eof;wire [7:0] temac_tx_data;
     wire temac_rx_ready,temac_rx_valid_n,temac_rx_sof,temac_rx_eof;wire [7:0] temac_rx_data;
     wire late_ack_seen,packet_active,media_in_flight,media_packet_drained;
+    wire route_grant,route_media;
     wire mac_capture_val,mac_capture_end;wire [31:0] mac_capture_word;
     wire tx_fifo_overflow;
     reg cmd_pending_last;
@@ -183,7 +184,8 @@ module eth_subsys(
         .media_request(media_request),.media_valid(media_valid),.media_data(media_data),.media_length(media_length),
         .media_ack(media_ack),.stack_request(app_tx_data_request),.stack_valid(app_tx_data_valid),
         .stack_data(app_tx_data),.stack_length(udp_data_length),.late_ack_seen(late_ack_seen),.packet_active(packet_active),
-        .media_in_flight(media_in_flight),.media_packet_drained(media_packet_drained)
+        .media_in_flight(media_in_flight),.media_packet_drained(media_packet_drained),
+        .route_grant(route_grant),.route_media(route_media)
     );
     wire [31:0] tx_dst_ip;
     wire [15:0] tx_dst_port;
@@ -192,7 +194,8 @@ module eth_subsys(
         .PC_IP(DST_IP),.DISPLAY_IP(DISPLAY_IP),
         .PC_PORT(PC_UDP_PORT),.DISPLAY_PORT(DISPLAY_UDP_PORT)
     ) u_media_udp_route(
-        .media_active(media_in_flight),.media_to_pc(media_to_pc),.control_type(tx_type),
+        .clk(udp_clk),.rst(reset),.packet_grant(route_grant),.media_selected(route_media),
+        .media_to_pc(media_to_pc),.control_type(tx_type),
         .destination_ip(tx_dst_ip),.destination_port(tx_dst_port),.display_route(display_route)
     );
     eth_front u_eth_front (

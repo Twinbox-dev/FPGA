@@ -20,6 +20,11 @@ module media_protocol_rx #(
     output reg  [4:0]  image_index,
     output reg  [7:0]  image_flags,
     output reg  [20:0] image_total_words,
+    output reg  [11:0] image_width,
+    output reg  [11:0] image_height,
+    output reg  [7:0]  image_layout,
+    output reg  [7:0]  image_window,
+    output reg  [15:0] image_generation,
 
     output reg         stream_start,
     output reg         stream_is_audio,
@@ -60,12 +65,25 @@ module media_protocol_rx #(
     reg [15:0] packet_frame_id, packet_sequence;
     reg [7:0] packet_image_index, packet_image_flags;
     reg [31:0] packet_total_words, packet_sample_count;
+    reg [11:0] packet_width, packet_height;
+    reg [7:0] packet_layout, packet_window;
+    reg [15:0] packet_generation;
     reg [31:0] packet_checksum;
     reg [15:0] packet_reserved;
     reg [31:0] word_assembly;
     reg [8:0] packet_word_index;
     reg [9:0] packet_sample_index;
     reg [31:0] packet_word_sum, packet_audio_sum;
+    reg [23:0] begin_pixel_count_r;
+    wire [23:0] begin_word_count = (begin_pixel_count_r + 24'd1) >> 1;
+
+    // Keep the variable-width multiply out of the packet-close acceptance
+    // path. BEGIN leaves four metadata bytes after height, so this register
+    // naturally contains the complete dimensions before the packet closes.
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin_pixel_count_r <= 24'd0;
+        else begin_pixel_count_r <= packet_width * packet_height;
+    end
 
     reg frame_active, frame_context_valid, frame_bad;
     reg [15:0] active_frame_id, expected_image_sequence;
@@ -127,6 +145,8 @@ module media_protocol_rx #(
             packet_frame_id <= 16'd0; packet_sequence <= 16'd0;
             packet_image_index <= 8'd0; packet_image_flags <= 8'd0;
             packet_total_words <= 32'd0; packet_sample_count <= 32'd0;
+            packet_width <= 12'd0; packet_height <= 12'd0;
+            packet_layout <= 8'd0; packet_window <= 8'd0; packet_generation <= 16'd0;
             packet_checksum <= 32'd0; packet_reserved <= 16'd0;
             word_assembly <= 32'd0; packet_word_index <= 9'd0;
             packet_sample_index <= 10'd0;
@@ -145,7 +165,8 @@ module media_protocol_rx #(
             stream_word_count <= 9'd0;
             ready_request <= 1'b0; frame_begin_valid <= 1'b0;
             frame_id <= 16'd0; image_index <= 5'd0; image_flags <= 8'd0;
-            image_total_words <= 21'd0;
+            image_total_words <= 21'd0; image_width <= 12'd0; image_height <= 12'd0;
+            image_layout <= 8'd0; image_window <= 8'd0; image_generation <= 16'd0;
             frame_end_valid <= 1'b0; frame_end_ok <= 1'b0; frame_end_id <= 16'd0;
             frame_end_reason <= 4'd0;
             audio_begin_valid <= 1'b0; audio_frame_id <= 16'd0;
@@ -175,6 +196,8 @@ module media_protocol_rx #(
                     packet_frame_id <= 16'd0; packet_sequence <= 16'd0;
                     packet_image_index <= 8'd0; packet_image_flags <= 8'd0;
                     packet_total_words <= 32'd0; packet_sample_count <= 32'd0;
+                    packet_width <= 12'd0; packet_height <= 12'd0;
+                    packet_layout <= 8'd0; packet_window <= 8'd0; packet_generation <= 16'd0;
                     packet_checksum <= 32'd0; packet_reserved <= 16'd0;
                 end else if (rx_pos == 11'd1) magic_ok <= magic_ok && (rx_data == 8'hbb);
                 else if (rx_pos == 11'd2) magic_ok <= magic_ok && (rx_data == 8'hcc);
@@ -220,6 +243,14 @@ module media_protocol_rx #(
                         11'd13: packet_total_words[15:8] <= rx_data;
                         11'd14: packet_total_words[23:16] <= rx_data;
                         11'd15: packet_total_words[31:24] <= rx_data;
+                        11'd16: packet_width[7:0] <= rx_data;
+                        11'd17: packet_width[11:8] <= rx_data[3:0];
+                        11'd18: packet_height[7:0] <= rx_data;
+                        11'd19: packet_height[11:8] <= rx_data[3:0];
+                        11'd20: packet_layout <= rx_data;
+                        11'd21: packet_window <= rx_data;
+                        11'd22: packet_generation[7:0] <= rx_data;
+                        11'd23: packet_generation[15:8] <= rx_data;
                         default: ;
                     endcase
                 end else if (type_lo == TYPE_IMAGE_END && type_hi == 8'h00) begin
@@ -271,14 +302,24 @@ module media_protocol_rx #(
                             else protocol_error_toggle <= ~protocol_error_toggle;
                         end
                         TYPE_IMAGE_BEGIN: begin
-                            if (payload_length == 16'd8 && !frame_active &&
-                                packet_total_words == {11'd0, FRAME_WORDS} &&
+                            if (payload_length == 16'd16 && !frame_active &&
+                                packet_width != 0 && packet_width <= 12'd1280 &&
+                                packet_height != 0 && packet_height <= 12'd720 &&
+                                packet_total_words == {8'd0,begin_word_count} &&
+                                packet_total_words <= {11'd0,FRAME_WORDS} &&
+                                packet_layout == 8'd0 && packet_window == 8'd0 &&
+                                packet_generation == 16'd0 &&
                                 packet_image_index < 8'd32 &&
                                 (packet_image_flags & 8'he6) == 8'd0) begin
                                 frame_id <= packet_frame_id;
                                 image_index <= packet_image_index[4:0];
                                 image_flags <= packet_image_flags;
-                                image_total_words <= FRAME_WORDS;
+                                image_total_words <= packet_total_words[20:0];
+                                image_width <= packet_width;
+                                image_height <= packet_height;
+                                image_layout <= packet_layout;
+                                image_window <= packet_window;
+                                image_generation <= packet_generation;
                                 active_frame_id <= packet_frame_id;
                                 frame_context_valid <= 1'b1;
                                 frame_active <= 1'b1;

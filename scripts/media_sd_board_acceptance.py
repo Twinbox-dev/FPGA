@@ -2,9 +2,9 @@
 """Exercise the physical media board through Ethernet and verify D snapshots.
 
 This uses the product V1 N/D commands. N loads the next card image through the
-real display board; its ACK reports whether paired audio committed. D rereads the
-currently committed image to the PC. The PC checks complete 1280x720 RGB565
-frames against the checked-in BMP golden set. The product D snapshot contains
+real display board; its committed index reports whether image/audio completed.
+D rereads the currently committed source image to the PC. The PC checks raw
+variable-size RGB565 frames against the checked-in BMP golden set. D contains
 image pixels only, so PCM byte-for-byte checks remain in the SD/FAT simulation;
 board acceptance checks the paired/silent audio flag in the post-commit ACK.
 """
@@ -23,13 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "web_console"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from app import ETH_FRAME_LOCK, ETH_FRAME_SNAPSHOT, EthTransport
-from pc_display_media_probe import bmp_words
 from pc_media_display_stub import pcm_from_wav_bytes, read_fat32_wavs
-
-FRAME_WORDS = 1280 * 720 // 2
-ROW_BYTES = 640 * 4
-MAGIC = b"\xaa\xbb\xcc\xdd"
-
 
 class CapturingTransport(EthTransport):
     def __init__(self, subs):
@@ -80,13 +74,24 @@ def status_index(text: str) -> int:
 def build_golden_frames(golden_dir: Path):
     frames = {}
     for bmp in sorted(golden_dir.glob("*.BMP")):
-        words = bmp_words(bmp)
-        if len(words) != FRAME_WORDS:
-            raise ValueError(f"unexpected golden frame length for {bmp}: {len(words)}")
-        raw = struct.pack(f"<{FRAME_WORDS}I", *words)
-        bottom_up = b"".join(raw[row * ROW_BYTES:(row + 1) * ROW_BYTES]
-                              for row in range(719, -1, -1))
-        frames[bmp.name.upper()] = (raw, bottom_up)
+        data = bmp.read_bytes()
+        width, height = struct.unpack_from("<ii", data, 18)
+        offset = struct.unpack_from("<I", data, 10)[0]
+        if (data[:2] != b"BM" or not 1 <= width <= 1280 or not 1 <= height <= 720 or
+                struct.unpack_from("<H", data, 28)[0] != 24 or
+                struct.unpack_from("<I", data, 30)[0] != 0):
+            raise ValueError(f"unsupported BMP golden: {bmp}")
+        stride = (width * 3 + 3) & ~3
+        if len(data) < offset + stride * height:
+            raise ValueError(f"truncated BMP golden: {bmp}")
+        raw = bytearray(((width * height + 1) // 2) * 4)
+        for y in range(height):
+            for x in range(width):
+                pixel_offset = offset + y * stride + x * 3
+                b, g, r = data[pixel_offset:pixel_offset + 3]
+                struct.pack_into("<H", raw, (y * width + x) * 2,
+                                 ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3))
+        frames[bmp.name.upper()] = (bytes(raw), width, height)
     if len(frames) != 6:
         raise ValueError(f"expected six BMP goldens, found {len(frames)} in {golden_dir}")
     return frames
@@ -194,7 +199,10 @@ def main() -> None:
             while True:
                 status = query_status(link, events, max(0.5, deadline - time.monotonic()))
                 image_index = status_index(status["text"])
-                if image_index != old_index:
+                tx = re.search(r"media-TX=(\S+) error=.*?\((\d+)\)", status["text"])
+                if tx and int(tx.group(2)):
+                    raise RuntimeError(f"image {attempt} board transaction failed: {status['text']}")
+                if image_index != old_index and (tx is None or tx.group(1) == "idle"):
                     break
                 if time.monotonic() >= deadline:
                     raise TimeoutError(f"image index did not advance from {old_index}; last status={status['text']}")
@@ -216,17 +224,16 @@ def main() -> None:
             with ETH_FRAME_LOCK:
                 frame = dict(ETH_FRAME_SNAPSHOT)
             raw = frame["data"]
-            if frame["gaps"] != 0 or frame["words"] != FRAME_WORDS or len(raw) != FRAME_WORDS * 4:
+            width, height = frame["width"], frame["height"]
+            expected_words = (width * height + 1) // 2
+            if frame["gaps"] != 0 or frame["words"] != expected_words or len(raw) != expected_words * 4:
                 args.captures.joinpath(f"{run_tag}_frame{attempt}_bad.bin").write_bytes(raw)
                 raise RuntimeError(f"invalid D frame metadata: {frame['words']} words, gaps={frame['gaps']}, bytes={len(raw)}")
 
             match_name = None
             orientation = None
-            for name, (expected, expected_bottom_up) in golden.items():
-                if raw == expected:
-                    match_name, orientation = name, "top-down"
-                    break
-                if raw == expected_bottom_up:
+            for name, (expected, golden_width, golden_height) in golden.items():
+                if (width, height) == (golden_width, golden_height) and raw == expected:
                     match_name, orientation = name, "bottom-up"
                     break
             if match_name is None:
@@ -241,7 +248,8 @@ def main() -> None:
             diag = wait_event(events, lambda item: item.get("type") == "pkt" and
                               item.get("kind") == "diag", args.timeout, "SD timing diagnostic")
             record = {"cycle": attempt, "board_index": image_index, "bmp": match_name,
-                      "orientation": orientation, "image_words": frame["words"],
+                      "orientation": orientation, "source_width": width,
+                      "source_height": height, "image_words": frame["words"],
                       "n_ack": command_ack["text"],
                       "committed_status": status["text"],
                       "image_gaps": frame["gaps"],

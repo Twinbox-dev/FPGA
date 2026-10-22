@@ -78,6 +78,7 @@ wire [2:0] cv_effect_gray_cfg;
 wire [3:0] vol_gray;
 wire panel_show, panel_text_on, panel_band;
 wire [3:0] panel_bri_level, panel_ct_level, panel_vol_level;
+wire [11:0] panel_image_width,panel_image_height;
 wire subtitle_text_on, subtitle_band;
 wire signed [11:0] subtitle_ox;
 wire [9:0] subtitle_oy;
@@ -96,6 +97,7 @@ wire        display_valid;
 
 wire [3:0]  state_code;
 wire [4:0]  img_idx_w;        // 当前媒体图索引（显示状态/数码管）
+wire [11:0] displayed_image_width, displayed_image_height;
 wire        img_wav_w;        // 当前图是否配同名 WAV
 reg         auto_play_w;      // 通过远端媒体元数据同步的自动轮播状态
 // ---- 板级调试面板（数码管 6 位，只读，不影响功能）----
@@ -137,6 +139,7 @@ wire        media_write_en;
 wire [31:0] media_write_data;
 wire        media_write_req;
 wire        media_write_req_ack;
+wire        media_write_ready;
 wire [20:0] media_write_len;
 wire        frame_write_finish;
 reg         frame_write_toggle_mem;
@@ -416,10 +419,19 @@ wire [15:0] media_frame_id;
 wire [4:0]  media_source_index;
 wire [7:0]  media_image_flags;
 wire [20:0] media_total_words;
+wire [11:0] media_image_width, media_image_height;
+wire [7:0]  media_image_layout, media_image_window;
+wire [15:0] media_image_generation;
 wire        media_stream_start, media_stream_is_audio;
 wire [8:0]  media_stream_word_count;
 wire [31:0] media_stream_word_data;
 wire        media_stream_word_valid, media_stream_word_ready, media_stream_done;
+wire        media_raw_stream_ready;
+wire        media_padded_stream_start, media_padded_stream_audio;
+wire [8:0]  media_padded_stream_count;
+wire [31:0] media_padded_stream_data;
+wire        media_padded_stream_valid, media_padded_stream_ready, media_padded_stream_done;
+wire        media_pad_frame_done;
 wire        media_frame_end_valid, media_frame_end_ok;
 wire [3:0]  media_frame_end_reason;
 wire [15:0] media_frame_end_id;
@@ -506,10 +518,13 @@ media_protocol_rx u_media_protocol_rx (
     .ready_request (media_ready_request),
     .frame_begin_valid (media_frame_begin_valid), .frame_id (media_frame_id),
     .image_index (media_source_index), .image_flags (media_image_flags),
-    .image_total_words (media_total_words),
+    .image_total_words (media_total_words), .image_width (media_image_width),
+    .image_height (media_image_height),
+    .image_layout (media_image_layout), .image_window (media_image_window),
+    .image_generation (media_image_generation),
     .stream_start (media_stream_start), .stream_is_audio (media_stream_is_audio),
     .stream_word_count (media_stream_word_count), .stream_word_data (media_stream_word_data),
-    .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_stream_word_ready),
+    .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_raw_stream_ready),
     .stream_done (media_stream_done),
     .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
     .frame_end_reason (media_frame_end_reason),
@@ -519,6 +534,21 @@ media_protocol_rx u_media_protocol_rx (
     .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
     .audio_end_reason (media_audio_end_reason),
     .audio_end_id (media_audio_end_id), .protocol_error_toggle (media_protocol_error_toggle)
+);
+
+media_frame_pad u_media_frame_pad (
+    .clk (eth_app_clk), .rst (rst_all),
+    .frame_begin (media_frame_begin_valid),
+    .image_width (media_image_width), .image_height (media_image_height),
+    .frame_end (media_frame_end_valid),
+    .in_is_audio (media_stream_is_audio), .in_start (media_stream_start),
+    .in_count (media_stream_word_count), .in_data (media_stream_word_data),
+    .in_valid (media_stream_word_valid), .in_ready (media_raw_stream_ready),
+    .in_done (media_stream_done),
+    .out_start (media_padded_stream_start), .out_is_audio (media_padded_stream_audio),
+    .out_count (media_padded_stream_count), .out_data (media_padded_stream_data),
+    .out_valid (media_padded_stream_valid), .out_ready (media_padded_stream_ready),
+    .out_done (media_padded_stream_done), .frame_done (media_pad_frame_done)
 );
 
 media_display_control_rx u_media_display_control_rx (
@@ -545,10 +575,11 @@ media_transaction_writer u_media_transaction_writer (
     .frame_begin_valid (media_frame_begin_valid), .frame_id (media_frame_id),
     .image_index (media_source_index), .image_flags (media_image_flags),
     .image_total_words (media_total_words),
-    .stream_start (media_stream_start), .stream_is_audio (media_stream_is_audio),
-    .stream_word_count (media_stream_word_count), .stream_word_data (media_stream_word_data),
-    .stream_word_valid (media_stream_word_valid), .stream_word_ready (media_stream_word_ready),
-    .stream_done (media_stream_done),
+    .image_width (media_image_width), .image_height (media_image_height),
+    .stream_start (media_padded_stream_start), .stream_is_audio (media_padded_stream_audio),
+    .stream_word_count (media_padded_stream_count), .stream_word_data (media_padded_stream_data),
+    .stream_word_valid (media_padded_stream_valid), .stream_word_ready (media_padded_stream_ready),
+    .stream_done (media_padded_stream_done),
     .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
     .frame_end_reason (media_frame_end_reason),
     .frame_end_id (media_frame_end_id),
@@ -561,6 +592,7 @@ media_transaction_writer u_media_transaction_writer (
     .frame_finish_toggle (frame_write_toggle_mem), .effect_mode (transition_mode_cfg),
     .transition_done_toggle (transition_done_toggle),
     .display_valid (display_valid), .image_index_out (img_idx_w),
+    .image_width_out (displayed_image_width), .image_height_out (displayed_image_height),
     .image_has_wav (img_wav_w), .auto_play_status (media_auto_play_status),
     .display_buffer_index (disp_buf_idx),
     .transition_start_toggle (transition_start_toggle),
@@ -569,6 +601,7 @@ media_transaction_writer u_media_transaction_writer (
     .transition_prev_latched (transition_prev_latched),
     .frame_commit_pulse (frame_commit_pulse),
     .write_req (media_write_req), .write_req_ack (media_write_req_ack),
+    .write_ready (media_write_ready),
     .write_buffer_index (write_buf_idx), .write_length (media_write_len),
     .write_row_offset (media_row_offset), .write_en (media_write_en),
     .write_data (media_write_data),
@@ -1006,10 +1039,13 @@ osd_visibility u_osd_visibility (
     .video_clk (video_clk), .rst (rst_all), .vs (vs),
     .mode_raw (osd_mode_cfg),
     .bri_gray_raw (bri_gray), .ct_gray_raw (ct_gray),
-    .vol_gray_raw (vol_gray), .show_panel (panel_show),
+    .vol_gray_raw (vol_gray),
+    .image_width_raw (displayed_image_width), .image_height_raw (displayed_image_height),
+    .show_panel (panel_show),
     .brightness_level (panel_bri_level),
     .contrast_level (panel_ct_level),
-    .volume_level (panel_vol_level)
+    .volume_level (panel_vol_level),
+    .image_width (panel_image_width), .image_height (panel_image_height)
 );
 
 osd_panel_levels u_osd_panel (
@@ -1017,6 +1053,7 @@ osd_panel_levels u_osd_panel (
     .brightness_level (panel_bri_level),
     .contrast_level (panel_ct_level),
     .volume_level (panel_vol_level),
+    .image_width (panel_image_width), .image_height (panel_image_height),
     .font_ascii (panel_font_ascii), .font_row (panel_font_row),
     .font_row_data (panel_font_row_data),
     .text_on (panel_text_on), .in_band (panel_band)
@@ -1105,6 +1142,7 @@ frame_read_write #(
     .write_addr_index  (write_buf_idx),
     .write_len         (media_write_len),
     .vrow_off          (media_row_offset),
+    .write_ready       (media_write_ready),
     .write_en          (media_write_en),
     .write_data        (media_write_data),
 

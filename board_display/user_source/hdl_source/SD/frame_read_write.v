@@ -84,6 +84,7 @@ module frame_read_write
 	input[1:0]                       write_addr_index,           // select valid base address from write_addr_0 write_addr_1 write_addr_2 write_addr_3
 	input[ADDR_BITS - 1:0]           write_len,                  // data write module write request data length
 	input signed[19:0]               vrow_off,                   // 2026-10-03 信箱行偏移（透传至 frame_fifo_write）
+    output                           write_ready,                // write_clk: reset released and FIFO has pipeline headroom
 	input                            write_en,                   // data write module write request for one data
 	input[WRITE_DATA_BITS - 1:0]     write_data                 // write data
 
@@ -101,6 +102,18 @@ wire								 App_wr_busy;
 
 wire                                 read_fifo_aclr;             // fifo Asynchronous clear
 wire                                 write_fifo_aclr;            // fifo Asynchronous clear
+wire [8:0] write_fifo_used;
+wire write_fifo_full;
+wire write_reset_active = rst | write_fifo_aclr;
+reg [2:0] write_reset_pipe;
+always @(posedge write_clk or posedge write_reset_active)
+    if (write_reset_active) write_reset_pipe <= 3'b111;
+    else write_reset_pipe <= {write_reset_pipe[1:0],1'b0};
+// ACK is asserted while frame_fifo_write still resets this FIFO. Do not
+// accept generated padding during that interval; reserve 31 words for CDC
+// and the producer's registered pop/write pipeline when backpressure starts.
+assign write_ready = !write_reset_active && !write_reset_pipe[2] &&
+                     !write_fifo_full && write_fifo_used < 9'd480;
 
 wire O_wr_busy;
 wire O_rd_busy;
@@ -123,8 +136,8 @@ wfifo_32_32_512 write_buf
 	.re                      	(App_wr_en        		  ),          // Read Request
 	.di                       	(write_data               ),          // Input Data
 	.empty_flag                 (                         ),          // Read side Empty flag
-	.full_flag                  (                         ),          // Write side Full flag
-	.wrusedw                	(              	  		  ),          // Read Used Words
+	.full_flag                  (write_fifo_full          ),          // Write side Full flag
+	.wrusedw                	(write_fifo_used          ),          // write_clk occupancy
 	.rdusedw                	(rdusedw                  ),          // Write Used Words
 	.dout                       (App_wr_din		          )
 );

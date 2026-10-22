@@ -18,13 +18,14 @@ module tb_media_packet_drain;
     media_protocol_rx #(.FRAME_WORDS(21'd2)) dut (
         .clk(clk),.rst(rst),.rx_data(rx_data),.rx_valid(rx_valid),
         .ready_request(),.frame_begin_valid(),.frame_id(),.image_index(),
-        .image_flags(),.image_total_words(),.stream_start(),.stream_is_audio(stream_is_audio),
+        .image_flags(),.image_total_words(),.image_width(),.image_height(),.image_layout(),
+        .image_window(),.image_generation(),.stream_start(),.stream_is_audio(stream_is_audio),
         .stream_word_count(stream_word_count),.stream_word_data(stream_word_data),
         .stream_word_valid(stream_word_valid),.stream_word_ready(1'b1),.stream_done(stream_done),
         .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),
         .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(),.audio_frame_id(),.audio_sample_count(),
-        .audio_end_valid(),.audio_end_ok(),.audio_end_id(),.protocol_error_toggle()
+        .audio_end_valid(),.audio_end_ok(),.audio_end_reason(),.audio_end_id(),.protocol_error_toggle()
     );
 
     always @(posedge clk) begin
@@ -46,8 +47,10 @@ module tb_media_packet_drain;
               byte_in(typ);byte_in(0);byte_in(len[7:0]);byte_in(len[15:8]);end
     endtask
     task automatic begin_frame(input [15:0] id);
-        begin header(8'h21,8);byte_in(id[7:0]);byte_in(id[15:8]);byte_in(0);byte_in(0);
-              byte_in(2);byte_in(0);byte_in(0);byte_in(0);close_pkt();end
+        begin header(8'h21,16);byte_in(id[7:0]);byte_in(id[15:8]);byte_in(0);byte_in(0);
+              byte_in(2);byte_in(0);byte_in(0);byte_in(0);
+              byte_in(2);byte_in(0);byte_in(2);byte_in(0);
+              byte_in(0);byte_in(0);byte_in(0);byte_in(0);close_pkt();end
     endtask
     task automatic data_word(input [15:0] id,input [15:0] seq,input [31:0] word);
         begin header(8'h22,8);byte_in(id[7:0]);byte_in(id[15:8]);

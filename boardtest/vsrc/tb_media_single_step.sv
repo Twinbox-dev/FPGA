@@ -49,6 +49,7 @@ module tb_media_single_step;
     media_image_tx #(.CLK_HZ(1000),.FRAME_WORDS(2)) u_tx (
         .clk(clk),.rst(rst),.mounted(1'b1),.source_busy(1'b0),.source_error(1'b0),
         .first_bmp(6'd1),.bmp_next(192'd0),.bmp_prev(192'd0),
+        .image_width(12'd2),.image_height(12'd2),
         // N/P use only the control-core pulse path; raw commands are disabled.
         .cmd(8'd0),.cmd_pending(1'b0),.auto_next(1'b0),.auto_status(1'b0),
         .pc_snapshot_request(1'b0),.local_next(image_next_pulse),.local_prev(image_prev_pulse),

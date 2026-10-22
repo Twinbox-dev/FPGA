@@ -22,8 +22,8 @@ module tb_bmp_frame_format;
     string bmp_path;
     integer fd, byte_count;
     integer width_cfg, height_cfg, data_offset, row_stride;
-    integer left_cfg, right_cfg, bottom_cfg, top_cfg;
     integer cycles = 0, received_words = 0, pixel_x, pixel_y, byte_offset;
+    integer pixel_index;
     reg [15:0] expected_low, expected_high;
     reg [31:0] expected_word, expected_sum = 0;
 
@@ -55,32 +55,24 @@ module tb_bmp_frame_format;
         end
     endfunction
 
-    function automatic [15:0] expected_pixel(input integer x, input integer y);
-        integer lx, ly;
-        begin
-            if (x < left_cfg || x >= right_cfg || y < bottom_cfg || y >= top_cfg)
-                expected_pixel = 16'd0;
-            else begin
-                lx = x - left_cfg;
-                ly = y - bottom_cfg;
-                expected_pixel = bmp_rgb565(lx, ly);
-            end
-        end
-    endfunction
-
     always @(negedge clk) begin
         if (!rst && active) begin
             cycles = cycles + 1;
             word_ready = (cycles % 10) < 6;
             if (word_valid && word_ready) begin
-                pixel_x = (received_words % 640) * 2;
-                pixel_y = received_words / 640;
-                expected_low = expected_pixel(pixel_x, pixel_y);
-                expected_high = expected_pixel(pixel_x + 1, pixel_y);
+                pixel_index = received_words * 2;
+                pixel_x = pixel_index % width_cfg;
+                pixel_y = pixel_index / width_cfg;
+                expected_low = bmp_rgb565(pixel_x, pixel_y);
+                if (pixel_index + 1 < width_cfg * height_cfg) begin
+                    pixel_x = (pixel_index + 1) % width_cfg;
+                    pixel_y = (pixel_index + 1) / width_cfg;
+                    expected_high = bmp_rgb565(pixel_x, pixel_y);
+                end else expected_high = 16'd0;
                 expected_word = {expected_high, expected_low};
                 if (word_data !== expected_word) begin
-                    $display("FAIL %s word %0d: got %08x expected %08x at %0d,%0d",
-                             bmp_path, received_words, word_data, expected_word, pixel_x, pixel_y);
+                    $display("FAIL %s raw word %0d: got %08x expected %08x at pixel %0d",
+                             bmp_path, received_words, word_data, expected_word, pixel_index);
                     $fatal(1);
                 end
                 expected_sum = expected_sum + expected_word;
@@ -110,10 +102,6 @@ module tb_bmp_frame_format;
         width_cfg = {bmp_bytes[21],bmp_bytes[20],bmp_bytes[19],bmp_bytes[18]};
         height_cfg = {bmp_bytes[25],bmp_bytes[24],bmp_bytes[23],bmp_bytes[22]};
         row_stride = ((width_cfg * 3 + 3) / 4) * 4;
-        left_cfg = (1280 - width_cfg) / 2;
-        right_cfg = left_cfg + width_cfg;
-        bottom_cfg = (720 - height_cfg) - ((720 - height_cfg) / 2);
-        top_cfg = bottom_cfg + height_cfg;
 
         repeat (4) @(negedge clk);
         rst = 0;
@@ -146,10 +134,12 @@ module tb_bmp_frame_format;
         end
         if (!done) $fatal(1, "formatter timeout (%s)", bmp_path);
         if (format_error) $fatal(1, "formatter overflow (%s)", bmp_path);
-        if (received_words != 460800) $fatal(1, "got %0d words (%s)", received_words, bmp_path);
+        if (received_words != (width_cfg * height_cfg + 1) / 2)
+            $fatal(1, "got %0d words, expected %0d (%s)", received_words,
+                   (width_cfg * height_cfg + 1) / 2, bmp_path);
         if (checksum !== expected_sum)
             $fatal(1, "checksum mismatch got=%08x expected=%08x (%s)", checksum, expected_sum, bmp_path);
-        $display("PASS: %s %0dx%0d BMP parser + sector pause + padded frame exact, checksum=%08x",
+        $display("PASS: %s %0dx%0d BMP parser + sector pause + raw RGB565 stream exact, checksum=%08x",
                  bmp_path, width_cfg, height_cfg, checksum);
         $finish;
     end

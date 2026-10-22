@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
-// End-to-end source test: native SD pins -> FAT32 -> BMP decode -> 1280x720
-// RGB565 black-border formatter -> production frame stream.
+// End-to-end source test: native SD pins -> FAT32 -> BMP decode -> raw,
+// variable-size RGB565 frame stream. Display-side padding is tested separately.
 module tb_media_sd_image_source;
     reg sd_clk100=0;
     reg app_clk50=0;
@@ -11,6 +11,15 @@ module tb_media_sd_image_source;
     reg rst=1;
     reg pll_locked=0;
     reg start=0;
+    reg audio_start_toggle=0;
+    reg [4:0] audio_file_index=0;
+    reg count_clear=0,audio_check=0;
+    reg [7:0] pcm_golden[0:2351103];
+    string pcm_dir="captures/card_pcm",pcm_base,pcm_path;
+    integer pcm_file,pcm_size,pcm_seen=0,pcm_bytes,byte_no,name_no;
+    integer audio_checked=0;
+    reg [7:0] name_byte;
+    reg audio_done_ref;
     tri1 sd_cmd;
     tri1 [3:0] sd_dat;
     wire sd_clk,sd_init_done,fat_mounted,fat_error;
@@ -26,16 +35,19 @@ module tb_media_sd_image_source;
     wire audio_prepared_toggle,audio_done_toggle,audio_source_error,paired_wav_valid;
     wire [31:0] audio_sample_count,frame_data,tap_word;
     wire [4:0] paired_wav_index;
+    reg [4:0] selected_bmp_index=0;
     wire frame_clear,tap_val,tap_end,frame_valid;
     wire [11:0] image_width,image_height;
     wire [15:0] cmd_count,cmd_crc_errors,read_count;
     reg done_ref;
     integer cycles=0,words=0;
+    integer image_no=0,expected_words=0;
+    reg [31:0] visited_bmps=0;
 
     media_image_source u_source (
         .clk(app_clk50),.rst(rst),.start(start),.debug_start(1'b0),.abort(1'b0),
-        .file_index(first_bmp[4:0]),.audio_start_toggle_async(1'b0),
-        .audio_file_index_async(5'd0),.audio_pause(1'b0),
+        .file_index(selected_bmp_index),.audio_start_toggle_async(audio_start_toggle),
+        .audio_file_index_async(audio_file_index),.audio_pause(1'b0),
         .sd_clk(sd_clk),.sd_clk_100m(sd_clk100),.sd_pll_locked(pll_locked),
         .sd_cmd(sd_cmd),.sd_dat(sd_dat),.sd_init_done(sd_init_done),
         .fat_mounted(fat_mounted),.fat_error(fat_error),.sd_diag_flags(sd_diag_flags),
@@ -60,7 +72,18 @@ module tb_media_sd_image_source;
     );
 
     always @(posedge app_clk50) begin
-        if(!rst && frame_valid) words<=words+1;
+        if(rst || count_clear)begin words<=0;pcm_seen<=0;end
+        else if(frame_valid)begin
+            words<=words+1;
+            if(audio_check)begin
+                pcm_bytes=(pcm_size-pcm_seen>=4)?4:(pcm_size-pcm_seen);
+                for(byte_no=0;byte_no<pcm_bytes;byte_no=byte_no+1)
+                    if(frame_data[8*byte_no+:8]!==pcm_golden[pcm_seen+byte_no])
+                        $fatal(1,"PCM mismatch %s sample%0d got%02x expected%02x",pcm_base,pcm_seen+byte_no,
+                               frame_data[8*byte_no+:8],pcm_golden[pcm_seen+byte_no]);
+                pcm_seen<=pcm_seen+pcm_bytes;
+            end
+        end
     end
 
     initial begin
@@ -83,26 +106,66 @@ module tb_media_sd_image_source;
         end
         $display("PASS: full-image card mounted files=%0d bmp=%0d wav=%0d first_bmp=%0d",
             file_count,bmp_count,wav_count,first_bmp);
-        done_ref=done_toggle;
-        @(negedge app_clk50);start=1;
-        @(negedge app_clk50);start=0;
+        selected_bmp_index=first_bmp[4:0];
+        for(image_no=0;image_no<bmp_count;image_no=image_no+1) begin
+            if(selected_bmp_index>=32 || visited_bmps[selected_bmp_index])
+                $fatal(1,"BMP playlist loop/invalid index at image %0d index=%0d",
+                    image_no,selected_bmp_index);
+            visited_bmps[selected_bmp_index]=1'b1;
+            @(negedge app_clk50);count_clear=1;
+            @(negedge app_clk50);count_clear=0;
+            done_ref=done_toggle;
+            @(negedge app_clk50);start=1;
+            @(negedge app_clk50);start=0;
 
-        cycles=0;
-        while((done_toggle==done_ref || source_busy) && cycles<200_000_000) begin
-            @(posedge app_clk50);cycles=cycles+1;
-            if(source_error || fat_error)
-                $fatal(1,"source error words=%0d state=%0d fat=%0d width=%0d height=%0d",
-                    words,source_status[2:0],fat_state,image_width,image_height);
+            cycles=0;
+            while((done_toggle==done_ref || source_busy) && cycles<200_000_000) begin
+                @(posedge app_clk50);cycles=cycles+1;
+                if(source_error || fat_error)
+                    $fatal(1,"source error image=%0d index=%0d words=%0d state=%0d fat=%0d width=%0d height=%0d",
+                        image_no,selected_bmp_index,words,source_status[2:0],fat_state,image_width,image_height);
+            end
+            if(done_toggle==done_ref || source_busy)
+                $fatal(1,"image-source timeout image=%0d index=%0d words=%0d status=%02x fat=%0d host=%0d reads=%0d",
+                    image_no,selected_bmp_index,words,source_status,fat_state,
+                    u_source.u_sd_card.u_host.state,read_count);
+            if(image_width==0 || image_height==0)
+                $fatal(1,"BMP dimensions were not decoded at index=%0d",selected_bmp_index);
+            expected_words=(image_width*image_height+1)/2;
+            if(words!=expected_words)
+                $fatal(1,"raw frame length index=%0d %0dx%0d got=%0d expected=%0d",
+                    selected_bmp_index,image_width,image_height,words,expected_words);
+            $display("BMP[%0d] %0dx%0d raw_words=%0d wav=%0d read_us=%0d",
+                selected_bmp_index,image_width,image_height,words,paired_wav_valid,sd_last_read_cycles/100);
+            if(paired_wav_valid)begin
+                pcm_base="";
+                for(name_no=0;name_no<8;name_no=name_no+1)begin
+                    name_byte=u_source.image_name_latched[8*name_no+:8];
+                    if(name_byte!=8'h20)pcm_base={pcm_base,$sformatf("%c",name_byte)};
+                end
+                pcm_path={pcm_dir,"/",pcm_base,".pcm"};
+                pcm_file=$fopen(pcm_path,"rb");
+                if(!pcm_file)$fatal(1,"missing PCM golden %s",pcm_path);
+                pcm_size=$fread(pcm_golden,pcm_file);$fclose(pcm_file);
+                @(negedge app_clk50);count_clear=1;audio_check=1;audio_file_index=paired_wav_index;
+                @(negedge app_clk50);count_clear=0;audio_done_ref=audio_done_toggle;
+                audio_start_toggle=~audio_start_toggle;
+                cycles=0;
+                while(audio_done_toggle==audio_done_ref && cycles<200_000_000)begin
+                    @(posedge app_clk50);cycles=cycles+1;
+                    if(audio_source_error || source_error || fat_error)$fatal(1,"WAV source failure %s",pcm_base);
+                end
+                repeat(3)@(negedge app_clk50);
+                if(audio_done_toggle==audio_done_ref || pcm_seen!=pcm_size || audio_sample_count!=pcm_size || words!=(pcm_size+3)/4)
+                    $fatal(1,"WAV count %s got%0d/%0d words%0d samples%0d",pcm_base,pcm_seen,pcm_size,words,audio_sample_count);
+                audio_check=0;audio_checked=audio_checked+1;
+                $display("PASS: %s WAV %0d PCM bytes exact through real SD/FAT source",pcm_base,pcm_size);
+            end
+            selected_bmp_index=bmp_next[(selected_bmp_index*6)+:6];
         end
-        if(done_toggle==done_ref || source_busy)
-            $fatal(1,"image-source timeout words=%0d source_status=%02x fat=%0d host=%0d reads=%0d last_sector=%0d",
-                words,source_status,fat_state,u_source.u_sd_card.u_host.state,read_count,sd_last_read_cycles);
-        if(words!=460800)
-            $fatal(1,"formatted frame length=%0d expected=460800",words);
-        if(image_width==0 || image_height==0)
-            $fatal(1,"BMP dimensions were not decoded");
-        $display("MEDIA_SD_IMAGE_SOURCE_PASS words=%0d dimensions=%0dx%0d reads=%0d read_us=%0d",
-            words,image_width,image_height,read_count,sd_last_read_cycles/100);
+        if(audio_checked!=wav_count)$fatal(1,"paired WAV coverage %0d expected%0d",audio_checked,wav_count);
+        $display("MEDIA_SD_IMAGE_SOURCE_PASS all %0d BMP files, files=%0d WAV=%0d reads=%0d",
+            bmp_count,file_count,wav_count,read_count);
         $finish;
     end
 endmodule

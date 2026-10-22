@@ -28,22 +28,20 @@ def main():
     link.board = "192.168.137.3"
     old_probe = dict(ETH_FRAME_RB)
     old_snapshot = dict(ETH_FRAME_SNAPSHOT)
-    probe_sentinel = {"id": 77, "data": b"probe", "gaps": 2,
+    probe_sentinel = {**old_probe, "id": 77, "data": b"probe", "gaps": 2,
                       "words": 1, "ts": "probe", "stride": 3}
     with ETH_FRAME_LOCK:
         ETH_FRAME_RB.update(probe_sentinel)
     frame_id = 0x4242
-    total_words = 1280 * 720 // 2
+    width, height = 3, 3
+    total_words = (width * height + 1) // 2
 
     try:
-        begin = struct.pack("<HBBI", frame_id, 4, 0x10, total_words)
+        begin = struct.pack("<HBBIHHBBH", frame_id, 4, 0x10, total_words,
+                            width, height, 0, 0, 0)
         link._on_snapshot(packet(0x21, begin))
-        seq = 0
-        for first in range(0, total_words, 253):
-            count = min(253, total_words - first)
-            payload = struct.pack("<HH", frame_id, seq) + bytes(count * 4)
-            link._on_snapshot(packet(0x22, payload))
-            seq += 1
+        payload = struct.pack("<HH", frame_id, 0) + bytes(total_words * 4)
+        link._on_snapshot(packet(0x22, payload))
         link._on_snapshot(packet(0x23, struct.pack("<HIH", frame_id, 0, 0)))
         if fake.sent[-1][0][4:8] != bytes((0x24, 0, 3, 0)) or fake.sent[-1][0][10] != 0:
             raise AssertionError("image RESULT=0 was not sent")
@@ -56,24 +54,28 @@ def main():
         with ETH_FRAME_LOCK:
             if (ETH_FRAME_SNAPSHOT["words"] != total_words or ETH_FRAME_SNAPSHOT["gaps"] != 0 or
                     ETH_FRAME_SNAPSHOT["stride"] != 1 or
+                    ETH_FRAME_SNAPSHOT["width"] != width or ETH_FRAME_SNAPSHOT["height"] != height or
                     len(ETH_FRAME_SNAPSHOT["data"]) != total_words * 4):
                 raise AssertionError("committed frame metadata incorrect")
             if ETH_FRAME_RB != probe_sentinel:
                 raise AssertionError("formal snapshot overwrote the 3:1 probe buffer")
         event = events.get_nowait()
         if (event["type"] != "frame" or event["kind"] != "rb" or
-                event["source"] != "snapshot" or event["gaps"] != 0):
+                event["source"] != "snapshot" or event["gaps"] != 0 or
+                event["w"] != width or event["h"] != height):
             raise AssertionError(f"snapshot event incorrect: {event}")
         client = app.test_client()
         response = client.get("/api/frame?slot=snapshot")
         if (response.status_code != 200 or len(response.data) != total_words * 4 or
-                response.headers.get("X-Frame-Id") != str(ETH_FRAME_SNAPSHOT["id"])):
+                response.headers.get("X-Frame-Id") != str(ETH_FRAME_SNAPSHOT["id"]) or
+                response.headers.get("X-Frame-Width") != str(width) or
+                response.headers.get("X-Frame-Height") != str(height)):
             raise AssertionError("snapshot endpoint did not return its isolated full frame")
         if "error=3" not in decode_pkt(bytes((0xA5, 0x39, 0, 0, 0, 0, 3, 0))):
             raise AssertionError("media TX error/state status was not decoded")
         if "checksum" not in decode_pkt(bytes((0xA5, 0xC9, 0, 0, 0, 0, 3, 0))):
             raise AssertionError("detailed display reject reason was not decoded")
-        print("PASS: PC snapshot ACKs, isolated full-frame endpoint and status decoding")
+        print("PASS: variable-size raw PC snapshot ACKs, dimensions, endpoint and status decoding")
     finally:
         with ETH_FRAME_LOCK:
             ETH_FRAME_RB.clear()

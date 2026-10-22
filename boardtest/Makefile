@@ -43,7 +43,7 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -245,6 +245,7 @@ build_media_sd_image_source/sim_media_sd_image_source: vsrc/tb_media_sd_image_so
 	  --top-module tb_media_sd_image_source $^ --Mdir build_media_sd_image_source -o sim_media_sd_image_source
 
 media-sd-image-source: build_media_sd_image_source/sim_media_sd_image_source
+	python3 diagnostics/export_card_pcm.py
 	./build_media_sd_image_source/sim_media_sd_image_source +CARD=../img/card_user_real.img +CARD_FULL_IMAGE=1
 
 build_media_uart_arbiter/sim_media_uart_arbiter: vsrc/tb_media_uart_arbiter.sv ../board_media/user_source/hdl_source/media_uart_arbiter.v
@@ -286,6 +287,10 @@ media-frame-format:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_frame_format vsrc/tb_media_frame_format.sv ../board_media/user_source/hdl_source/media_frame_format.v --Mdir build_media_frame_format -o sim_media_frame_format
 	./build_media_frame_format/sim_media_frame_format
 
+media-frame-pad:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_frame_pad vsrc/tb_media_frame_pad.sv ../board_display/user_source/hdl_source/ETH/media_frame_pad.v --Mdir build_media_frame_pad -o sim_media_frame_pad
+	./build_media_frame_pad/sim_media_frame_pad
+
 build_bmp_frame_format/sim_bmp_frame_format: vsrc/tb_bmp_frame_format.sv ../board_media/user_source/hdl_source/SD/bmp_dec.v ../board_media/user_source/hdl_source/media_frame_format.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_bmp_frame_format $^ --Mdir build_bmp_frame_format -o sim_bmp_frame_format
 
@@ -298,8 +303,67 @@ media-audio-playback:
 	$(VERILATOR) --binary --timing --top-module tb_media_audio_playback vsrc/tb_media_audio_playback.sv ../board_display/user_source/hdl_source/SD/media_audio_playback.v --Mdir build_media_audio_playback -o sim_media_audio_playback
 	./build_media_audio_playback/sim_media_audio_playback
 media-display-path:
-	$(VERILATOR) --binary --timing --top-module tb_media_display_path vsrc/tb_media_display_path.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_media_display_path -o sim_media_display_path
+	$(VERILATOR) --binary --timing --top-module tb_media_display_path vsrc/tb_media_display_path.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_media_display_path -o sim_media_display_path
 	./build_media_display_path/sim_media_display_path
+
+.PHONY: display-mux-lifetime
+display-mux-lifetime:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_tx_mux_lifetime vsrc/tb_media_tx_mux_lifetime.sv ../board_display/user_source/hdl_source/ETH/media_tx_mux.v --Mdir build_display_mux_lifetime -o sim_display_mux_lifetime
+	./build_display_mux_lifetime/sim_display_mux_lifetime
+
+# Full native 1280x720 transaction: packet parser -> display-side padding ->
+# SDRAM writer -> RESULT 0 / committed RESULT 2 response path.
+build_media_display_full_frame/sim_media_display_full_frame: vsrc/tb_media_display_full_frame.sv \
+	../board_display/user_source/hdl_source/ETH/media_protocol_rx.v \
+	../board_display/user_source/hdl_source/ETH/media_frame_pad.v \
+	../board_display/user_source/hdl_source/ETH/media_transaction_writer.v \
+	../board_display/user_source/hdl_source/ETH/media_display_tx.v \
+	../board_display/user_source/hdl_source/ETH/eth_front.v
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_display_full_frame $^ --Mdir build_media_display_full_frame -o sim_media_display_full_frame
+
+build_media_display_narrow_frame/sim_media_display_narrow_frame: vsrc/tb_media_display_full_frame.sv \
+	../board_display/user_source/hdl_source/ETH/media_protocol_rx.v \
+	../board_display/user_source/hdl_source/ETH/media_frame_pad.v \
+	../board_display/user_source/hdl_source/ETH/media_transaction_writer.v \
+	../board_display/user_source/hdl_source/ETH/media_display_tx.v \
+	../board_display/user_source/hdl_source/ETH/eth_front.v
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_display_full_frame -GIMAGE_WIDTH=504 -GIMAGE_HEIGHT=720 -GTOTAL_WORDS=181440 $^ --Mdir build_media_display_narrow_frame -o sim_media_display_narrow_frame
+
+.PHONY: media-display-full-frame
+media-display-full-frame: build_media_display_full_frame/sim_media_display_full_frame build_media_display_narrow_frame/sim_media_display_narrow_frame
+	./build_media_display_full_frame/sim_media_display_full_frame
+	./build_media_display_narrow_frame/sim_media_display_narrow_frame
+
+build_media_pair_504/sim_media_pair_504: vsrc/tb_media_pair_504.sv \
+	../board_media/user_source/hdl_source/media_image_tx.v \
+	../board_display/user_source/hdl_source/ETH/media_protocol_rx.v \
+	../board_display/user_source/hdl_source/ETH/media_frame_pad.v \
+	../board_display/user_source/hdl_source/ETH/media_transaction_writer.v \
+	../board_display/user_source/hdl_source/ETH/media_display_tx.v \
+	../board_display/user_source/hdl_source/ETH/eth_front.v \
+	../board_display/user_source/hdl_source/SD/frame_read_write.v \
+	../board_display/user_source/hdl_source/SD/frame_fifo_read.v \
+	../board_display/user_source/hdl_source/SD/frame_fifo_write.v \
+	../board_display/user_source/hdl_source/IP/afifo_16_32_256.v \
+	../board_display/user_source/hdl_source/IP/afifo_32_16_256.v
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_pair_504 $^ --Mdir build_media_pair_504 -o sim_media_pair_504
+
+.PHONY: media-pair-504
+media-pair-504: build_media_pair_504/sim_media_pair_504
+	./build_media_pair_504/sim_media_pair_504
+
+build_media_pair_bmp0/sim_media_pair_bmp0: vsrc/tb_media_pair_504.sv ../board_media/user_source/hdl_source/media_image_tx.v ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/eth_front.v ../board_display/user_source/hdl_source/SD/frame_read_write.v ../board_display/user_source/hdl_source/SD/frame_fifo_read.v ../board_display/user_source/hdl_source/SD/frame_fifo_write.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_pair_504 -GIMAGE_WIDTH=1280 -GIMAGE_HEIGHT=720 $^ --Mdir build_media_pair_bmp0 -o sim_media_pair_bmp0
+
+.PHONY: media-pair-bmp0
+media-pair-bmp0: build_media_pair_bmp0/sim_media_pair_bmp0
+	./build_media_pair_bmp0/sim_media_pair_bmp0 +BMP=../img/golden/IMG0.BMP
+
+.PHONY: display-digest
+display-digest:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_display_frame_digest vsrc/tb_display_frame_digest.sv diagnostics/display_frame_digest.v --Mdir build_display_digest -o sim_display_digest
+	./build_display_digest/sim_display_digest
+
 media-image-tx:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_image_tx_flags vsrc/tb_media_image_tx_flags.sv ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_media_image_tx_flags -o sim_media_image_tx_flags
 	./build_media_image_tx_flags/sim_media_image_tx_flags

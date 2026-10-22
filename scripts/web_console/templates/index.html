@@ -971,17 +971,32 @@ async function showFrame(m) {
     const gaps  = +(r.headers.get("X-Frame-Gaps")  || 0);
     const words = +(r.headers.get("X-Frame-Words") || 0);
     const step = +(r.headers.get("X-Frame-Stride") || (kind === "rb" && source !== "snapshot" ? 3 : 1));
-    const bottomUp = kind === "rb" && source === "snapshot";
-    const h  = kind === "rb" ? 720 : Math.floor(words / 640);
+    const isSnapshot = kind === "rb" && source === "snapshot";
+    const width = isSnapshot ? +(r.headers.get("X-Frame-Width") || m.w || 1280) : 1280;
+    const h = isSnapshot ? +(r.headers.get("X-Frame-Height") || m.h || 720) :
+              (kind === "rb" ? 720 : Math.floor(words / 640));
+    const bottomUp = isSnapshot;
     const y0 = kind === "rb" ? 0 : (720 - h) >> 1;
-    frameMeta[kind] = {h, y0, step, gaps, bottomUp};
+    frameMeta[kind] = {width, h, y0, step, gaps, bottomUp, snapshot:isSnapshot};
     const dv  = new DataView(frameBuf[kind]);
-    const ctx = document.getElementById(kind === "wr" ? "frameCv" : "frameCvRb").getContext("2d");
-    const img = ctx.createImageData(1280, 720);
+    const canvas = document.getElementById(kind === "wr" ? "frameCv" : "frameCvRb");
+    canvas.width = width;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(width, h);
     const px  = img.data;
     const nWords = Math.min(words, dv.byteLength >> 2);
     if (gaps === 0) {
-      if (kind === "rb") {
+      if (isSnapshot) {
+        const pixels = Math.min(width * h, nWords * 2);
+        for (let p = 0; p < pixels; p++) {
+          const word = dv.getUint32((p >> 1) * 4, true);
+          const rgb565 = (p & 1) ? word >>> 16 : word & 0xFFFF;
+          const x = p % width, sourceY = Math.floor(p / width);
+          const y = h - 1 - sourceY;
+          put565(px, (y * width + x) * 4, rgb565);
+        }
+      } else if (kind === "rb") {
         // 第 j 个收到的字对应完整显存字 step*j；空位保持透明。
         for (let j = 0; j < nWords && step * j < 460800; j++) {
           const wi = step * j, sourceY = Math.floor(wi / 640), c = wi % 640;
@@ -1012,9 +1027,11 @@ async function showFrame(m) {
       document.getElementById("diffHint").textContent = "";
     } else {
       document.getElementById("frameCvRb").style.display = "";
-      document.getElementById("frameHintRb").textContent =
+      document.getElementById("frameHintRb").textContent = isSnapshot ?
+        `#${m.id} ${m.ts}：D 源图 ${width}×${h}，${words} 字，seq 缺口 ${gaps}` +
+          (gaps ? "；包丢失，本帧不参与像素比较" : "") :
         `#${m.id} ${m.ts}：${words} 抽样字（步长 ${step}，约 ${Math.round(nWords / 460800 * 100)}% 像素覆盖），seq 缺口 ${gaps}` +
-        (gaps ? "；包丢失，本帧不参与像素比较" : "");
+          (gaps ? "；包丢失，本帧不参与像素比较" : "");
       document.getElementById("diffHintRb").textContent = "";
     }
     diffAll();
@@ -1068,7 +1085,32 @@ function diffAll() {
       (bad ? `差异 ${bad}/${covered}（标红）` : `一致（${covered}）`);
   }
   // 读回帧 diff：对整幅 1280×720 显存采样比较，图像外也必须为黑色。
-  if (frameBuf.rb && frameMeta.rb && frameMeta.rb.gaps === 0) {
+  if (frameBuf.rb && frameMeta.rb && frameMeta.rb.snapshot && frameMeta.rb.gaps === 0) {
+    const {width, h} = frameMeta.rb;
+    const dv = new DataView(frameBuf.rb);
+    const ctx = document.getElementById("frameCvRb").getContext("2d");
+    const img = ctx.getImageData(0, 0, width, h);
+    const px = img.data;
+    const sameSize = bmpImg.w === width && bmpImg.h === h;
+    let bad = 0, total = 0;
+    for (let p = 0; sameSize && p < width * h; p++) {
+      const x = p % width, sourceY = Math.floor(p / width), y = h - 1 - sourceY;
+      const word = dv.getUint32((p >> 1) * 4, true);
+      const got = (p & 1) ? word >>> 16 : word & 0xFFFF;
+      const expected = bmpPixel(h - 1 - sourceY, x);
+      total++;
+      if (got !== expected) {
+        bad++;
+        const o = (y * width + x) * 4;
+        px[o] = 255; px[o + 1] = 0; px[o + 2] = 0; px[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    document.getElementById("diffHintRb").textContent = !sameSize ?
+      `D 源图 ${width}×${h}；当前 BMP 为 ${bmpImg.w}×${bmpImg.h}，尺寸不同，未比较` :
+      (bad ? `D 源图逐像素差异 ${bad}/${total}（红色标出）` : `D 源图逐像素一致：${total} 像素`);
+  }
+  if (frameBuf.rb && frameMeta.rb && !frameMeta.rb.snapshot && frameMeta.rb.gaps === 0) {
     const x0 = (1280 - bmpImg.w) >> 1, y0 = (720 - bmpImg.h) >> 1;
     const dv = new DataView(frameBuf.rb);
     const wMax = dv.byteLength >> 2;

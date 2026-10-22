@@ -12,10 +12,15 @@ module tb_media_display_path;
     wire [4:0] image_index;
     wire [7:0] image_flags;
     wire [20:0] image_total_words;
+    wire [11:0] image_width,image_height;
     wire stream_start,stream_is_audio,stream_word_valid,stream_done;
     wire [8:0] stream_word_count;
     wire [31:0] stream_word_data;
-    wire stream_word_ready;
+    wire stream_word_ready,raw_stream_ready;
+    wire padded_stream_start,padded_stream_audio,padded_stream_valid,padded_stream_ready,padded_stream_done;
+    wire [8:0] padded_stream_count;
+    wire [31:0] padded_stream_data;
+    wire pad_frame_done;
     wire frame_end_valid,frame_end_ok;
     wire [3:0] frame_end_reason;
     wire [15:0] frame_end_id,audio_frame_id,audio_end_id;
@@ -25,6 +30,7 @@ module tb_media_display_path;
     wire protocol_error_toggle;
     wire display_valid,image_has_wav,auto_play_status;
     wire [4:0] image_index_out;
+    wire [11:0] image_width_out,image_height_out;
     wire [1:0] display_buffer_index,transition_mode_latched;
     wire transition_start_toggle,transition_target_buf,transition_prev_latched;
     wire frame_commit_pulse;
@@ -56,10 +62,11 @@ module tb_media_display_path;
         .clk(udp_clk),.rst(rst),.rx_data(rx_data),.rx_valid(rx_valid),
         .ready_request(ready_request),.frame_begin_valid(frame_begin_valid),
         .frame_id(frame_id),.image_index(image_index),.image_flags(image_flags),
-        .image_total_words(image_total_words),.stream_start(stream_start),
+        .image_total_words(image_total_words),.image_width(image_width),.image_height(image_height),
+        .image_layout(),.image_window(),.image_generation(),.stream_start(stream_start),
         .stream_is_audio(stream_is_audio),.stream_word_count(stream_word_count),
         .stream_word_data(stream_word_data),.stream_word_valid(stream_word_valid),
-        .stream_word_ready(stream_word_ready),.stream_done(stream_done),
+        .stream_word_ready(raw_stream_ready),.stream_done(stream_done),
         .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),
         .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),.audio_frame_id(audio_frame_id),
@@ -67,13 +74,24 @@ module tb_media_display_path;
         .audio_end_ok(audio_end_ok),.audio_end_reason(audio_end_reason),.audio_end_id(audio_end_id),
         .protocol_error_toggle(protocol_error_toggle)
     );
-    media_transaction_writer #(.FRAME_WORDS(21'd3)) u_writer (
+    media_frame_pad #(.FRAME_WIDTH(11'd16),.FRAME_HEIGHT(10'd8),.FRAME_WORDS(21'd64)) u_frame_pad (
+        .clk(udp_clk),.rst(rst),.frame_begin(frame_begin_valid),
+        .image_width(image_width),.image_height(image_height),.frame_end(frame_end_valid),
+        .in_is_audio(stream_is_audio),.in_start(stream_start),.in_count(stream_word_count),
+        .in_data(stream_word_data),.in_valid(stream_word_valid),.in_ready(raw_stream_ready),
+        .in_done(stream_done),.out_start(padded_stream_start),.out_is_audio(padded_stream_audio),
+        .out_count(padded_stream_count),.out_data(padded_stream_data),
+        .out_valid(padded_stream_valid),.out_ready(padded_stream_ready),
+        .out_done(padded_stream_done),.frame_done(pad_frame_done)
+    );
+    media_transaction_writer #(.FRAME_WORDS(21'd64)) u_writer (
         .udp_clk(udp_clk),.udp_rst(rst),.frame_begin_valid(frame_begin_valid),
         .frame_id(frame_id),.image_index(image_index),.image_flags(image_flags),
-        .image_total_words(image_total_words),.stream_start(stream_start),
-        .stream_is_audio(stream_is_audio),.stream_word_count(stream_word_count),
-        .stream_word_data(stream_word_data),.stream_word_valid(stream_word_valid),
-        .stream_word_ready(stream_word_ready),.stream_done(stream_done),
+        .image_total_words(image_total_words),.image_width(image_width),.image_height(image_height),
+        .stream_start(padded_stream_start),
+        .stream_is_audio(padded_stream_audio),.stream_word_count(padded_stream_count),
+        .stream_word_data(padded_stream_data),.stream_word_valid(padded_stream_valid),
+        .stream_word_ready(padded_stream_ready),.stream_done(padded_stream_done),
         .frame_end_valid(frame_end_valid),.frame_end_ok(frame_end_ok),
         .frame_end_reason(frame_end_reason),.frame_end_id(frame_end_id),
         .audio_begin_valid(audio_begin_valid),.audio_frame_id(audio_frame_id),
@@ -82,11 +100,12 @@ module tb_media_display_path;
         .write_clk(write_clk),.write_rst(rst),.frame_finish_toggle(finish_toggle),
         .effect_mode(2'd0),.transition_done_toggle(transition_done_toggle[0]),
         .display_valid(display_valid),.image_index_out(image_index_out),
+        .image_width_out(image_width_out),.image_height_out(image_height_out),
         .image_has_wav(image_has_wav),.auto_play_status(auto_play_status),
         .display_buffer_index(display_buffer_index),.transition_start_toggle(transition_start_toggle),
         .transition_target_buf(transition_target_buf),.transition_mode_latched(transition_mode_latched),
         .transition_prev_latched(transition_prev_latched),.frame_commit_pulse(frame_commit_pulse),
-        .write_req(write_req),.write_req_ack(write_req),.write_buffer_index(write_buffer_index),
+        .write_req(write_req),.write_req_ack(write_req),.write_ready(1'b1),.write_buffer_index(write_buffer_index),
         .write_length(write_length),.write_row_offset(write_row_offset),
         .write_en(write_en),.write_data(write_data),
         .image_result_valid(image_result_valid),.image_result_code(image_result_code),
@@ -113,7 +132,7 @@ module tb_media_display_path;
         .chunk_req(tx_request),.chunk_valid(tx_valid),.chunk_data(tx_data),
         .chunk_length(tx_length),.chunk_ack(tx_ack),.chunk_ready(chunk_ready),
         .stack_req(stack_req),.stack_valid(stack_valid),.stack_data(stack_data),
-        .stack_length(stack_length),.chunk_active(chunk_active)
+        .stack_length(stack_length),.chunk_active(chunk_active),.chunk_owner()
     );
     always @(posedge udp_clk) begin
         if(stack_req && !stack_sending && !stack_ack) begin
@@ -180,12 +199,13 @@ module tb_media_display_path;
     initial begin
         repeat(5)@(negedge udp_clk);rst=0;
         header(8'h20,0);close_packet();
-        header(8'h21,8);send_byte(8'h34);send_byte(8'h12);send_byte(2);send_byte(8'h08);
-        send_byte(3);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        header(8'h21,16);send_byte(8'h34);send_byte(8'h12);send_byte(2);send_byte(8'h08);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);
+        send_byte(2);send_byte(0);send_byte(3);send_byte(0);send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
         header(8'h22,16);send_byte(8'h34);send_byte(8'h12);send_byte(0);send_byte(0);
         send_byte(8'h44);send_byte(8'h33);send_byte(8'h22);send_byte(8'h11);
         send_byte(8'h88);send_byte(8'h77);send_byte(8'h66);send_byte(8'h55);
-        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet();
+        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet_drain();
         header(8'h23,8);send_byte(8'h34);send_byte(8'h12);send_byte(8'hbb);send_byte(8'h69);
         send_byte(8'h36);send_byte(8'h45);send_byte(0);send_byte(0);close_packet();
         wait(output_packets>=2);
@@ -210,12 +230,13 @@ module tb_media_display_path;
 
         // A checksum failure returns 0x14 (reject + checksum reason 4), while
         // leaving the previously committed display image untouched.
-        header(8'h21,8);send_byte(8'h35);send_byte(8'h12);send_byte(2);send_byte(8'h08);
-        send_byte(3);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        header(8'h21,16);send_byte(8'h35);send_byte(8'h12);send_byte(2);send_byte(8'h08);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);
+        send_byte(2);send_byte(0);send_byte(3);send_byte(0);send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
         header(8'h22,16);send_byte(8'h35);send_byte(8'h12);send_byte(0);send_byte(0);
         send_byte(8'h44);send_byte(8'h33);send_byte(8'h22);send_byte(8'h11);
         send_byte(8'h88);send_byte(8'h77);send_byte(8'h66);send_byte(8'h55);
-        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet();
+        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet_drain();
         header(8'h23,8);send_byte(8'h35);send_byte(8'h12);send_byte(8'hba);send_byte(8'h69);
         send_byte(8'h36);send_byte(8'h45);send_byte(0);send_byte(0);close_packet();
         wait(output_packets>=7);
@@ -227,12 +248,13 @@ module tb_media_display_path;
 
         // A valid image followed by a wrong PCM checksum returns audio reason
         // 5 through writer CDC and media_display_tx as AUDIO_RESULT=0x15.
-        header(8'h21,8);send_byte(8'h36);send_byte(8'h12);send_byte(2);send_byte(8'h08);
-        send_byte(3);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        header(8'h21,16);send_byte(8'h36);send_byte(8'h12);send_byte(2);send_byte(8'h08);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);
+        send_byte(2);send_byte(0);send_byte(3);send_byte(0);send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
         header(8'h22,16);send_byte(8'h36);send_byte(8'h12);send_byte(0);send_byte(0);
         send_byte(8'h44);send_byte(8'h33);send_byte(8'h22);send_byte(8'h11);
         send_byte(8'h88);send_byte(8'h77);send_byte(8'h66);send_byte(8'h55);
-        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet();
+        send_byte(8'hef);send_byte(8'hbe);send_byte(8'had);send_byte(8'hde);close_packet_drain();
         header(8'h23,8);send_byte(8'h36);send_byte(8'h12);send_byte(8'hbb);send_byte(8'h69);
         send_byte(8'h36);send_byte(8'h45);send_byte(0);send_byte(0);close_packet();
         wait(output_packets>=8);
@@ -257,5 +279,13 @@ module tb_media_display_path;
         $display("PASS: image commit/reject and audio checksum reason round-trip");
         $finish;
     end
-    initial begin #20000000;$fatal(1,"timeout");end
+    initial begin
+        #20000000;
+        $fatal(1,"timeout rx_active=%0d rx_bad=%0d rx_words=%0d/%0d pad=%0d xy=%0d,%0d raw=%0d cache=%0d writer=%0d req=%0d issued=%0d end=%0d/%0d write_done=%0d packets=%0d",
+               u_rx.frame_active,u_rx.frame_bad,u_rx.received_image_words,u_rx.image_total_words,
+               u_frame_pad.frame_active,u_frame_pad.x,u_frame_pad.y,u_frame_pad.source_pixels_consumed,
+               u_frame_pad.source_word_valid,u_writer.writer_state,u_writer.write_req,
+               u_writer.frame_words_issued,u_writer.frame_end_seen_w,u_writer.frame_end_good_w,
+               u_writer.frame_write_done,output_packets);
+    end
 endmodule

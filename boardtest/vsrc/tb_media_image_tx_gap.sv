@@ -11,6 +11,7 @@ module tb_media_image_tx_gap;
     media_image_tx #(.CLK_HZ(125000000),.FRAME_WORDS(2)) dut (
         .clk(clk),.rst(rst),.mounted(1'b0),.source_busy(1'b0),.source_error(1'b0),
         .first_bmp(6'd0),.bmp_next(192'd0),.bmp_prev(192'd0),
+        .image_width(12'd1280),.image_height(12'd720),
         .cmd(8'd0),.cmd_pending(1'b0),.auto_next(1'b0),.auto_status(1'b0),
         .pc_snapshot_request(1'b0),.local_next(1'b0),.local_prev(1'b0),
         .prepared_toggle(1'b0),.done_toggle(1'b0),.source_has_wav_async(1'b0),
@@ -39,6 +40,8 @@ module tb_media_image_tx_gap;
         dut.byte_index=0;
         dut.tx_length=16;
         dut.total_words=1;
+        dut.packet_words=1;
+        dut.frame_total_words=2;
         dut.return_state=4'd2;
         dut.wait_count=0;
         while(dut.state==4'd4) @(negedge clk);
@@ -72,6 +75,13 @@ module tb_media_image_tx_gap;
         if(dut.state!=4'd11 || cycles<12499 || cycles>12501)
             $fatal(1,"audio packet gap state=%0d cycles=%0d",dut.state,cycles);
         $display("PASS: non-final audio packet also waits %0d cycles (100 us)",cycles);
+        dut.width_gap_cycles_r=28'd875000;dut.top_pad_cycles_r=0;dut.bottom_pad_cycles_r=0;
+        if (dut.image_packet_gap(9'd253,21'd253) < 28'd875000)
+            $fatal(1,"narrow image packet gap is too short");
+        dut.width_gap_cycles_r=28'd12500;dut.bottom_pad_cycles_r=28'd574400;
+        if (dut.image_end_gap(9'd134,21'd640) < 28'd574400)
+            $fatal(1,"short-image trailing canvas gap is too short");
+        $display("PASS: narrow and short images receive padding-aware packet/end gaps");
         $finish;
     end
     initial begin #500000;$fatal(1,"timeout");end

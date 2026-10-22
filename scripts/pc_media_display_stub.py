@@ -10,7 +10,7 @@ import time
 import wave
 from pathlib import Path
 
-from pc_display_media_probe import FRAME_WORDS, bmp_words, load_pcm
+from pc_display_media_probe import bmp_native_words, load_pcm
 
 MAGIC = b"\xaa\xbb\xcc\xdd"
 
@@ -99,7 +99,7 @@ class DisplayStub:
         self.request_snapshot = request_snapshot
         self.frames_done = 0
         self.peer: tuple[str, int] | None = None
-        self.golden = {path.name: bmp_words(path) for path in sorted(golden_dir.glob("*.BMP"))}
+        self.golden = {path.name: bmp_native_words(path) for path in sorted(golden_dir.glob("*.BMP"))}
         self.pcm = {path.name: load_pcm(path) for path in sorted(wav_dir.glob("*.WAV"))
                     if path.name.upper().startswith("IMG")}
         if card_image is not None:
@@ -111,6 +111,7 @@ class DisplayStub:
         self.image_words: list[int] = []
         self.image_next_seq = 0
         self.image_bad = False
+        self.image_width = self.image_height = self.image_count = 0
         self.audio_id: int | None = None
         self.audio_count = 0
         self.audio_data = bytearray()
@@ -126,8 +127,8 @@ class DisplayStub:
         self.sock.sendto(packet(kind, payload), self.peer)
 
     def match_image(self) -> tuple[str | None, list[int] | None]:
-        for name, expected in self.golden.items():
-            if len(expected) == FRAME_WORDS and expected == self.image_words:
+        for name, (expected, width, height) in self.golden.items():
+            if (width, height) == (self.image_width, self.image_height) and expected == self.image_words:
                 return name, expected
         return None, None
 
@@ -169,14 +170,18 @@ class DisplayStub:
         if kind == 0x20 and length == 0:
             self.send(0x20, b"\x01")
             print("READY query -> READY=1", flush=True)
-        elif kind == 0x21 and length == 8:
+        elif kind == 0x21 and length == 16:
             self.frame_id = int.from_bytes(payload[:2], "little")
             self.image_index = payload[2]
             self.flags = payload[3]
             total_words = int.from_bytes(payload[4:8], "little")
+            self.image_width, self.image_height = struct.unpack_from("<HH", payload, 8)
+            self.image_count = total_words
             self.image_words = []
             self.image_next_seq = 0
-            self.image_bad = total_words != FRAME_WORDS
+            self.image_bad = not (0 < self.image_width <= 1280 and 0 < self.image_height <= 720 and
+                                  total_words == (self.image_width * self.image_height + 1) // 2 and
+                                  payload[12:] == bytes(4))
             self.expected_image = None
             print(f"IMAGE BEGIN frame={self.frame_id:04x} index={self.image_index} "
                   f"flags=0x{self.flags:02x} words={total_words}", flush=True)
@@ -194,7 +199,7 @@ class DisplayStub:
             got_sum = sum(self.image_words) & 0xFFFFFFFF
             self.expected_image, _ = self.match_image()
             ok = (frame_id == self.frame_id and not self.image_bad and
-                  len(self.image_words) == FRAME_WORDS and sent_sum == got_sum and
+                  len(self.image_words) == self.image_count and sent_sum == got_sum and
                   self.expected_image is not None)
             self.send(0x24, struct.pack("<HB", frame_id, 0 if ok else 1))
             print(f"IMAGE END words={len(self.image_words)} sum={'ok' if sent_sum==got_sum else 'bad'} "

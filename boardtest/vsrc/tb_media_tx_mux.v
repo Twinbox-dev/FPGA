@@ -19,7 +19,7 @@ module tb_media_tx_mux;
         .chunk_data(chunk_data), .chunk_length(16'd2),
         .chunk_ack(chunk_ack), .chunk_ready(chunk_ready),
         .stack_req(stack_req), .stack_valid(stack_valid),
-        .stack_data(stack_data), .stack_length(stack_length), .chunk_active(chunk_active)
+        .stack_data(stack_data), .stack_length(stack_length), .chunk_active(chunk_active), .chunk_owner()
     );
 
     initial begin

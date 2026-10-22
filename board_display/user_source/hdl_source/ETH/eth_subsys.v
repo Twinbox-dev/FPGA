@@ -126,7 +126,7 @@ module eth_subsys(
         .chunk_req    (media_packet_request), .chunk_valid(media_packet_valid),
         .chunk_data   (media_packet_data), .chunk_length(media_packet_length),
         .chunk_ack    (media_packet_ack), .chunk_ready(media_packet_ready),
-        .chunk_active(),
+        .chunk_active(), .chunk_owner(),
         .stack_req    (app_tx_data_request), .stack_valid(app_tx_data_valid),
         .stack_data   (app_tx_data), .stack_length(udp_data_length)
     );

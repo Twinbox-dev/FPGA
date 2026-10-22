@@ -26,24 +26,17 @@ module tb_media_frame_format;
     );
 
     integer width_cfg, height_cfg;
-    integer left_cfg, right_cfg, bottom_cfg, top_cfg;
+    integer expected_word_total;
     integer received_words = 0;
     integer cycles = 0;
-    integer pixel_x, pixel_y, local_x, local_y;
+    integer pixel_x;
     reg [15:0] expected_low, expected_high;
     reg [31:0] expected_word, expected_sum = 0;
 
-    function automatic [15:0] expected_pixel(input integer x, input integer y);
-        integer lx, ly;
+    function automatic [15:0] expected_pixel(input integer index);
         begin
-            if (x < left_cfg || x >= right_cfg || y < bottom_cfg || y >= top_cfg)
-                expected_pixel = 16'd0;
-            else begin
-                lx = x - left_cfg;
-                ly = y - bottom_cfg;
-                // The BMP parser emits rows in file order (bottom-up).
-                expected_pixel = (ly * width_cfg + lx + 1) & 16'hffff;
-            end
+            // The formatter now emits only source RGB565 pixels in BMP order.
+            expected_pixel = (index + 1) & 16'hffff;
         end
     endfunction
 
@@ -53,15 +46,15 @@ module tb_media_frame_format;
             // A packet/FIFO-like sink that regularly applies backpressure.
             word_ready = (cycles % 10) < 6;
             if (word_valid && word_ready) begin
-                pixel_x = (received_words * 2) % 1280;
-                pixel_y = (received_words * 2) / 1280;
-                expected_low = expected_pixel(pixel_x, pixel_y);
-                expected_high = expected_pixel(pixel_x + 1, pixel_y);
+                pixel_x = received_words * 2;
+                expected_low = expected_pixel(pixel_x);
+                expected_high = (pixel_x + 1 < width_cfg * height_cfg) ?
+                                expected_pixel(pixel_x + 1) : 16'd0;
                 expected_word = {expected_high, expected_low};
                 if (word_data !== expected_word) begin
                     $display("FAIL %0dx%0d word %0d: got %08x expected %08x (x=%0d y=%0d)",
                              width_cfg, height_cfg, received_words, word_data,
-                             expected_word, pixel_x, pixel_y);
+                             expected_word, pixel_x, received_words*2 / width_cfg);
                     $fatal(1);
                 end
                 expected_sum = expected_sum + expected_word;
@@ -80,10 +73,7 @@ module tb_media_frame_format;
         begin
             width_cfg = w;
             height_cfg = h;
-            left_cfg = (1280 - w) / 2;
-            right_cfg = left_cfg + w;
-            bottom_cfg = (720 - h) - ((720 - h) / 2);
-            top_cfg = bottom_cfg + h;
+            expected_word_total = (w * h + 1) / 2;
             received_words = 0;
             expected_sum = 0;
             cycles = 0;
@@ -118,12 +108,13 @@ module tb_media_frame_format;
             end
             if (!done) $fatal(1, "timeout for %0dx%0d", w, h);
             if (error) $fatal(1, "formatter error for %0dx%0d", w, h);
-            if (received_words != 460800)
-                $fatal(1, "word count %0d for %0dx%0d", received_words, w, h);
+            if (received_words != expected_word_total)
+                $fatal(1, "word count %0d expected %0d for %0dx%0d",
+                       received_words, expected_word_total, w, h);
             if (checksum !== expected_sum)
                 $fatal(1, "checksum got %08x expected %08x for %0dx%0d",
                        checksum, expected_sum, w, h);
-            $display("PASS: %0dx%0d -> %0d words, padding and pixel order exact, checksum=%08x",
+            $display("PASS: %0dx%0d -> %0d raw words, pixel order/tail exact, checksum=%08x",
                      w, h, received_words, checksum);
 
             @(negedge clk);

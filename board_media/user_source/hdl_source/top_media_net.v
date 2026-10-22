@@ -154,6 +154,7 @@ module top (
     // a third mounted synchronizer stage keep lookups out of the CDC path.
     reg [5:0] first_s0,first_s1;
     reg [191:0] next_s0,next_s1,prev_s0,prev_s1;
+    reg [11:0] image_width_s0,image_width_s1,image_height_s0,image_height_s1;
     always @(posedge app_clk) begin
         if(media_app_rst)begin
             clear_sync<=3;mounted_sync<=0;busy_sync<=0;error_sync<=0;prepared_sync<=0;done_sync<=0;
@@ -164,6 +165,7 @@ module top (
             fail_lba_s0<=0;fail_lba_s1<=0;fail_info_s0<=0;fail_info_s1<=0;
             sd_stream_debug_s0<=0;sd_stream_debug_s1<=0;
             first_s0<=0;first_s1<=0;next_s0<=0;next_s1<=0;prev_s0<=0;prev_s1<=0;
+            image_width_s0<=0;image_width_s1<=0;image_height_s0<=0;image_height_s1<=0;
         end else begin
             clear_sync<={clear_sync[0],frame_clear};mounted_sync<={mounted_sync[1:0],fat_mounted};
             fat_state_s0<=fat_state;fat_state_s1<=fat_state_s0;fat_error_s0<=fat_error;fat_error_s1<=fat_error_s0;
@@ -177,6 +179,8 @@ module top (
             sd_stream_debug_s0<=sd_stream_debug;sd_stream_debug_s1<=sd_stream_debug_s0;
             first_s0<=first_bmp;first_s1<=first_s0;
             next_s0<=bmp_next;next_s1<=next_s0;prev_s0<=bmp_prev;prev_s1<=prev_s0;
+            image_width_s0<=image_width;image_width_s1<=image_width_s0;
+            image_height_s0<=image_height;image_height_s1<=image_height_s0;
             busy_sync<={busy_sync[0],source_busy};error_sync<={error_sync[0],source_error};
             prepared_sync<={prepared_sync[0],prepared_toggle};done_sync<={done_sync[0],done_toggle};
         end
@@ -192,7 +196,9 @@ module top (
     );
     media_image_tx u_formal_tx (
         .clk(app_clk),.rst(media_app_rst),.mounted(mounted_sync[2]),.source_busy(busy_sync[1]),.source_error(error_sync[1]),
-        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.cmd(cmd),.cmd_pending(media_internal_cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
+        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),
+        .image_width(image_width_s1),.image_height(image_height_s1),
+        .cmd(cmd),.cmd_pending(media_internal_cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
         .pc_snapshot_request(pc_snapshot_request),.media_to_pc(media_to_pc),
         .local_next(local_next_pulse || key_next_app_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse),
         .prepared_toggle(prepared_sync[1]),.done_toggle(done_sync[1]),.source_has_wav_async(source_has_wav),

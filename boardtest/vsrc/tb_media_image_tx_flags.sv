@@ -6,6 +6,7 @@ module tb_media_image_tx_flags;
     reg mounted=1, source_busy=0, source_error=0;
     reg [5:0] first_bmp=6'd3;
     reg [191:0] bmp_next=0, bmp_prev=0;
+    reg [11:0] image_width=12'd1, image_height=12'd1;
     reg [7:0] cmd=0;
     reg cmd_pending=0, auto_next=0, auto_status=1;
     reg pc_snapshot_request=0;
@@ -32,7 +33,7 @@ module tb_media_image_tx_flags;
     wire [7:0] error_code;
     wire [3:0] state_code;
     wire media_to_pc;
-    reg [7:0] got [0:15];
+    reg [7:0] got [0:23];
     reg [7:0] ready_bytes [0:8];
     integer i;
     reg old_start;
@@ -41,6 +42,7 @@ module tb_media_image_tx_flags;
         .clk(clk), .rst(rst),
         .mounted(mounted), .source_busy(source_busy), .source_error(source_error),
         .first_bmp(first_bmp), .bmp_next(bmp_next), .bmp_prev(bmp_prev),
+        .image_width(image_width), .image_height(image_height),
         .cmd(cmd), .cmd_pending(cmd_pending), .auto_next(auto_next), .auto_status(auto_status),
         .pc_snapshot_request(pc_snapshot_request), .media_to_pc(media_to_pc),
         .local_next(local_next), .local_prev(local_prev),
@@ -76,22 +78,24 @@ module tb_media_image_tx_flags;
         // source's prepared toggle reaches the sender's synchronized input.
         @(negedge clk); prepared_toggle=~prepared_toggle;
         wait(tx_request);
-        if (tx_length!=16) $fatal(1,"BEGIN packet length");
+        if (tx_length!=24) $fatal(1,"BEGIN packet length");
         @(negedge clk); tx_ack=1;
         @(negedge clk); tx_ack=0;
-        for (i=0;i<16;i=i+1) begin
+        for (i=0;i<24;i=i+1) begin
             if (!tx_valid) $fatal(1,"BEGIN packet ended early at byte %0d",i);
             got[i]=tx_data;
             @(negedge clk);
         end
         if ({got[0],got[1],got[2],got[3]} !== 32'haabbccdd) $fatal(1,"bad app header");
-        if (got[4]!=8'h21 || got[5]!=0 || got[6]!=8'd8 || got[7]!=0)
+        if (got[4]!=8'h21 || got[5]!=0 || got[6]!=8'd16 || got[7]!=0)
             $fatal(1,"bad BEGIN type/length");
         if (got[10]!=8'd3) $fatal(1,"image index not preserved");
         if (!got[11][4] || !got[11][3] || got[11][0])
             $fatal(1,"BEGIN flags mismatch: %02x",got[11]);
         if (media_to_pc) $fatal(1,"normal display transaction routed to PC");
-        if ({got[15],got[14],got[13],got[12]}!=32'd1)
+        if ({got[15],got[14],got[13],got[12]}!=32'd1 ||
+            {got[17],got[16]}!=16'd1 || {got[19],got[18]}!=16'd1 ||
+            got[20]!=0 || got[21]!=0 || got[22]!=0 || got[23]!=0)
             $fatal(1,"bad frame word count");
         $display("PASS: display BEGIN carries auto-on bit4 and paired-WAV bit3");
 

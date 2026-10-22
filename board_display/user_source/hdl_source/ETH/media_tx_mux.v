@@ -25,12 +25,18 @@ module media_tx_mux (
     output wire        stack_valid,
     output wire [7:0]  stack_data,
     output wire [15:0] stack_length,
-    output wire        chunk_active
+    output wire        chunk_active,
+    output wire        chunk_owner
 );
     reg active, owner_chunk;
     reg [15:0] byte_count;
+    reg [15:0] packet_length_hold;
+    reg length_captured;
     wire choose_chunk = active ? owner_chunk : (!ctrl_req && chunk_req);
     assign chunk_active = active && owner_chunk;
+    // The UDP/MAC layers may still use route and length after the application
+    // payload ends. Keep the selected owner until the next actual grant.
+    assign chunk_owner = owner_chunk;
     assign ctrl_ready = stack_ready && (active ? !owner_chunk : !stack_ack);
     assign chunk_ready = !active && !ctrl_req && stack_ready && !stack_ack;
     assign ctrl_ack = active && !owner_chunk && stack_ack;
@@ -41,21 +47,31 @@ module media_tx_mux (
     // Keep the selected producer's length live through its ACK and byte stream.
     // eth_front publishes its fixed response length when the stack ACKs; the
     // display response length is already stable before REQUEST.
-    assign stack_length = choose_chunk ? chunk_length : ctrl_length;
+    // eth_front publishes length at ACK, so capture at the first data beat,
+    // rather than the earlier grant. Hold it through the downstream drain.
+    assign stack_length = active && !length_captured ?
+                          (owner_chunk ? chunk_length : ctrl_length) : packet_length_hold;
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             active <= 0;
             owner_chunk <= 0;
             byte_count <= 16'd0;
+            packet_length_hold <= 16'd0;
+            length_captured <= 1'b0;
         end else if (!active) begin
             if (stack_ready && !stack_ack && (ctrl_req || chunk_req)) begin
                 active <= 1;
                 owner_chunk <= choose_chunk;
                 byte_count <= 16'd0;
+                length_captured <= 1'b0;
             end
         end else begin
             if (stack_valid) begin
+                if(!length_captured)begin
+                    packet_length_hold <= owner_chunk ? chunk_length : ctrl_length;
+                    length_captured <= 1'b1;
+                end
                 if (stack_length == 0 || byte_count + 16'd1 >= stack_length) begin
                     active <= 0;
                     byte_count <= 16'd0;

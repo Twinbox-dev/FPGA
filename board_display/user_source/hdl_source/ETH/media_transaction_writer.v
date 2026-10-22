@@ -16,6 +16,8 @@ module media_transaction_writer #(
     input  wire [4:0]  image_index,
     input  wire [7:0]  image_flags,
     input  wire [20:0] image_total_words,
+    input  wire [11:0] image_width,
+    input  wire [11:0] image_height,
     input  wire        stream_start,
     input  wire        stream_is_audio,
     input  wire [8:0]  stream_word_count,
@@ -42,6 +44,8 @@ module media_transaction_writer #(
     input  wire        transition_done_toggle,
     output reg         display_valid,
     output reg  [4:0]  image_index_out,
+    output reg  [11:0] image_width_out,
+    output reg  [11:0] image_height_out,
     output reg         image_has_wav,
     output reg         auto_play_status,
     output reg  [1:0]  display_buffer_index,
@@ -53,6 +57,7 @@ module media_transaction_writer #(
 
     output reg         write_req,
     input  wire        write_req_ack,
+    input  wire        write_ready,
     output wire [1:0]  write_buffer_index,
     output wire [20:0] write_length,
     output wire [19:0] write_row_offset,
@@ -72,6 +77,7 @@ module media_transaction_writer #(
     localparam [1:0] W_IDLE=2'd0, W_REQ=2'd1, W_ACTIVE=2'd2;
 
     reg [31:0] image_meta_udp;
+    reg [11:0] image_width_udp, image_height_udp;
     reg [15:0] image_id_udp, image_end_id_udp, audio_id_udp, audio_end_id_udp;
     reg image_end_good_udp, audio_end_good_udp;
     reg [3:0] image_end_reason_udp;
@@ -107,12 +113,14 @@ module media_transaction_writer #(
     reg commit_pending_w, transition_pending_w, transition_done_seen_w;
     reg [15:0] pending_frame_id_w;
     reg [4:0] pending_image_index_w;
+    reg [11:0] pending_image_width_w, pending_image_height_w;
     reg pending_wav_w, pending_prev_w, pending_auto_w;
     reg [1:0] pending_frame_buffer_w;
     reg [1:0] pending_audio_buffer_w;
     reg [20:0] pending_audio_length_w;
     reg [31:0] pending_audio_samples_w;
     reg [4:0] transition_image_index_w;
+    reg [11:0] transition_image_width_w, transition_image_height_w;
     reg transition_image_wav_w, transition_image_auto_w;
     reg [1:0] transition_image_buffer_w, transition_audio_buffer_w;
     reg [20:0] transition_audio_length_w;
@@ -124,16 +132,16 @@ module media_transaction_writer #(
     wire audio_fifo_full, audio_fifo_empty;
     wire [31:0] audio_fifo_data;
     wire [9:0] audio_fifo_avail;
-    wire frame_fifo_pop = (writer_state == W_ACTIVE) && !write_audio_mode &&
+    wire frame_fifo_pop = write_ready && (writer_state == W_ACTIVE) && !write_audio_mode &&
                           !frame_fifo_empty && frame_words_issued < FRAME_WORDS;
-    wire audio_fifo_pop = (writer_state == W_ACTIVE) && write_audio_mode &&
+    wire audio_fifo_pop = write_ready && (writer_state == W_ACTIVE) && write_audio_mode &&
                           !audio_fifo_empty && audio_words_popped < audio_data_words;
     wire frame_fifo_push = stream_word_valid && stream_word_ready && !stream_is_audio;
     wire audio_fifo_push = stream_word_valid && stream_word_ready && stream_is_audio;
-    wire frame_pad = (writer_state == W_ACTIVE) && !write_audio_mode &&
+    wire frame_pad = write_ready && (writer_state == W_ACTIVE) && !write_audio_mode &&
                      frame_end_seen_w && !frame_end_good_w && frame_fifo_empty &&
                      !frame_read_pending && frame_words_issued < FRAME_WORDS;
-    wire audio_pad = (writer_state == W_ACTIVE) && write_audio_mode && audio_end_seen_w &&
+    wire audio_pad = write_ready && (writer_state == W_ACTIVE) && write_audio_mode && audio_end_seen_w &&
                      audio_fifo_empty && !audio_read_pending &&
                      audio_words_written < audio_target_length;
 
@@ -179,6 +187,7 @@ module media_transaction_writer #(
     always @(posedge udp_clk or posedge udp_rst) begin
         if (udp_rst) begin
             image_meta_udp <= 32'd0; image_id_udp <= 16'd0;
+            image_width_udp <= 12'd0; image_height_udp <= 12'd0;
             image_end_id_udp <= 16'd0; audio_id_udp <= 16'd0; audio_end_id_udp <= 16'd0;
             image_end_good_udp <= 1'b0; audio_end_good_udp <= 1'b0;
             image_end_reason_udp <= 4'd0;
@@ -205,6 +214,8 @@ module media_transaction_writer #(
             if (frame_begin_valid) begin
                 image_meta_udp <= {16'd0, image_flags, 3'd0, image_index};
                 image_id_udp <= frame_id;
+                image_width_udp <= image_width;
+                image_height_udp <= image_height;
                 image_begin_toggle_udp <= ~image_begin_toggle_udp;
             end
             if (frame_end_valid) begin
@@ -250,14 +261,17 @@ module media_transaction_writer #(
             commit_pending_w <= 1'b0; transition_pending_w <= 1'b0;
             transition_done_seen_w <= 1'b0;
             pending_frame_id_w <= 16'd0; pending_image_index_w <= 5'd0;
+            pending_image_width_w <= 12'd0; pending_image_height_w <= 12'd0;
             pending_wav_w <= 1'b0; pending_prev_w <= 1'b0; pending_auto_w <= 1'b0;
             pending_frame_buffer_w <= 2'd0; pending_audio_buffer_w <= 2'd2;
             pending_audio_length_w <= 21'd0; pending_audio_samples_w <= 32'd0;
             transition_image_index_w <= 5'd0; transition_image_wav_w <= 1'b0;
+            transition_image_width_w <= 12'd0; transition_image_height_w <= 12'd0;
             transition_image_auto_w <= 1'b0; transition_image_buffer_w <= 2'd0;
             transition_audio_buffer_w <= 2'd2; transition_audio_length_w <= 21'd0;
             transition_audio_samples_w <= 32'd0;
             display_valid <= 1'b0; image_index_out <= 5'd0;
+            image_width_out <= 12'd0; image_height_out <= 12'd0;
             image_has_wav <= 1'b0; auto_play_status <= 1'b0;
             display_buffer_index <= 2'd0; audio_buffer_index <= 2'd2;
             audio_buffer_length <= 21'd0;
@@ -303,6 +317,8 @@ module media_transaction_writer #(
             if (image_begin_event) begin
                 pending_frame_id_w <= image_id_udp;
                 pending_image_index_w <= image_meta_udp[4:0];
+                pending_image_width_w <= image_width_udp;
+                pending_image_height_w <= image_height_udp;
                 pending_wav_w <= image_meta_udp[11];
                 pending_prev_w <= image_meta_udp[8];
                 pending_auto_w <= image_meta_udp[12];
@@ -408,6 +424,8 @@ module media_transaction_writer #(
                 if (effect_mode == 2'd0 || !display_valid) begin
                     display_buffer_index <= pending_frame_buffer_w;
                     image_index_out <= pending_image_index_w;
+                    image_width_out <= pending_image_width_w;
+                    image_height_out <= pending_image_height_w;
                     image_has_wav <= pending_wav_w && pending_audio_samples_w != 0;
                     auto_play_status <= pending_auto_w;
                     display_valid <= 1'b1;
@@ -424,6 +442,8 @@ module media_transaction_writer #(
                     transition_mode_latched <= effect_mode;
                     transition_prev_latched <= pending_prev_w;
                     transition_image_index_w <= pending_image_index_w;
+                    transition_image_width_w <= pending_image_width_w;
+                    transition_image_height_w <= pending_image_height_w;
                     transition_image_wav_w <= pending_wav_w && pending_audio_samples_w != 0;
                     transition_image_auto_w <= pending_auto_w;
                     transition_image_buffer_w <= pending_frame_buffer_w;
@@ -442,6 +462,8 @@ module media_transaction_writer #(
                 transition_done_seen_w <= 1'b0;
                 display_buffer_index <= transition_image_buffer_w;
                 image_index_out <= transition_image_index_w;
+                image_width_out <= transition_image_width_w;
+                image_height_out <= transition_image_height_w;
                 image_has_wav <= transition_image_wav_w;
                 auto_play_status <= transition_image_auto_w;
                 display_valid <= 1'b1;

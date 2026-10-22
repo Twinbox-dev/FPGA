@@ -26,6 +26,7 @@ def packet(kind: int, payload: bytes = b"") -> bytes:
 
 
 def bmp_words(path: Path) -> list[int]:
+    """Legacy padded golden retained for historical single-board tests."""
     data = path.read_bytes()
     if data[:2] != b"BM" or len(data) < 54:
         raise ValueError(f"not a BMP file: {path}")
@@ -57,6 +58,30 @@ def bmp_words(path: Path) -> list[int]:
             else:
                 frame[word_index] |= pixel
     return frame
+
+
+def bmp_native_words(path: Path) -> tuple[list[int], int, int]:
+    """Current wire format: contiguous bottom-up pixels, only final half padded."""
+    data = path.read_bytes()
+    if data[:2] != b"BM" or len(data) < 54:
+        raise ValueError(f"not a BMP file: {path}")
+    offset = struct.unpack_from("<I", data, 10)[0]
+    width, signed_height = struct.unpack_from("<ii", data, 18)
+    planes, bpp = struct.unpack_from("<HH", data, 26)
+    height = abs(signed_height)
+    if not (0 < width <= 1280 and 0 < height <= 720 and planes == 1 and
+            bpp == 24 and struct.unpack_from("<I", data, 30)[0] == 0):
+        raise ValueError("unsupported BMP geometry/format")
+    stride = (width * 3 + 3) & ~3
+    words = [0] * ((width * height + 1) // 2)
+    for y in range(height):
+        start = offset + (y if signed_height > 0 else height - 1 - y) * stride
+        for x in range(width):
+            blue, green, red = data[start + 3*x:start + 3*x + 3]
+            pixel = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3)
+            index = y * width + x
+            words[index >> 1] |= pixel << (16 * (index & 1))
+    return words, width, height
 
 
 def load_pcm(path: Path | None) -> bytes:
@@ -130,11 +155,15 @@ class Probe:
         raise TimeoutError(f"no response type 0x{kind:04x} within {timeout_s}s; seen={self.formal_order}; queued={len(self.pending_formal)}")
 
     def send_image(self, words: list[int], frame_id: int, image_index: int,
-                   has_wav: bool, attempts: int = 3) -> None:
+                   has_wav: bool, attempts: int = 3, *, width: int = 1280,
+                   height: int = 720) -> None:
+        if len(words) != (width * height + 1) // 2:
+            raise ValueError("native image word count differs from dimensions")
         checksum = sum(words) & 0xFFFFFFFF
         flags = (0x08 if has_wav else 0x00)  # bit 3 = matching WAV; bit 0 = previous
         for attempt in range(1, attempts + 1):
-            self.send(0x21, struct.pack("<HBBI", frame_id, image_index, flags, len(words)))
+            self.send(0x21, struct.pack("<HBBIHHBBH", frame_id, image_index, flags,
+                                       len(words), width, height, 0, 0, 0))
             for sequence, first in enumerate(range(0, len(words), IMAGE_PACKET_WORDS)):
                 chunk = words[first:first + IMAGE_PACKET_WORDS]
                 payload = struct.pack("<HH", frame_id, sequence) + struct.pack(f"<{len(chunk)}I", *chunk)
@@ -228,7 +257,7 @@ def main() -> None:
     ap.add_argument("--skip-controls", action="store_true")
     args = ap.parse_args()
 
-    frame = bmp_words(args.bmp)
+    frame, width, height = bmp_native_words(args.bmp)
     pcm = load_pcm(args.wav if args.wav and args.wav.exists() else None)
     print(f"frame: {args.bmp} -> {len(frame)} words; paired PCM samples={len(pcm)}", flush=True)
     probe = Probe(args.board_ip, args.pc_ip, args.pace_ms / 1000.0, args.ctrl_port)
@@ -248,7 +277,7 @@ def main() -> None:
         print("transition mode set to direct for deterministic display acceptance", flush=True)
         if not args.skip_controls:
             print(f"preflight status: {probe.request_status(0xf1)}", flush=True)
-        probe.send_image(frame, args.frame_id, 0, bool(pcm))
+        probe.send_image(frame, args.frame_id, 0, bool(pcm), width=width, height=height)
         probe.send_audio(pcm, args.frame_id)
         final_result = probe.wait_formal(0x24, args.frame_id)
         print(f"formal result order: {[(hex(kind), code) for kind, code in probe.formal_order]}", flush=True)

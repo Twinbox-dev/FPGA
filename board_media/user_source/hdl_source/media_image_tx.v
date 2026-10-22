@@ -8,6 +8,7 @@ module media_image_tx #(
     input wire mounted,source_busy,source_error,
     input wire [5:0] first_bmp,
     input wire [191:0] bmp_next,bmp_prev,
+    input wire [11:0] image_width,image_height,
     input wire [7:0] cmd,
     input wire cmd_pending,
     input wire auto_next,
@@ -51,6 +52,15 @@ module media_image_tx #(
     // same 100 us drain window between image and audio DATA packets.
     localparam integer DATA_PACKET_GAP_CYCLES =
         (CLK_HZ/10000) > 0 ? (CLK_HZ/10000) : 1;
+    localparam [27:0] GAP_150US = CLK_HZ/1000000 * 150;
+    localparam [27:0] GAP_300US = CLK_HZ/1000000 * 300;
+    localparam [27:0] GAP_500US = CLK_HZ/1000000 * 500;
+    localparam [27:0] GAP_1MS = CLK_HZ/1000000 * 1000;
+    localparam [27:0] GAP_2MS = CLK_HZ/1000000 * 2000;
+    localparam [27:0] GAP_3500US = CLK_HZ/1000000 * 3500;
+    localparam [27:0] GAP_7MS = CLK_HZ/1000000 * 7000;
+    localparam [63:0] CANVAS_LINE_CYCLES =
+        ((64'd640 * CLK_HZ) + 64'd49999999) / 64'd50000000;
     localparam [7:0] READY=8'h20,BEGIN_IMAGE=8'h21,IMAGE_DATA=8'h22,END_IMAGE=8'h23;
     localparam [7:0] AUDIO_BEGIN=8'h30,AUDIO_DATA=8'h31,AUDIO_END=8'h32,AUDIO_RESULT=8'h33;
     localparam integer AUDIO_PACKET_SAMPLES=1012;
@@ -61,6 +71,7 @@ module media_image_tx #(
     reg [15:0] frame_id,sequence_id;
     reg [8:0] packet_words,loaded,target_words;
     reg [20:0] total_words;
+    reg [20:0] frame_total_words;
     reg [31:0] sum,audio_sum;
     reg [31:0] words[0:252]; /* fehdl force_ram=1, ram_style="bram" */
     reg [31:0] ram_q,word_hold;
@@ -71,6 +82,9 @@ module media_image_tx #(
     reg pc_snapshot_pending,pc_snapshot_active,pending_next,pending_prev;
     reg [1:0] attempts,audio_attempts;
     reg [27:0] wait_count;
+    reg [27:0] packet_gap_target;
+    reg [11:0] top_pad_rows_s0,bottom_pad_rows_s0;
+    reg [27:0] width_gap_cycles_r,top_pad_cycles_r,bottom_pad_cycles_r;
 
     reg [2:0] prepared_sync,done_sync,audio_prepared_sync,audio_done_sync;
     reg [1:0] has_wav_sync,audio_error_sync;
@@ -95,6 +109,8 @@ module media_image_tx #(
     assign tx_valid=state==SEND;
     wire [15:0] payload_length=tx_length-16'd8;
     wire [31:0] end_checksum=kind==END_IMAGE ? sum : audio_sum;
+    reg [23:0] image_pixel_count_pipe;
+    reg [20:0] image_word_count_pipe;
     wire [10:0] data_byte=byte_index-11'd12;
     wire data_packet=(kind==IMAGE_DATA || kind==AUDIO_DATA);
     wire ram_read=state==SEND && data_packet &&
@@ -106,10 +122,77 @@ module media_image_tx #(
         input [31:0] remain;
         begin audio_packet_limit=remain>32'd1012 ? 10'd1012 : remain[9:0]; end
     endfunction
+
+    // Width and height are stable before the source-prepared toggle crosses
+    // into this clock domain. Pipeline their multiply and odd-pixel rounding
+    // so BEGIN acceptance does not contain a long multiply/add/control path.
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            image_pixel_count_pipe <= 24'd0;
+            image_word_count_pipe <= 21'd0;
+        end else begin
+            image_pixel_count_pipe <= image_width * image_height;
+            image_word_count_pipe <= (image_pixel_count_pipe + 24'd1) >> 1;
+        end
+    end
     function [8:0] audio_words_for;
         input [9:0] samples;
         begin audio_words_for={1'b0,(samples[9:2]+{7'd0,(|samples[1:0])})}; end
     endfunction
+
+    // Display-side raster padding can make one raw packet take longer than
+    // the legacy 100 us drain interval, especially for very narrow BMPs.
+    // Use a conservative row-span bucket (no variable divider in hardware),
+    // plus the initial top border on the first packet. Wide images retain the
+    // original 100 us cadence.
+    function [27:0] image_packet_gap;
+        input [8:0] words;
+        input [20:0] words_sent;
+        reg [63:0] cycles;
+        begin
+            cycles = width_gap_cycles_r;
+            if (words_sent == {12'd0,words}) cycles = cycles + top_pad_cycles_r;
+            image_packet_gap = cycles[27:0];
+        end
+    endfunction
+
+    function [27:0] image_end_gap;
+        input [8:0] words;
+        input [20:0] words_sent;
+        reg [63:0] cycles;
+        begin
+            cycles = width_gap_cycles_r + bottom_pad_cycles_r;
+            if (words_sent == {12'd0,words}) cycles = cycles + top_pad_cycles_r;
+            if (cycles < (CLK_HZ/1000)) cycles = CLK_HZ/1000;
+            image_end_gap = cycles[27:0];
+        end
+    endfunction
+
+    // Width classes and border line delays are prepared continuously, before
+    // the packet sender needs them. Packet completion then performs only a
+    // small add and register load, avoiding a critical variable-width path.
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            top_pad_rows_s0 <= 12'd0;
+            bottom_pad_rows_s0 <= 12'd0;
+            top_pad_cycles_r <= 28'd0;
+            bottom_pad_cycles_r <= 28'd0;
+            width_gap_cycles_r <= DATA_PACKET_GAP_CYCLES;
+        end else begin
+            top_pad_rows_s0 <= (12'd720 - image_height + 12'd1) >> 1;
+            bottom_pad_rows_s0 <= (12'd720 - image_height) >> 1;
+            top_pad_cycles_r <= top_pad_rows_s0 * CANVAS_LINE_CYCLES;
+            bottom_pad_cycles_r <= bottom_pad_rows_s0 * CANVAS_LINE_CYCLES;
+            if (image_width >= 12'd96) width_gap_cycles_r <= DATA_PACKET_GAP_CYCLES;
+            else if (image_width >= 12'd64) width_gap_cycles_r <= GAP_150US;
+            else if (image_width >= 12'd32) width_gap_cycles_r <= GAP_300US;
+            else if (image_width >= 12'd16) width_gap_cycles_r <= GAP_500US;
+            else if (image_width >= 12'd8) width_gap_cycles_r <= GAP_1MS;
+            else if (image_width >= 12'd4) width_gap_cycles_r <= GAP_2MS;
+            else if (image_width >= 12'd2) width_gap_cycles_r <= GAP_3500US;
+            else width_gap_cycles_r <= GAP_7MS;
+        end
+    end
 
     always @(posedge clk) begin
         if(state==LOAD_IMAGE && read_pending) words[loaded[7:0]]<=fifo_data;
@@ -176,8 +259,13 @@ module media_image_tx #(
                         8:tx_data=frame_id[7:0];9:tx_data=frame_id[15:8];
                         10:tx_data={3'd0,source_index};
                         11:tx_data={3'd0,image_auto_status,image_has_audio,2'b00,previous};
-                        12:tx_data=FRAME_WORDS[7:0];13:tx_data=FRAME_WORDS[15:8];
-                        14:tx_data=FRAME_WORDS[23:16];15:tx_data=FRAME_WORDS[31:24];
+                        12:tx_data=frame_total_words[7:0];13:tx_data=frame_total_words[15:8];
+                        14:tx_data={3'd0,frame_total_words[20:16]};15:tx_data=8'd0;
+                        16:tx_data=image_width[7:0];17:tx_data=image_width[11:8];
+                        18:tx_data=image_height[7:0];19:tx_data=image_height[11:8];
+                        20:tx_data=8'd0; // single-image layout
+                        21:tx_data=8'd0; // full-frame window
+                        22:tx_data=8'd0;23:tx_data=8'd0; // layout generation
                         default:;
                     endcase
                 end else if(kind==AUDIO_BEGIN) begin
@@ -211,11 +299,11 @@ module media_image_tx #(
         if(rst) begin
             state<=WAIT_READY;return_state<=WAIT_READY;kind<=READY;tx_length<=8;
             frame_id<=0;sequence_id<=0;packet_words<=0;loaded<=0;target_words<=0;
-            total_words<=0;sum<=0;audio_sum<=0;byte_index<=0;read_pending<=0;word_hold<=0;
+            total_words<=0;frame_total_words<=FRAME_WORDS;sum<=0;audio_sum<=0;byte_index<=0;read_pending<=0;word_hold<=0;
             prepared_ref<=0;done_ref<=0;cmd_d<=0;receiver_ready<=0;boot_loaded<=0;previous<=0;
             image_auto_status<=0;pc_snapshot_pending<=0;pc_snapshot_active<=0;
             pending_next<=0;pending_prev<=0;
-            attempts<=0;audio_attempts<=0;wait_count<=0;start_toggle<=0;source_index<=0;
+            attempts<=0;audio_attempts<=0;wait_count<=0;packet_gap_target<=DATA_PACKET_GAP_CYCLES;start_toggle<=0;source_index<=0;
             audio_start_toggle<=0;audio_file_index<=0;image_has_audio<=0;
             committed_index<=0;committed_valid<=0;committed_wav<=0;error_code<=0;
             prepared_sync<=0;done_sync<=0;audio_prepared_sync<=0;audio_done_sync<=0;
@@ -275,8 +363,9 @@ module media_image_tx #(
                     if(prepared_sync[2]!=prepared_ref) begin
                         image_has_audio<=pc_snapshot_active ? 1'b0 : has_wav_sync[1];
                         audio_file_index<=wav_index_sync1;
-                        kind<=BEGIN_IMAGE;tx_length<=16;return_state<=LOAD_IMAGE;
-                        loaded<=0;target_words<=FRAME_WORDS>253?253:FRAME_WORDS;state<=ISSUE;wait_count<=0;
+                        frame_total_words<=image_word_count_pipe;
+                        kind<=BEGIN_IMAGE;tx_length<=24;return_state<=LOAD_IMAGE;
+                        loaded<=0;target_words<=image_word_count_pipe > 21'd253 ? 9'd253 : image_word_count_pipe[8:0];state<=ISSUE;wait_count<=0;
                     end else if(done_sync[2]!=done_ref && source_error) begin error_code<=1;state<=IDLE;end
                 end
                 LOAD_IMAGE: if(read_pending) begin
@@ -296,14 +385,19 @@ module media_image_tx #(
                         state<=return_state;byte_index<=0;
                         if(kind==IMAGE_DATA) begin
                             sequence_id<=sequence_id+1'b1;loaded<=0;
-                            target_words<=FRAME_WORDS-total_words>253 ? 253 : FRAME_WORDS-total_words;
-                            if(total_words>=FRAME_WORDS)state<=WAIT_SOURCE;
-                            else begin wait_count<=0;state<=IMAGE_PACKET_GAP;end
+                            target_words<=frame_total_words-total_words>21'd253 ? 9'd253 :
+                                          (frame_total_words-total_words);
+                            if(total_words>=frame_total_words)state<=WAIT_SOURCE;
+                            else begin
+                                packet_gap_target<=image_packet_gap(packet_words,total_words);
+                                wait_count<=0;state<=IMAGE_PACKET_GAP;
+                            end
                         end else if(kind==AUDIO_DATA) begin
                             sequence_id<=sequence_id+1'b1;loaded<=0;
                             if(audio_samples_remaining>audio_packet_samples) begin
                                 audio_samples_remaining<=audio_samples_remaining-audio_packet_samples;
                                 audio_prep_phase<=0;return_state<=AUDIO_LOAD;
+                                packet_gap_target<=DATA_PACKET_GAP_CYCLES;
                                 wait_count<=0;state<=IMAGE_PACKET_GAP;
                             end else begin
                                 audio_samples_remaining<=0;state<=AUDIO_WAIT_SOURCE;
@@ -313,15 +407,18 @@ module media_image_tx #(
                 end
                 WAIT_SOURCE: if(done_sync[2]!=done_ref) begin
                     if(source_error) begin error_code<=2;state<=IDLE;end
-                    else begin wait_count<=0;state<=IMAGE_END_GAP;end
+                    else begin
+                        packet_gap_target<=image_end_gap(packet_words,total_words);
+                        wait_count<=0;state<=IMAGE_END_GAP;
+                    end
                 end
                 IMAGE_PACKET_GAP: begin
-                    if(wait_count>=DATA_PACKET_GAP_CYCLES-1) begin
+                    if(wait_count>=packet_gap_target-1'b1) begin
                         wait_count<=0;state<=return_state;
                     end else wait_count<=wait_count+1'b1;
                 end
                 IMAGE_END_GAP: begin
-                    if(wait_count>=CLK_HZ/1000-1) begin
+                    if(wait_count>=packet_gap_target-1'b1) begin
                         kind<=END_IMAGE;tx_length<=16;return_state<=WAIT_RESULT;wait_count<=0;state<=ISSUE;
                     end else wait_count<=wait_count+1'b1;
                 end
@@ -471,14 +568,18 @@ module media_udp_mux (
     input wire media_request,media_valid,input wire [7:0] media_data,input wire [15:0] media_length,
     output wire media_ack,
     output wire stack_request,stack_valid,output wire [7:0] stack_data,output wire [15:0] stack_length,
-    output reg late_ack_seen,output wire packet_active,output wire media_in_flight,output reg media_packet_drained
+    output reg late_ack_seen,output wire packet_active,output wire media_in_flight,output reg media_packet_drained,
+    output wire route_grant,output wire route_media
 );
     reg active,owner;
     assign packet_active=active;
     // Distinguish normal media packets from control replies so the Ethernet
     // route sends image/audio data to the display (.2), not the PC (.1).
     assign media_in_flight=active && owner;
-    reg [15:0] count,media_length_latched;
+    assign route_grant=!active && stack_ready && !stack_ack && (ctrl_request || media_request);
+    assign route_media=!ctrl_request;
+    reg [15:0] count,media_length_latched,ctrl_length_latched;
+    reg ctrl_length_captured;
     reg [7:0] media_type_lo,media_type_hi;
     // While idle, do not advertise readiness until the previous UDP stack ACK drops.
     // Once control owns a packet, keep ready asserted for its current handshake.
@@ -490,19 +591,25 @@ module media_udp_mux (
     assign stack_data=owner?media_data:ctrl_data;
     // The stack may still use length after the last application byte.
     // Keep the formal length until the next ready/ownership handshake.
-    assign stack_length=owner?media_length_latched:ctrl_length;
+    assign stack_length=owner ? media_length_latched :
+                        (active && !ctrl_length_captured ? ctrl_length : ctrl_length_latched);
     always @(posedge clk) begin
-        if(rst) begin active<=0;owner<=0;count<=0;media_length_latched<=0;late_ack_seen<=0;media_packet_drained<=0;media_type_lo<=0;media_type_hi<=0;end
+        if(rst) begin active<=0;owner<=0;count<=0;media_length_latched<=0;ctrl_length_latched<=0;
+            ctrl_length_captured<=0;late_ack_seen<=0;media_packet_drained<=0;media_type_lo<=0;media_type_hi<=0;end
         else if(!active) begin
             if((ctrl_request || media_request) && stack_ack)late_ack_seen<=1;
             if(stack_ready && !stack_ack && (ctrl_request || media_request)) begin
                 owner<=!ctrl_request;
+                ctrl_length_captured<=0;
                 if(!ctrl_request)begin
                     media_length_latched<=media_length;media_packet_drained<=0;media_type_lo<=0;media_type_hi<=0;
                 end
                 active<=1;count<=0;
             end
         end else if(stack_valid) begin
+            if(!owner && !ctrl_length_captured)begin
+                ctrl_length_latched<=ctrl_length;ctrl_length_captured<=1;
+            end
             if(count+1'b1>=stack_length) begin
                 if(owner && media_length_latched==16'd16 && media_type_lo==8'h23 && media_type_hi==0)
                     media_packet_drained<=1;

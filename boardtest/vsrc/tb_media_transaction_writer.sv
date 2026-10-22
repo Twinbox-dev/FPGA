@@ -12,6 +12,7 @@ module tb_media_transaction_writer;
     reg [4:0] image_index = 5'd3;
     reg [7:0] image_flags = 8'h08;
     reg [20:0] image_total_words = 21'd3;
+    reg [11:0] image_width=12'd2,image_height=12'd3;
     reg stream_start = 0, stream_is_audio = 0;
     reg [8:0] stream_word_count = 0;
     reg [31:0] stream_word_data = 0;
@@ -31,6 +32,7 @@ module tb_media_transaction_writer;
     reg transition_done_toggle = 0;
     wire display_valid;
     wire [4:0] image_index_out;
+    wire [11:0] image_width_out,image_height_out;
     wire image_has_wav, auto_play_status;
     wire [1:0] display_buffer_index;
     wire transition_start_toggle, transition_target_buf;
@@ -63,6 +65,7 @@ module tb_media_transaction_writer;
         .udp_clk(udp_clk), .udp_rst(udp_rst),
         .frame_begin_valid(frame_begin_valid), .frame_id(frame_id),
         .image_index(image_index), .image_flags(image_flags), .image_total_words(image_total_words),
+        .image_width(image_width),.image_height(image_height),
         .stream_start(stream_start), .stream_is_audio(stream_is_audio),
         .stream_word_count(stream_word_count), .stream_word_data(stream_word_data),
         .stream_word_valid(stream_word_valid), .stream_word_ready(stream_word_ready),
@@ -75,11 +78,12 @@ module tb_media_transaction_writer;
         .write_clk(write_clk), .write_rst(write_rst), .frame_finish_toggle(finish_toggle),
         .effect_mode(effect_mode), .transition_done_toggle(transition_done_toggle),
         .display_valid(display_valid), .image_index_out(image_index_out),
+        .image_width_out(image_width_out),.image_height_out(image_height_out),
         .image_has_wav(image_has_wav), .auto_play_status(auto_play_status),
         .display_buffer_index(display_buffer_index), .transition_start_toggle(transition_start_toggle),
         .transition_target_buf(transition_target_buf), .transition_mode_latched(transition_mode_latched),
         .transition_prev_latched(transition_prev_latched), .frame_commit_pulse(frame_commit_pulse),
-        .write_req(write_req), .write_req_ack(write_req), .write_buffer_index(write_buffer_index),
+        .write_req(write_req), .write_req_ack(write_req), .write_ready(1'b1), .write_buffer_index(write_buffer_index),
         .write_length(write_length), .write_row_offset(write_row_offset),
         .write_en(write_en), .write_data(write_data),
         .image_result_valid(image_result_valid), .image_result_code(image_result_code),
@@ -148,6 +152,7 @@ module tb_media_transaction_writer;
         @(negedge udp_clk); audio_end_valid = 0;
         wait (got_audio_accept && got_image_commit);
         if (!display_valid || image_index_out != 5'd3 || !image_has_wav ||
+            image_width_out != 12'd2 || image_height_out != 12'd3 ||
             !audio_pair_on || audio_buffer_index != 2'd2 ||
             audio_buffer_length != 21'd256 || audio_sample_count_out != 32'd5)
             $fatal(1, "commit metadata mismatch");

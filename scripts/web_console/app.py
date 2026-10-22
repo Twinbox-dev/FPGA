@@ -811,10 +811,25 @@ class EthTransport:
         payload = data[8:]
         if len(payload) != length:
             return
-        if kind == 0x21 and length == 8:
+        if kind == 0x21 and length == 16:
+            width = int.from_bytes(payload[8:10], "little")
+            height = int.from_bytes(payload[10:12], "little")
+            total_words = int.from_bytes(payload[4:8], "little")
+            pixel_count = width * height
+            if (width < 1 or width > 1280 or height < 1 or height > 720 or
+                    total_words != (pixel_count + 1) // 2 or
+                    total_words > 1280 * 720 // 2 or payload[12] != 0 or
+                    payload[13] != 0 or payload[14:16] != b"\x00\x00"):
+                self.snapshot = None
+                self._send_snapshot_reply(0x24, struct.pack(
+                    "<HB", int.from_bytes(payload[:2], "little"), 1))
+                self.broadcast({"type": "pkt", "kind": "dump",
+                                "text": f"PC snapshot BEGIN rejected: {width}x{height}, words={total_words}",
+                                "ts": time.strftime("%H:%M:%S")})
+                return
             self.snapshot = {
                 "frame": int.from_bytes(payload[:2], "little"),
-                "total": int.from_bytes(payload[4:8], "little"),
+                "total": total_words, "width": width, "height": height,
                 "words": bytearray(), "next_seq": 0, "gaps": 0,
                 "image_ok": False, "audio_frame": None, "audio_count": 0,
                 "audio": bytearray(), "audio_next_seq": 0, "audio_gaps": 0,
@@ -837,8 +852,8 @@ class EthTransport:
             checksum = int.from_bytes(payload[2:6], "little")
             words = state["words"]
             actual_sum = sum(word[0] for word in struct.iter_unpack("<I", words)) & 0xFFFFFFFF
-            good = (got_frame == frame_id and state["total"] == 460800 and
-                    len(words) == 460800 * 4 and state["gaps"] == 0 and
+            good = (got_frame == frame_id and
+                    len(words) == state["total"] * 4 and state["gaps"] == 0 and
                     actual_sum == checksum)
             state["image_ok"] = good
             self._send_snapshot_reply(0x24, struct.pack("<HB", frame_id, 0 if good else 1))
@@ -879,11 +894,15 @@ class EthTransport:
                     ETH_FRAME_SNAPSHOT["data"] = bytes(state["words"])
                     ETH_FRAME_SNAPSHOT["gaps"] = 0
                     ETH_FRAME_SNAPSHOT["words"] = len(state["words"]) // 4
+                    ETH_FRAME_SNAPSHOT["width"] = state["width"]
+                    ETH_FRAME_SNAPSHOT["height"] = state["height"]
                     ETH_FRAME_SNAPSHOT["ts"] = ts
                     ETH_FRAME_SNAPSHOT["stride"] = 1
                     fid = ETH_FRAME_SNAPSHOT["id"]
                 self.broadcast({"type": "frame", "kind": "rb", "source": "snapshot", "id": fid,
-                                "words": 460800, "h": 720, "gaps": 0, "ts": ts})
+                                "words": len(state["words"]) // 4,
+                                "w": state["width"], "h": state["height"],
+                                "gaps": 0, "ts": ts})
             self.snapshot = None
 
     def _reader(self):
@@ -943,9 +962,12 @@ eth_link = EthTransport(SUBS)
 #（一帧 ~1.8MB，不适合塞 SSE 文本流）。
 # 字序与 RTL 线序一致：每字 4 字节 LSB 先（=小端），字低 16bit=左像素 RGB565。
 # ---------------------------------------------------------------------------
-ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
-ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 3}
-ETH_FRAME_SNAPSHOT = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1}
+ETH_FRAME = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1,
+             "width": 1280, "height": 720}
+ETH_FRAME_RB = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 3,
+                "width": 1280, "height": 720}
+ETH_FRAME_SNAPSHOT = {"id": 0, "data": b"", "gaps": 0, "words": 0, "ts": "", "stride": 1,
+                      "width": 1280, "height": 720}
 ETH_FRAME_LOCK = threading.Lock()
 
 
@@ -1098,11 +1120,14 @@ def api_frame():
         frame_id = slot["id"]
         gaps, words, ts = slot["gaps"], slot["words"], slot["ts"]
         stride = slot.get("stride", 3 if slot_name == "rb" else 1)
+        width, height = slot.get("width", 1280), slot.get("height", 720)
     resp = Response(data, mimetype="application/octet-stream")
     resp.headers["X-Frame-Id"] = str(frame_id)
     resp.headers["X-Frame-Words"] = str(words)
     resp.headers["X-Frame-Gaps"] = str(gaps)
     resp.headers["X-Frame-Stride"] = str(stride)
+    resp.headers["X-Frame-Width"] = str(width)
+    resp.headers["X-Frame-Height"] = str(height)
     resp.headers["X-Frame-Ts"] = ts
     resp.headers["Cache-Control"] = "no-store"
     return resp
