@@ -1,10 +1,12 @@
 `timescale 1ns/1ps
 
 module tb_media_transaction_writer;
+    parameter integer DIRECT_STREAM = 0;
     reg udp_clk = 0;
-    reg write_clk = 0;
+    reg slow_write_clk = 0;
+    wire write_clk=DIRECT_STREAM ? udp_clk : slow_write_clk;
     always #4 udp_clk = ~udp_clk;
-    always #5 write_clk = ~write_clk;
+    always #5 slow_write_clk = ~slow_write_clk;
 
     reg udp_rst = 1, write_rst = 1;
     reg frame_begin_valid = 0;
@@ -61,7 +63,8 @@ module tb_media_transaction_writer;
     reg [1:0] request_buffer = 0;
     reg [31:0] first_frame_word = 0, first_audio_word = 0, second_audio_word = 0;
 
-    media_transaction_writer #(.FRAME_WORDS(21'd3)) dut (
+    media_transaction_writer #(.DIRECT_STREAM(DIRECT_STREAM),.FRAME_WORDS(21'd3)) dut (
+        .image_layout(2'd0),.image_window(2'd0),.view_target_buffer(1'b0),.write_layout(),.write_window(),
         .udp_clk(udp_clk), .udp_rst(udp_rst),
         .frame_begin_valid(frame_begin_valid), .frame_id(frame_id),
         .image_index(image_index), .image_flags(image_flags), .image_total_words(image_total_words),

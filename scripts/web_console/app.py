@@ -49,6 +49,7 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44, "i": 0x49,
         "0": 0x30, "1": 0x31, "2": 0x32,
         "3": 0x33, "4": 0x34, "5": 0x35,
+        "6": 0x36, "7": 0x37, "8": 0x38,
         "r": 0x52, "g": 0x47, "b": 0x42,
         "e": 0x45, "h": 0x48, "w": 0x57}
 HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一张",
@@ -62,6 +63,45 @@ HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一
 HELP.update({"r": "\u539f\u56fe\u76f4\u901a", "g": "\u7070\u5ea6", "b": "\u4e8c\u503c\u5316",
              "e": "Sobel \u68af\u5ea6", "h": "\u56fe\u50cf\u9510\u5316", "w": "\u96ea\u82b1"})
 CV_MODE_NAMES = {0: "raw", 1: "gray", 2: "binary", 3: "sobel", 4: "sharpen", 5: "snow"}
+HELP.update({"6": "单图直显", "7": "左右双图", "8": "四宫格"})
+VIEW_LOCK = threading.Lock()
+VIEW_STATE = None
+VIEW_RESYNC = False
+
+
+def decode_view(body):
+    """VIEW_STATUS v1: fixed 16 bytes; shared by UDP and USB A7 framing."""
+    if len(body) != 16:
+        raise ValueError("VIEW_STATUS must have 16 bytes")
+    sequence, generation, layout, busy, focus, mask = struct.unpack_from("<BHBBBB", body)
+    indices = list(body[7:11])
+    width, height = struct.unpack_from("<HH", body, 11)
+    if (layout > 2 or busy > 1 or focus >= (1 if layout == 0 else 2 if layout == 1 else 4)
+            or mask & ~(1 if layout == 0 else 3 if layout == 1 else 15)
+            or any(index > 31 for index in indices) or width > 1280 or height > 720):
+        raise ValueError("invalid VIEW_STATUS fields")
+    return {"type": "view", "sequence": sequence, "generation": generation,
+            "layout": layout, "busy": bool(busy), "focus": focus, "valid_mask": mask,
+            "indices": indices, "width": width, "height": height, "result": body[15]}
+
+
+def publish_view(body, broadcast):
+    global VIEW_STATE, VIEW_RESYNC
+    try:
+        state = decode_view(body)
+    except ValueError:
+        return False
+    with VIEW_LOCK:
+        if VIEW_STATE is not None:
+            delta = (state["sequence"] - VIEW_STATE["sequence"]) & 255
+            if delta == 0 and state == VIEW_STATE:
+                return False
+            if delta >= 128 and not VIEW_RESYNC:
+                return False
+        VIEW_RESYNC = False
+        VIEW_STATE = state
+    broadcast(state)
+    return True
 
 
 def decode_dump(pkt: bytes) -> str:
@@ -460,13 +500,19 @@ class SerialLink:
                                     "text": text,
                                     "ts": time.strftime("%H:%M:%S")})
                     continue
-                ia, ib, ic = buf.find(b"\xA5"), buf.find(b"\x5A"), buf.find(b"\xA6")
-                cand = [x for x in (ia, ib, ic) if x >= 0]
+                ia, ib, ic, iv = buf.find(b"\xA5"), buf.find(b"\x5A"), buf.find(b"\xA6"), buf.find(b"\xA7")
+                cand = [x for x in (ia, ib, ic, iv) if x >= 0]
                 if not cand:
                     buf.clear()
                     break
                 i = min(cand)
                 del buf[:i]
+                if buf[0] == 0xA7:
+                    if len(buf) < 17:
+                        break
+                    publish_view(bytes(buf[1:17]), self.broadcast)
+                    del buf[:17]
+                    continue
                 if len(buf) < 8:
                     break
                 pkt = bytes(buf[:8])
@@ -915,6 +961,9 @@ class EthTransport:
             except Exception:
                 self._stream_poll()            # 超时窗口顺带查会话收口
                 continue                       # 超时/关闭 → 回到 while 判据
+            if n == 24 and data[:8] == b"\xAA\xBB\xCC\xDD\x00\x03\x00\x10":
+                publish_view(bytes(data[8:24]), self.broadcast)
+                continue
             if (n >= 8 and data[:4] == b"\xAA\xBB\xCC\xDD" and
                     data[5] == 0 and data[4] in (0x21, 0x22, 0x23, 0x30, 0x31, 0x32)):
                 self._on_snapshot(bytes(data[:n]))
@@ -989,7 +1038,7 @@ def api_status():
                     "eth_local_port": EthTransport.LOCAL_PORT,
                     "loopback": isinstance(link, LoopbackLink),
                     "auto_connect": AUTO_CONNECT,
-                    "baud": DEFAULT_BAUD})
+                    "baud": DEFAULT_BAUD, "view": VIEW_STATE})
 
 
 @app.route("/api/ports")
@@ -1012,7 +1061,7 @@ def api_ports():
 @app.route("/api/keys")
 def api_keys():
     """命令表下发给前端，前端按分组渲染按钮（避免两处硬编码漂移）。"""
-    order = ["p", "n", "a", "s", "0", "1", "2", "3", "4", "5", "r", "g", "b", "e", "h", "w", "-", "+", "<", ">", "[", "]",
+    order = ["p", "n", "a", "s", "0", "1", "2", "3", "4", "5", "6", "7", "8", "r", "g", "b", "e", "h", "w", "-", "+", "<", ">", "[", "]",
              ",", ".", ";", "'", "q", "i", "l", "d"]
     groups = [("播放", ["p", "n", "a", "s"]),
                ("切换特效", ["0", "1", "2"]),
@@ -1023,6 +1072,7 @@ def api_keys():
               ("音频频谱", [";", "'", "q"]),
               ("调试", ["i", "l"])]
     groups.insert(2, ("\u56fe\u50cf\u6548\u679c", ["r", "g", "b", "e", "h", "w"]))
+    groups.insert(1, ("画面布局", ["6", "7", "8"]))
     return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 
@@ -1060,9 +1110,20 @@ def api_eth_disconnect():
 
 @app.route("/api/cmd", methods=["POST"])
 def api_cmd():
+    global VIEW_RESYNC
     d = request.get_json(force=True, silent=True) or {}
     mode = d.get("mode", "serial")
     key = d.get("key", "")
+    with VIEW_LOCK:
+        state = VIEW_STATE
+        if key == "s":
+            VIEW_RESYNC = True
+    if state and key in ("n", "p", "d", "6", "7", "8"):
+        if state["busy"]:
+            return jsonify({"ok": False, "error": "板卡正在装载，请等待完成；S 可查询恢复状态"}), 409
+        target = {"6": 0, "7": 1, "8": 2}.get(key)
+        if target is not None and state["layout"] and target and target != state["layout"]:
+            return jsonify({"ok": False, "error": "请先返回单图，再选择另一种多窗口布局"}), 409
     err = (eth_link if mode == "eth" else link).send_key(key)
     if err:
         return jsonify({"ok": False, "error": err}), 400
@@ -1093,6 +1154,8 @@ def api_stream():
             # 开流先各推一条链路状态（前端据此恢复两个传输的连接态）
             for lk in (link, eth_link):
                 yield f"data: {json.dumps(lk.link_msg(lk.is_open()))}\n\n"
+            if VIEW_STATE is not None:
+                yield f"data: {json.dumps(VIEW_STATE)}\n\n"
             while True:
                 try:
                     msg = q.get(timeout=15)

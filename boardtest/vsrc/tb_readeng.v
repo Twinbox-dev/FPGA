@@ -46,6 +46,7 @@ module tb_readeng;
     wire        v_aclr, a_aclr, a_ch_act;
 
     frame_fifo_read #(.BURST_SIZE(BURST)) u_rd (
+        .view_layout(2'd0),.view_valid_mask(4'd1),.view_epoch(1'b0),.view_drained_epoch(),.video_black_write(),
         .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(sdr_ref_vld),
         .Sdr_busy(sdr_busy), .Sdr_rd_en(sdr_rd_en), .App_wr_busy(1'b0),
         .O_rd_busy(), .App_rd_en(app_rd_en), .App_rd_addr(app_rd_addr),
@@ -69,6 +70,7 @@ module tb_readeng;
     wire        w_aclr;
 
     frame_fifo_write #(.BURST_SIZE(BURST), .FRAME_WIDTH(640), .FRAME_HEIGHT(720)) u_wr (
+        .view_layout(2'd0),.view_window(2'd0),
         .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1), .Sdr_init_ref_vld(sdr_ref_vld),
         .Sdr_busy(sdr_busy), .App_rd_busy(1'b0), .O_wr_busy(),
         .App_wr_en(app_wr_en), .App_wr_addr(app_wr_addr),

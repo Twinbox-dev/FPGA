@@ -501,7 +501,17 @@
             <File Path="../user_source/hdl_source/ETH/media_frame_pad.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="76"/></FileInfo>
             </File>
-        </Verilog>
+        <File Path="../user_source/hdl_source/ETH/view_scale_geometry.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="901"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_bilinear_shrink.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="902"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_scan_address.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="903"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_write_address.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="904"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_image_pipeline.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="905"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_session_manager.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="906"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_video_config.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="907"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_protocol_rx.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="908"/></FileInfo></File>
+<File Path="../user_source/hdl_source/ETH/view_black_mask.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="909"/></FileInfo></File>
+<File Path="../user_source/hdl_source/SD/display_levels_rgb.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="910"/></FileInfo></File>
+</Verilog>
         <ADC_FILE>
             <File Path="../user_source/constraints_source/pin.adc">
                 <FileInfo>

@@ -506,14 +506,75 @@ eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT
     .media_packet_ready  (media_packet_ready)
 );
 
-always @(posedge sd_card_clk or posedge rst_all) begin
+always @(posedge eth_app_clk or posedge rst_all) begin
     if (rst_all)
         auto_play_w <= 1'b0;
     else if (frame_commit_pulse)
         auto_play_w <= media_auto_play_status;
 end
 
-media_protocol_rx u_media_protocol_rx (
+wire view_prepare_valid,view_status_request,view_accepted_begin,view_image_owned,view_abort_image;
+wire [15:0] view_owned_frame_id;
+wire [63:0] view_prepare_body,view_prepare_reply;
+wire view_prepare_reply_valid,view_status_valid,view_busy;
+wire [127:0] view_status_body;
+wire [1:0] view_target_layout,view_target_window,view_active_layout,view_focus,view_write_layout,view_write_window;
+wire [15:0] view_target_generation,view_active_generation;
+wire [3:0] view_active_mask;
+wire [4:0] view_focus_index;
+wire [11:0] view_focus_width,view_focus_height;
+wire view_target_buffer,view_config_epoch,view_config_buffer,view_video_epoch,view_video_buffer,view_drained_epoch;
+wire [1:0] view_config_layout,view_video_layout;
+wire [3:0] view_config_mask,view_video_mask;
+wire writer_image_result_valid;
+wire [7:0] writer_image_result_code;
+wire [15:0] view_result_frame;
+wire view_pipeline_ready;
+wire aud_pair_raw;
+reg [2:0] view_local_sync;
+reg view_local_seen;
+reg [10:0] view_cursor_x0,view_cursor_x1;
+reg [9:0] view_cursor_y0,view_cursor_y1;
+wire view_local_step=view_local_sync[2]!=view_local_seen &&
+                     (media_cmd_byte==8'h4e || media_cmd_byte==8'h50);
+always @(posedge eth_app_clk or posedge rst_all)begin
+    if(rst_all)begin view_local_sync<=0;view_local_seen<=0;
+        view_cursor_x0<=640;view_cursor_x1<=640;view_cursor_y0<=360;view_cursor_y1<=360;end
+    else begin
+        view_local_sync<={view_local_sync[1:0],media_cmd_toggle};view_local_seen<=view_local_sync[2];
+        view_cursor_x0<=cursor_mailbox_x;view_cursor_x1<=view_cursor_x0;
+        view_cursor_y0<=cursor_mailbox_y;view_cursor_y1<=view_cursor_y0;
+    end
+end
+view_protocol_rx u_view_protocol(.clk(eth_app_clk),.rst(rst_all),.data(eth_rx_data),.valid(eth_rx_valid),
+    .prepare_valid(view_prepare_valid),.prepare_body(view_prepare_body),.status_request(view_status_request));
+view_session_manager u_view_session(.clk(eth_app_clk),.rst(rst_all),
+    .prepare_valid(view_prepare_valid),.prepare_body(view_prepare_body),.status_request(view_status_request),
+    .cursor_x(view_cursor_x1),.cursor_y(view_cursor_y1),.local_step(view_local_step),
+    .frame_begin(media_frame_begin_valid),.frame_id(media_frame_id),
+    .frame_generation(media_image_generation),.frame_layout(media_image_layout[1:0]),
+    .frame_window(media_image_window[1:0]),.frame_index(media_source_index),
+    .frame_width(media_image_width),.frame_height(media_image_height),
+    .writer_result_valid(writer_image_result_valid),.writer_result(writer_image_result_code),
+    .single_display_buffer(disp_buf_idx[0]),.cfg_drained_epoch(view_drained_epoch),
+    .accepted_begin(view_accepted_begin),.image_owned(view_image_owned),.owned_frame_id(view_owned_frame_id),
+    .abort_image(view_abort_image),.target_buffer(view_target_buffer),
+    .target_layout(view_target_layout),.target_window(view_target_window),.target_generation(view_target_generation),
+    .busy(view_busy),.active_layout(view_active_layout),.active_mask(view_active_mask),
+    .active_generation(view_active_generation),.focus_window(view_focus),.focus_index(view_focus_index),
+    .focus_width(view_focus_width),.focus_height(view_focus_height),
+    .prepare_reply_valid(view_prepare_reply_valid),.prepare_reply_body(view_prepare_reply),
+    .view_status_valid(view_status_valid),.view_status_body(view_status_body),
+    .image_result_valid(media_image_result_valid),.image_result(media_image_result_code),
+    .image_result_frame(view_result_frame),.config_epoch(view_config_epoch),
+    .config_buffer(view_config_buffer),.config_layout(view_config_layout),.config_mask(view_config_mask));
+view_video_config u_view_video(.clk(video_clk),.rst(rst_all),.vs(vs_0),
+    .raw_epoch(view_config_epoch),.raw_buffer(view_config_buffer),
+    .raw_layout(view_config_layout),.raw_mask(view_config_mask),
+    .epoch(view_video_epoch),.buffer_index(view_video_buffer),.layout(view_video_layout),.valid_mask(view_video_mask));
+assign aud_pair_on=aud_pair_raw && view_active_layout==0;
+
+media_protocol_rx #(.MULTIVIEW(1)) u_media_protocol_rx (
     .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
     .ready_request (media_ready_request),
     .frame_begin_valid (media_frame_begin_valid), .frame_id (media_frame_id),
@@ -536,20 +597,21 @@ media_protocol_rx u_media_protocol_rx (
     .audio_end_id (media_audio_end_id), .protocol_error_toggle (media_protocol_error_toggle)
 );
 
-media_frame_pad u_media_frame_pad (
+view_image_pipeline u_media_frame_pad (
     .clk (eth_app_clk), .rst (rst_all),
-    .frame_begin (media_frame_begin_valid),
+    .frame_begin (view_accepted_begin),.layout(media_image_layout[1:0]),
     .image_width (media_image_width), .image_height (media_image_height),
-    .frame_end (media_frame_end_valid),
-    .in_is_audio (media_stream_is_audio), .in_start (media_stream_start),
+    .frame_end ((media_frame_end_valid && view_image_owned) || view_abort_image),
+    .in_audio (media_stream_is_audio), .in_start (media_stream_start),
     .in_count (media_stream_word_count), .in_data (media_stream_word_data),
-    .in_valid (media_stream_word_valid), .in_ready (media_raw_stream_ready),
+    .in_valid (media_stream_word_valid && view_image_owned), .in_ready (view_pipeline_ready),
     .in_done (media_stream_done),
-    .out_start (media_padded_stream_start), .out_is_audio (media_padded_stream_audio),
+    .out_start (media_padded_stream_start), .out_audio (media_padded_stream_audio),
     .out_count (media_padded_stream_count), .out_data (media_padded_stream_data),
     .out_valid (media_padded_stream_valid), .out_ready (media_padded_stream_ready),
     .out_done (media_padded_stream_done), .frame_done (media_pad_frame_done)
 );
+assign media_raw_stream_ready=view_image_owned ? view_pipeline_ready : 1'b1;
 
 media_display_control_rx u_media_display_control_rx (
     .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
@@ -570,9 +632,11 @@ media_display_control_rx u_media_display_control_rx (
     .subtitle_commit_sequence (subtitle_commit_sequence_eth)
 );
 
-media_transaction_writer u_media_transaction_writer (
+media_transaction_writer #(.VIEW_ENABLE(1),.DIRECT_STREAM(1)) u_media_transaction_writer (
     .udp_clk (eth_app_clk), .udp_rst (rst_all),
-    .frame_begin_valid (media_frame_begin_valid), .frame_id (media_frame_id),
+    .frame_begin_valid (view_accepted_begin), .frame_id (media_frame_id),
+    .image_layout(media_image_layout[1:0]),.image_window(media_image_window[1:0]),
+    .view_target_buffer(view_target_buffer),.write_layout(view_write_layout),.write_window(view_write_window),
     .image_index (media_source_index), .image_flags (media_image_flags),
     .image_total_words (media_total_words),
     .image_width (media_image_width), .image_height (media_image_height),
@@ -580,16 +644,18 @@ media_transaction_writer u_media_transaction_writer (
     .stream_word_count (media_padded_stream_count), .stream_word_data (media_padded_stream_data),
     .stream_word_valid (media_padded_stream_valid), .stream_word_ready (media_padded_stream_ready),
     .stream_done (media_padded_stream_done),
-    .frame_end_valid (media_frame_end_valid), .frame_end_ok (media_frame_end_ok),
+    .frame_end_valid ((media_frame_end_valid && view_image_owned) || view_abort_image),
+    .frame_end_ok (media_frame_end_ok && !view_abort_image),
     .frame_end_reason (media_frame_end_reason),
-    .frame_end_id (media_frame_end_id),
-    .audio_begin_valid (media_audio_begin_valid), .audio_frame_id (media_audio_frame_id),
+    .frame_end_id (view_abort_image ? view_owned_frame_id : media_frame_end_id),
+    .audio_begin_valid (media_audio_begin_valid && view_image_owned), .audio_frame_id (media_audio_frame_id),
     .audio_sample_count (media_audio_sample_count),
     .audio_end_valid (media_audio_end_valid), .audio_end_ok (media_audio_end_ok),
     .audio_end_reason (media_audio_end_reason),
     .audio_end_id (media_audio_end_id),
-    .write_clk (sd_card_clk), .write_rst (rst_all),
-    .frame_finish_toggle (frame_write_toggle_mem), .effect_mode (transition_mode_cfg),
+    .write_clk (eth_app_clk), .write_rst (rst_all),
+    .frame_finish_toggle (frame_write_toggle_mem),
+    .effect_mode ((view_active_layout!=0 || view_target_layout!=0) ? 2'd0 : transition_mode_cfg),
     .transition_done_toggle (transition_done_toggle),
     .display_valid (display_valid), .image_index_out (img_idx_w),
     .image_width_out (displayed_image_width), .image_height_out (displayed_image_height),
@@ -605,23 +671,25 @@ media_transaction_writer u_media_transaction_writer (
     .write_buffer_index (write_buf_idx), .write_length (media_write_len),
     .write_row_offset (media_row_offset), .write_en (media_write_en),
     .write_data (media_write_data),
-    .image_result_valid (media_image_result_valid),
-    .image_result_code (media_image_result_code),
+    .image_result_valid (writer_image_result_valid),
+    .image_result_code (writer_image_result_code),
     .audio_result_valid (media_audio_result_valid),
     .audio_result_code (media_audio_result_code),
-    .audio_pair_on (aud_pair_on), .audio_buffer_index (audio_buffer_index),
+    .audio_pair_on (aud_pair_raw), .audio_buffer_index (audio_buffer_index),
     .audio_buffer_length (audio_buffer_length),
     .audio_sample_count_out (audio_sample_count_out), .audio_source_toggle (audio_source_toggle)
 );
 
 wire [7:0] media_local_cmd_byte = media_cmd_byte;
-media_display_tx u_media_display_tx (
+media_display_tx #(.VIEW_ENABLE(1)) u_media_display_tx (
     .clk (eth_app_clk), .rst (rst_all),
     .tx_ready (media_packet_ready),
     .local_cmd_toggle_async (media_cmd_toggle), .local_cmd_async (media_local_cmd_byte),
     .ready_valid (media_ready_request),
     .image_result_valid (media_image_result_valid), .image_result_code (media_image_result_code),
-    .image_result_frame (media_frame_id),
+    .image_result_frame (view_result_frame),
+    .view_busy(view_busy),.view_prepare_valid(view_prepare_reply_valid),.view_prepare_body(view_prepare_reply),
+    .view_status_valid(view_status_valid),.view_status_body(view_status_body),
     .audio_result_valid (media_audio_result_valid), .audio_result_code (media_audio_result_code),
     .audio_result_frame (media_frame_id),
     .control_ack_valid (media_control_ack_valid),
@@ -981,9 +1049,8 @@ cv_pixel_effects_runtime #(
     .rgb_out (cv_data), .de_out (cv_de), .vs_out (cv_vs)
 );
 
-wire [23:0] vout_adj = {adj_px(cv_data[23:16], ct_bin_v),
-                        adj_px(cv_data[15:8],  ct_bin_v),
-                        adj_px(cv_data[7:0],   ct_bin_v)};
+wire [23:0] vout_adj;
+display_levels_rgb u_display_levels(.rgb(cv_data),.contrast(ct_bin_v),.brightness(bri_bin_v),.adjusted(vout_adj));
 
 spectrum_dft u_spectrum_dft (
     .clk (sd_card_clk), .rst (rst_all),
@@ -999,7 +1066,10 @@ spectrum_overlay u_spectrum_overlay (
     .ack_toggle (spectrum_ack_toggle),
     .shade (spectrum_shade), .bar_hit (spectrum_hit), .bar_rgb (spectrum_rgb)
 );
-wire [23:0] base_video = display_valid ? vout_adj : 24'd0;
+wire view_pixel_black;
+view_black_mask u_view_black_mask(.clk(video_clk),.rst(rst_all),.de(cv_de),.vs(cv_vs),
+    .layout(view_video_layout),.valid_mask(view_video_mask),.black(view_pixel_black));
+wire [23:0] base_video = display_valid && !view_pixel_black ? vout_adj : 24'd0;
 wire [23:0] shaded_video = {1'b0, base_video[23:17],
                             1'b0, base_video[15:9],
                             1'b0, base_video[7:1]};
@@ -1040,7 +1110,8 @@ osd_visibility u_osd_visibility (
     .mode_raw (osd_mode_cfg),
     .bri_gray_raw (bri_gray), .ct_gray_raw (ct_gray),
     .vol_gray_raw (vol_gray),
-    .image_width_raw (displayed_image_width), .image_height_raw (displayed_image_height),
+    .image_width_raw (view_active_layout!=0 ? view_focus_width : displayed_image_width),
+    .image_height_raw (view_active_layout!=0 ? view_focus_height : displayed_image_height),
     .show_panel (panel_show),
     .brightness_level (panel_bri_level),
     .contrast_level (panel_ct_level),
@@ -1094,7 +1165,7 @@ frame_read_write #(
     // single-board V1 address mapping so HDMI scans the image upright.
     .WRITE_V_FLIP     (1),
     .FRAME_WIDTH      (640),   // 每行字数（RGB565 两像素/字：1280 像素/行 = 640 字）
-    .FRAME_HEIGHT     (720)
+    .FRAME_HEIGHT     (720),.VIEW_ENABLE(1),.STREAM_CLOCK(1)
 ) frame_read_write_m0(
     .mem_clk           (ext_mem_clk),
     .rst               (rst_all),
@@ -1115,7 +1186,10 @@ frame_read_write #(
     .read_addr_1       (BUF1_ADDR),
     .read_addr_2       (BUF2_ADDR),
     .read_addr_3       (BUF3_ADDR),
-    .read_addr_index   (disp_buf_idx),
+    .read_addr_index   (view_video_layout==0 ? disp_buf_idx : {1'b0,view_video_buffer}),
+    .stream_clk(eth_app_clk),
+    .view_read_layout(view_video_layout),.view_valid_mask(view_video_mask),.view_epoch(view_video_epoch),
+    .view_drained_epoch(view_drained_epoch),.view_write_layout(view_write_layout),.view_write_window(view_write_window),
     .read_len          (FRAME_WORDS),
     .read_en           (video_read_en),
     .read_data         (video_read_data),

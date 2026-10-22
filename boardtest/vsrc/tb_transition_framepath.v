@@ -26,6 +26,8 @@ module tb_transition_framepath;
 
     frame_read_write #(.FRAME_WIDTH(16), .FRAME_HEIGHT(64),
                        .BURST_SIZE(256), .WRITE_V_FLIP(0)) frame (
+        .stream_clk(1'b0),
+        .view_read_layout(2'd0),.view_write_layout(2'd0),.view_write_window(2'd0),.view_valid_mask(4'd1),.view_epoch(1'b0),.view_drained_epoch(),
         .rst(rst), .mem_clk(mem_clk),
         .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b0), .Sdr_busy(1'b0),
         .App_rd_en(frame_cmd_en), .App_rd_addr(frame_cmd_addr),

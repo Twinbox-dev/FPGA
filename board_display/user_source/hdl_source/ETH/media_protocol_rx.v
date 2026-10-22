@@ -7,7 +7,8 @@
 // next packet is accepted.
 module media_protocol_rx #(
     parameter [20:0] FRAME_WORDS = 21'd460800,
-    parameter [31:0] MAX_AUDIO_SAMPLES = 32'd2351104
+    parameter [31:0] MAX_AUDIO_SAMPLES = 32'd2351104,
+    parameter MULTIVIEW = 0
 )(
     input  wire        clk,
     input  wire        rst,
@@ -62,18 +63,27 @@ module media_protocol_rx #(
     reg packet_dropped;
     reg [7:0] type_lo, type_hi;
     reg [15:0] payload_length;
-    reg [15:0] packet_frame_id, packet_sequence;
-    reg [7:0] packet_image_index, packet_image_flags;
-    reg [31:0] packet_total_words, packet_sample_count;
-    reg [11:0] packet_width, packet_height;
-    reg [7:0] packet_layout, packet_window;
-    reg [15:0] packet_generation;
-    reg [31:0] packet_checksum;
-    reg [15:0] packet_reserved;
+    // One packet body, interpreted by TYPE after exact length validation.
+    // BEGIN/END/DATA fields overlap on the wire; separate copies needlessly
+    // replicated 100+ FF and byte-decode logic at 125 MHz.
+    reg [127:0] packet_header;
+    wire [15:0] packet_frame_id=packet_header[15:0];
+    wire [15:0] packet_sequence=packet_header[31:16];
+    wire [7:0] packet_image_index=packet_header[23:16];
+    wire [7:0] packet_image_flags=packet_header[31:24];
+    wire [31:0] packet_total_words=packet_header[63:32];
+    wire [31:0] packet_sample_count=packet_header[47:16];
+    wire [31:0] packet_checksum=packet_header[47:16];
+    wire [15:0] packet_reserved=packet_header[63:48];
+    wire [11:0] packet_width=packet_header[75:64],packet_height=packet_header[91:80];
+    wire [7:0] packet_layout=packet_header[103:96],packet_window=packet_header[111:104];
+    wire [15:0] packet_generation=packet_header[127:112];
     reg [31:0] word_assembly;
     reg [8:0] packet_word_index;
     reg [9:0] packet_sample_index;
-    reg [31:0] packet_word_sum, packet_audio_sum;
+    reg [31:0] packet_word_sum;
+    wire [31:0] packet_audio_sum=packet_word_sum;
+    wire packet_dimension_overflow=|{packet_header[79:76],packet_header[95:92]};
     reg [23:0] begin_pixel_count_r;
     wire [23:0] begin_word_count = (begin_pixel_count_r + 24'd1) >> 1;
 
@@ -142,15 +152,10 @@ module media_protocol_rx #(
             magic_ok <= 1'b0;
             packet_dropped <= 1'b0;
             type_lo <= 8'd0; type_hi <= 8'd0; payload_length <= 16'd0;
-            packet_frame_id <= 16'd0; packet_sequence <= 16'd0;
-            packet_image_index <= 8'd0; packet_image_flags <= 8'd0;
-            packet_total_words <= 32'd0; packet_sample_count <= 32'd0;
-            packet_width <= 12'd0; packet_height <= 12'd0;
-            packet_layout <= 8'd0; packet_window <= 8'd0; packet_generation <= 16'd0;
-            packet_checksum <= 32'd0; packet_reserved <= 16'd0;
+            packet_header <= 128'd0;
             word_assembly <= 32'd0; packet_word_index <= 9'd0;
             packet_sample_index <= 10'd0;
-            packet_word_sum <= 32'd0; packet_audio_sum <= 32'd0;
+            packet_word_sum <= 32'd0;
             frame_active <= 1'b0; frame_context_valid <= 1'b0; frame_bad <= 1'b0;
             active_frame_id <= 16'd0; expected_image_sequence <= 16'd0;
             received_image_words <= 21'd0; image_sum <= 32'd0;
@@ -191,14 +196,11 @@ module media_protocol_rx #(
                     packet_word_index <= 9'd0;
                     packet_sample_index <= 10'd0;
                     packet_word_sum <= 32'd0;
-                    packet_audio_sum <= 32'd0;
                     word_assembly <= 32'h80808080;
-                    packet_frame_id <= 16'd0; packet_sequence <= 16'd0;
-                    packet_image_index <= 8'd0; packet_image_flags <= 8'd0;
-                    packet_total_words <= 32'd0; packet_sample_count <= 32'd0;
-                    packet_width <= 12'd0; packet_height <= 12'd0;
-                    packet_layout <= 8'd0; packet_window <= 8'd0; packet_generation <= 16'd0;
-                    packet_checksum <= 32'd0; packet_reserved <= 16'd0;
+                    // Every accepted packet has an exact validated length and
+                    // overwrites ALL fields it uses. Clearing every unrelated
+                    // metadata register for each DATA packet only adds wide
+                    // reset muxes; incomplete packets fail length validation.
                 end else if (rx_pos == 11'd1) magic_ok <= magic_ok && (rx_data == 8'hbb);
                 else if (rx_pos == 11'd2) magic_ok <= magic_ok && (rx_data == 8'hcc);
                 else if (rx_pos == 11'd3) magic_ok <= magic_ok && (rx_data == 8'hdd);
@@ -214,11 +216,11 @@ module media_protocol_rx #(
                     endcase
                     if (image_byte_offset[1:0] == 2'd3) begin
                         packet_word_index <= packet_word_index + 9'd1;
-                        if (type_lo == TYPE_IMAGE_DATA)
-                            packet_word_sum <= packet_word_sum + {rx_data, word_assembly[23:0]};
                     end
+                    if(type_lo==TYPE_AUDIO_DATA || image_byte_offset[1:0]==2'd3)
+                        packet_word_sum<=packet_word_sum + (type_lo==TYPE_AUDIO_DATA ?
+                                         {24'd0,rx_data} : {rx_data,word_assembly[23:0]});
                     if (type_lo == TYPE_AUDIO_DATA) begin
-                        packet_audio_sum <= packet_audio_sum + {24'd0, rx_data};
                         packet_sample_index <= packet_sample_index + 10'd1;
                     end
                 end
@@ -228,60 +230,30 @@ module media_protocol_rx #(
                     11'd5: type_hi <= rx_data;
                     11'd6: payload_length[7:0] <= rx_data;
                     11'd7: payload_length[15:8] <= rx_data;
-                    11'd8: packet_frame_id[7:0] <= rx_data;
-                    11'd9: packet_frame_id[15:8] <= rx_data;
-                    11'd10: packet_sequence[7:0] <= rx_data;
-                    11'd11: packet_sequence[15:8] <= rx_data;
                     default: ;
                 endcase
-
-                if (type_lo == TYPE_IMAGE_BEGIN && type_hi == 8'h00) begin
-                    case (rx_pos)
-                        11'd10: packet_image_index <= rx_data;
-                        11'd11: packet_image_flags <= rx_data;
-                        11'd12: packet_total_words[7:0] <= rx_data;
-                        11'd13: packet_total_words[15:8] <= rx_data;
-                        11'd14: packet_total_words[23:16] <= rx_data;
-                        11'd15: packet_total_words[31:24] <= rx_data;
-                        11'd16: packet_width[7:0] <= rx_data;
-                        11'd17: packet_width[11:8] <= rx_data[3:0];
-                        11'd18: packet_height[7:0] <= rx_data;
-                        11'd19: packet_height[11:8] <= rx_data[3:0];
-                        11'd20: packet_layout <= rx_data;
-                        11'd21: packet_window <= rx_data;
-                        11'd22: packet_generation[7:0] <= rx_data;
-                        11'd23: packet_generation[15:8] <= rx_data;
-                        default: ;
-                    endcase
-                end else if (type_lo == TYPE_IMAGE_END && type_hi == 8'h00) begin
-                    case (rx_pos)
-                        11'd10: packet_checksum[7:0] <= rx_data;
-                        11'd11: packet_checksum[15:8] <= rx_data;
-                        11'd12: packet_checksum[23:16] <= rx_data;
-                        11'd13: packet_checksum[31:24] <= rx_data;
-                        11'd14: packet_reserved[7:0] <= rx_data;
-                        11'd15: packet_reserved[15:8] <= rx_data;
-                        default: ;
-                    endcase
-                end else if (type_lo == TYPE_AUDIO_BEGIN && type_hi == 8'h00) begin
-                    case (rx_pos)
-                        11'd10: packet_sample_count[7:0] <= rx_data;
-                        11'd11: packet_sample_count[15:8] <= rx_data;
-                        11'd12: packet_sample_count[23:16] <= rx_data;
-                        11'd13: packet_sample_count[31:24] <= rx_data;
-                        11'd14: packet_reserved[7:0] <= rx_data;
-                        11'd15: packet_reserved[15:8] <= rx_data;
-                        default: ;
-                    endcase
-                end else if (type_lo == TYPE_AUDIO_END && type_hi == 8'h00) begin
-                    case (rx_pos)
-                        11'd10: packet_checksum[7:0] <= rx_data;
-                        11'd11: packet_checksum[15:8] <= rx_data;
-                        11'd12: packet_checksum[23:16] <= rx_data;
-                        11'd13: packet_checksum[31:24] <= rx_data;
-                        11'd14: packet_reserved[7:0] <= rx_data;
-                        11'd15: packet_reserved[15:8] <= rx_data;
-                        default: ;
+                // DATA needs only its four-byte frame/sequence header. Do not
+                // keep writing it while the pixel/PCM bytes stream through.
+                if(rx_pos>=8 && rx_pos<24 && (rx_pos<12 ||
+                    (type_lo!=TYPE_IMAGE_DATA && type_lo!=TYPE_AUDIO_DATA)))begin
+                    case(rx_pos[4:0])
+                        5'd8:packet_header[0+:8]<=rx_data;
+                        5'd9:packet_header[8+:8]<=rx_data;
+                        5'd10:packet_header[16+:8]<=rx_data;
+                        5'd11:packet_header[24+:8]<=rx_data;
+                        5'd12:packet_header[32+:8]<=rx_data;
+                        5'd13:packet_header[40+:8]<=rx_data;
+                        5'd14:packet_header[48+:8]<=rx_data;
+                        5'd15:packet_header[56+:8]<=rx_data;
+                        5'd16:packet_header[64+:8]<=rx_data;
+                        5'd17:packet_header[72+:8]<=rx_data;
+                        5'd18:packet_header[80+:8]<=rx_data;
+                        5'd19:packet_header[88+:8]<=rx_data;
+                        5'd20:packet_header[96+:8]<=rx_data;
+                        5'd21:packet_header[104+:8]<=rx_data;
+                        5'd22:packet_header[112+:8]<=rx_data;
+                        5'd23:packet_header[120+:8]<=rx_data;
+                        default:;
                     endcase
                 end
 
@@ -302,13 +274,14 @@ module media_protocol_rx #(
                             else protocol_error_toggle <= ~protocol_error_toggle;
                         end
                         TYPE_IMAGE_BEGIN: begin
-                            if (payload_length == 16'd16 && !frame_active &&
+                            if (payload_length == 16'd16 && !frame_active && !packet_dimension_overflow &&
                                 packet_width != 0 && packet_width <= 12'd1280 &&
                                 packet_height != 0 && packet_height <= 12'd720 &&
                                 packet_total_words == {8'd0,begin_word_count} &&
                                 packet_total_words <= {11'd0,FRAME_WORDS} &&
-                                packet_layout == 8'd0 && packet_window == 8'd0 &&
-                                packet_generation == 16'd0 &&
+                                ((!MULTIVIEW && packet_layout==0 && packet_window==0 && packet_generation==0) ||
+                                 (MULTIVIEW && ((packet_layout==0 && packet_window==0) ||
+                                  (packet_layout==1 && packet_window<2) || (packet_layout==2 && packet_window<4)))) &&
                                 packet_image_index < 8'd32 &&
                                 (packet_image_flags & 8'he6) == 8'd0) begin
                                 frame_id <= packet_frame_id;

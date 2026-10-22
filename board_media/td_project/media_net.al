@@ -184,7 +184,10 @@
             <File Path="../user_source/hdl_source/media_uart_arbiter.v">
                 <FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="55"/></FileInfo>
             </File>
-    </Verilog>
+    <File Path="../user_source/hdl_source/media_packet_arbiter.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="901"/></FileInfo></File>
+<File Path="../user_source/hdl_source/media_view_scheduler.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="902"/></FileInfo></File>
+<File Path="../user_source/hdl_source/media_usb_view_tx.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&amp;R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="903"/></FileInfo></File>
+</Verilog>
         <ADC_FILE>
             <File Path="../user_source/constraints_source/pin.adc">
                 <FileInfo>

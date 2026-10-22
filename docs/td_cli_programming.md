@@ -77,6 +77,12 @@ if ($phyExitCode -ne 0) { throw "TD place/route or bitgen failed: $phyExitCode" 
 .\scripts\program_sram.ps1 -Board media
 ```
 
+默认路径还会比较 bit 与 `.opt_place.begin.f`、`.opt_route.begin.f`、`.bitgen.begin.f`
+的 UTC 时间：任一最近运行标记比 bit 新，就拒绝下载。TD 布线失败后经常保留上一次成功的
+同名 bit，文件存在并不等于本轮构建成功。拒绝陈旧 bit 与 USB 打开失败是两类不同问题。
+明确选择已知稳定版或独立诊断构建时可用 `-CandidateBit <绝对路径>`，并核对打印的 SHA；
+该参数允许有意执行旧版 A/B，不改变 cable 映射或 SRAM 下载命令。
+
 脚本用当前普通用户令牌启动隐藏的 `cmd.exe`，把工作目录设为 TD 安装目录的 `bin`，
 再将 `download` 命令直接输入 `td_commands_prompt.exe`。完整日志写入忽略目录
 `boardtest/captures/sram_download/`。显示板为 cable 0，媒体板为 cable 1：

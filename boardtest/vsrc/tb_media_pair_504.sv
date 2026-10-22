@@ -78,6 +78,7 @@ module tb_media_pair_504 #(
     integer prepare_delay = -1;
 
     media_image_tx u_sender (
+        .job_start(1'b0),.job_snapshot(1'b0),.job_previous(1'b0),.job_index(5'd0),.job_layout(2'd0),.job_window(2'd0),.job_generation(16'd0),.job_ready(),.job_done(),.job_result(),
         .clk(udp_clk), .rst(rst), .mounted(mounted), .source_busy(source_busy), .source_error(source_error),
         .first_bmp(first_bmp), .bmp_next(bmp_next), .bmp_prev(bmp_prev),
         .image_width(source_width), .image_height(source_height),
@@ -166,6 +167,7 @@ module tb_media_pair_504 #(
     );
 
     media_frame_pad u_pad (
+        .layout(2'd0),
         .clk(udp_clk), .rst(rst), .frame_begin(frame_begin_valid),
         .image_width(image_width), .image_height(image_height), .frame_end(frame_end_valid),
         .in_is_audio(stream_is_audio), .in_start(stream_start), .in_count(stream_word_count),
@@ -204,6 +206,8 @@ module tb_media_pair_504 #(
     // Use the actual production FIFO/reset/SDRAM request engines. The former
     // always-ready sink hid three lost border words during FIFO reset release.
     frame_read_write #(.FRAME_WIDTH(640), .FRAME_HEIGHT(720), .WRITE_V_FLIP(1)) u_backend (
+        .stream_clk(1'b0),
+        .view_read_layout(2'd0),.view_write_layout(2'd0),.view_write_window(2'd0),.view_valid_mask(4'd1),.view_epoch(1'b0),.view_drained_epoch(),
         .rst(rst), .mem_clk(write_clk), .Sdr_init_done(1'b1),
         .Sdr_init_ref_vld(backend_phase < 10'd24), .Sdr_busy(1'b0),
         .App_rd_en(), .App_rd_addr(), .Sdr_rd_en(1'b0), .Sdr_rd_dout(32'd0),
@@ -245,6 +249,7 @@ module tb_media_pair_504 #(
     end
 
     media_transaction_writer u_writer (
+        .image_layout(2'd0),.image_window(2'd0),.view_target_buffer(1'b0),.write_layout(),.write_window(),
         .udp_clk(udp_clk), .udp_rst(rst), .frame_begin_valid(frame_begin_valid),
         .frame_id(frame_id), .image_index(image_index), .image_flags(image_flags),
         .image_total_words(image_total_words), .image_width(image_width), .image_height(image_height),
@@ -278,6 +283,7 @@ module tb_media_pair_504 #(
     wire [7:0] display_tx_data;
     wire [15:0] display_tx_length;
     media_display_tx #(.TX_GAP_CYCLES(4)) u_display_tx (
+        .view_busy(1'b0),.view_prepare_valid(1'b0),.view_prepare_body(64'd0),.view_status_valid(1'b0),.view_status_body(128'd0),
         .clk(udp_clk), .rst(rst), .local_cmd_toggle_async(1'b0), .local_cmd_async(8'd0),
         .ready_valid(1'b0), .image_result_valid(image_result_valid),
         .image_result_code(image_result_code), .image_result_frame(frame_id),

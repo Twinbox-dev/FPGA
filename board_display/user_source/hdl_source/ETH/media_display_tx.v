@@ -4,7 +4,8 @@
 // UDP application TX port. The surrounding eth_subsys routes this channel to
 // the media peer (.3 in the completed dual-board system).
 module media_display_tx #(
-    parameter integer TX_GAP_CYCLES = 125000
+    parameter integer TX_GAP_CYCLES = 125000,
+    parameter VIEW_ENABLE = 0
 )(
     input  wire        clk,
     input  wire        rst,
@@ -29,11 +30,14 @@ module media_display_tx #(
     output wire [7:0]  tx_data,
     output wire [15:0] tx_length,
     input  wire        tx_ready,
-    input  wire        tx_ack
+    input  wire        tx_ack,
+    input wire view_busy,view_prepare_valid,view_status_valid,
+    input wire [63:0] view_prepare_body,
+    input wire [127:0] view_status_body
 );
     localparam [1:0] IDLE=2'd0, WAIT_READY=2'd1, REQUEST=2'd2, SEND=2'd3;
     reg [1:0] state;
-    reg [7:0] packet [0:15];
+    reg [7:0] packet [0:23];
     reg [4:0] packet_length;
     reg [4:0] byte_index;
     reg [16:0] gap_count;
@@ -48,17 +52,21 @@ module media_display_tx #(
     reg [1:0] image_commit_copies;
     reg [7:0] ack_seq_pending, ack_op_pending, ack_status_pending, ack_value_pending;
     reg [63:0] status_pending_data;
+    reg view_prepare_pending,view_status_pending;
+    reg [63:0] view_prepare_data;
+    reg [127:0] view_status_data;
+    integer vi;
 
     assign tx_request = (state == REQUEST);
     assign tx_valid = (state == SEND);
-    assign tx_data = packet[byte_index[3:0]];
+    assign tx_data = packet[byte_index];
     assign tx_length = {11'd0, packet_length};
 
     task automatic header(input [7:0] kind, input [15:0] payload_len);
         begin
             packet[0] <= 8'haa; packet[1] <= 8'hbb;
             packet[2] <= 8'hcc; packet[3] <= 8'hdd;
-            if (kind == 8'h01 || kind == 8'h41 || kind == 8'h43) begin
+            if (kind == 8'h01 || kind == 8'h41 || kind == 8'h43 || kind==8'h48 || kind==8'h4a) begin
                 // 0x0001 touch commands and 0x0041/0x0043 control replies use
                 // the V1 big-endian TYPE/LEN envelope. The image stream
                 // (0x0020-0x0033) keeps its documented little-endian header.
@@ -89,14 +97,16 @@ module media_display_tx #(
             ack_seq_pending <= 8'd0; ack_op_pending <= 8'd0;
             ack_status_pending <= 8'd0; ack_value_pending <= 8'd0;
             status_pending_data <= 64'd0;
+            view_prepare_pending<=0;view_status_pending<=0;view_prepare_data<=0;view_status_data<=0;
         end else begin
             local_cmd_sync <= {local_cmd_sync[1:0], local_cmd_toggle_async};
             if (local_cmd_sync[2] != local_cmd_seen) begin
                 local_cmd_seen <= local_cmd_sync[2];
                 if (local_cmd_async == 8'h4e || local_cmd_async == 8'h41 ||
                     local_cmd_async == 8'h50) begin
-                    local_cmd_latched <= local_cmd_async;
-                    local_cmd_pending <= 1'b1;
+                    local_cmd_latched <= VIEW_ENABLE && local_cmd_async!=8'h41 ?
+                                         (local_cmd_async | 8'h20) : local_cmd_async;
+                    if(!VIEW_ENABLE || !view_busy || local_cmd_async==8'h41)local_cmd_pending <= 1'b1;
                 end
             end
             if (ready_valid) ready_pending <= 1'b1;
@@ -122,6 +132,8 @@ module media_display_tx #(
                 status_pending_data <= status_payload;
                 status_pending <= 1'b1;
             end
+            if(VIEW_ENABLE && view_prepare_valid)begin view_prepare_pending<=1;view_prepare_data<=view_prepare_body;end
+            if(VIEW_ENABLE && view_status_valid)begin view_status_pending<=1;view_status_data<=view_status_body;end
 
             case (state)
                 WAIT_READY: if (tx_ready) state <= REQUEST;
@@ -132,6 +144,10 @@ module media_display_tx #(
                         header(8'h20, 16'd1);
                         packet[8] <= 8'h01;
                         ready_pending <= 1'b0;
+                    end else if(view_prepare_pending)begin
+                        header(8'h4a,16'd8);
+                        for(vi=0;vi<8;vi=vi+1)packet[8+vi]<=view_prepare_data[8*vi+:8];
+                        view_prepare_pending<=0;
                     end else if (image_pending && image_code_pending != 8'd2) begin
                         header(8'h24, 16'd3);
                         packet[8] <= image_frame_pending[7:0];
@@ -175,6 +191,10 @@ module media_display_tx #(
                         packet[14] <= status_pending_data[55:48];
                         packet[15] <= status_pending_data[63:56];
                         status_pending <= 1'b0;
+                    end else if(view_status_pending)begin
+                        header(8'h48,16'd16);
+                        for(vi=0;vi<16;vi=vi+1)packet[8+vi]<=view_status_data[8*vi+:8];
+                        view_status_pending<=0;
                     end else if (local_cmd_pending) begin
                         // The media board eth_front accepts V1 type 0x0001
                         // [CMD, ~CMD]. Private type 0x0005 is silently ignored.

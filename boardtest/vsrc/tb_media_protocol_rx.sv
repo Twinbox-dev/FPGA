@@ -208,6 +208,21 @@ module tb_media_protocol_rx;
         header(8'h20, 16'd0); close_packet();
         wait (ready_seen);
 
+        // High dimension nibbles must not be silently truncated into a legal
+        // small image; the low 12 bits below deliberately match total_words.
+        header(8'h21,16);send_byte(8'hff);send_byte(8'h12);send_byte(2);send_byte(8);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);
+        send_byte(2);send_byte(8'h10);send_byte(3);send_byte(0);
+        send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        if(dut.frame_active || begin_seen)$fatal(1,"overflow width was truncated and accepted");
+        header(8'h21,16);send_byte(8'hff);send_byte(8'h12);send_byte(2);send_byte(8);
+        send_byte(3);send_byte(0);send_byte(0);send_byte(0);
+        send_byte(2);send_byte(0);send_byte(3);send_byte(8'h10);
+        send_byte(0);send_byte(0);send_byte(0);send_byte(0);close_packet();
+        if(dut.frame_active || begin_seen)$fatal(1,"overflow height was truncated and accepted");
+        header(8'h21,16);send_byte(8'hff);send_byte(8'h12);send_byte(2);send_byte(8);close_packet();
+        if(dut.frame_active || begin_seen)$fatal(1,"truncated BEGIN reused stale fields");
+
         send_image(16'h1234, 1'b0);
         wait (frame_end_seen);
         if (!begin_seen) $fatal(1, "BEGIN metadata missing");

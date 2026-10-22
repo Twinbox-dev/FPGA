@@ -20,13 +20,16 @@ module media_uart_arbiter #(
     output wire       cmd_valid,
     input  wire       cmd_ready,
     output reg  [7:0] usb_overflow_count,
-    output reg  [7:0] bt_overflow_count
+    output reg  [7:0] bt_overflow_count,
+    input wire view_busy,
+    output wire cmd_was_busy
 );
     reg [7:0] usb_fifo [0:DEPTH-1];
     reg [7:0] bt_fifo  [0:DEPTH-1];
     reg [1:0] usb_wr_ptr,usb_rd_ptr,bt_wr_ptr,bt_rd_ptr;
     reg [2:0] usb_count,bt_count;
     reg prefer_bt;
+    reg usb_busy_fifo[0:DEPTH-1],bt_busy_fifo[0:DEPTH-1];
 
     wire choose_bt=(source_lock==2'd2) ||
                    ((source_lock==2'd0) && (bt_count!=0) && ((usb_count==0)||prefer_bt));
@@ -35,6 +38,7 @@ module media_uart_arbiter #(
                      (source_lock==2'd2) ? (bt_count!=0) : ((usb_count!=0)||(bt_count!=0));
     assign cmd=choose_bt?bt_fifo[bt_rd_ptr]:usb_fifo[usb_rd_ptr];
     assign cmd_source=choose_bt?2'd2:2'd1;
+    assign cmd_was_busy=choose_bt ? bt_busy_fifo[bt_rd_ptr] : usb_busy_fifo[usb_rd_ptr];
     wire pop=cmd_valid && cmd_ready;
     wire usb_pop=pop && !choose_bt;
     wire bt_pop=pop && choose_bt;
@@ -47,8 +51,8 @@ module media_uart_arbiter #(
             usb_count<=0;bt_count<=0;prefer_bt<=0;
             usb_overflow_count<=0;bt_overflow_count<=0;
         end else begin
-            if(usb_push)begin usb_fifo[usb_wr_ptr]<=usb_cmd;usb_wr_ptr<=usb_wr_ptr+1'b1;end
-            if(bt_push)begin bt_fifo[bt_wr_ptr]<=bt_cmd;bt_wr_ptr<=bt_wr_ptr+1'b1;end
+            if(usb_push)begin usb_fifo[usb_wr_ptr]<=usb_cmd;usb_busy_fifo[usb_wr_ptr]<=view_busy;usb_wr_ptr<=usb_wr_ptr+1'b1;end
+            if(bt_push)begin bt_fifo[bt_wr_ptr]<=bt_cmd;bt_busy_fifo[bt_wr_ptr]<=view_busy;bt_wr_ptr<=bt_wr_ptr+1'b1;end
             if(usb_pop)usb_rd_ptr<=usb_rd_ptr+1'b1;
             if(bt_pop)bt_rd_ptr<=bt_rd_ptr+1'b1;
             case({usb_push,usb_pop})

@@ -9,6 +9,7 @@ module tb_media_image_tx_gap;
     wire [3:0] state_code;
 
     media_image_tx #(.CLK_HZ(125000000),.FRAME_WORDS(2)) dut (
+        .job_start(1'b0),.job_snapshot(1'b0),.job_previous(1'b0),.job_index(5'd0),.job_layout(2'd0),.job_window(2'd0),.job_generation(16'd0),.job_ready(),.job_done(),.job_result(),
         .clk(clk),.rst(rst),.mounted(1'b0),.source_busy(1'b0),.source_error(1'b0),
         .first_bmp(6'd0),.bmp_next(192'd0),.bmp_prev(192'd0),
         .image_width(12'd1280),.image_height(12'd720),

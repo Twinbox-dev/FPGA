@@ -659,3 +659,338 @@ IMG1/2/5 各 720000 样本，IMG0 为 480000；另外两张为静音事务。
 CLI 均由 `program_sram.ps1` 成功写入对应 cable 的 SRAM，无 UAC。
 已知厂商 IP 时序违例仍在；没有宣称本轮收敛时序。
 下一步：第一阶段本地提交后继续多窗口集成与完整仲裁测试；不要误认为整个计划已完成。
+
+### 19.5 第二阶段正在集成（从这里继续，不能当已上板完成）
+
+第一阶段现已本地提交为 `2c930d0`，没有推送；剩余最多两次阶段提交。
+两板当前 SRAM 仍为 19.4 的正式单图产品 bit。后续多窗口修改尚未下载、不得声称实板通过。
+
+已接入工作区的生产 RTL：
+
+- 显示：`view_image_pipeline`（双线性 + 动态窗口补黑）；`view_session_manager` 管准备、
+  首次整页暂存、黑窗原地更新、重试及提交；`view_video_config` 在输入 VS 安装配置。
+  `frame_fifo_read/write` 增加 `VIEW_ENABLE`：产品启用、历史独立测试保持默认旧接口行为。
+  读引擎按槽位映射、无效窗生成黑字，多窗突发不跨 320 字行；新 epoch 只在旧突发返回排空、
+  S_ACK 清 FIFO 后确认。写引擎按窗翻转，音频继续原来的顺序写。
+- manager 在 UDP 域；配置 mailbox 的 epoch 经 video VS 安装后再由实际读引擎回传，
+  回传前绝不发原地写准备 ACK。原始宽高保留作焦点 OSD；CV 之后/UI 之前再次遮黑无效窗。
+- 多窗 writer 只回“图像写完”内部事件，不装载 WAV；manager 生成 RESULT=3/2。单图仍沿用
+  原 writer 的 WAV/转场逻辑，最终 2 经过 manager 的新配置/排空确认后发出。
+  `media_audio_playback` 保留 pair_off 期间的新源启动待办，解决返回单图的提交前静音窗口。
+- 媒体：`media_view_scheduler` 先准备再启动源读取，编排整页多图及按窗 N/P；
+  `media_image_tx.EXTERNAL_SCHEDULE=1` 只执行明确 job，原独立用例默认旧调度；多窗不发音频包。
+  `media_packet_arbiter` 在正式数据与视图控制/PC 状态之间整包仲裁，目的地保持到下一拥有者。
+- `media_control_core` 增加布局键 ASCII 6/7/8；忙时拒绝图像/D/布局。UART 小队列为每条命令
+  记录“到达时是否忙”，防止忙时命令等到空闲才生效。USB `uart_link.TX_BYTES=17` 支持 A7+16
+  字节状态，`media_usb_view_tx` 避免与旧 8 字节 ACK 的寄存 ready/request 竞争；蓝牙仍为 8 字节。
+
+当前新增的控制字节约定（需在正式协议文档补齐）：
+
+- 0x0049：V1 大端包头、8-byte body：seq/action/layout/preferred-window/gen:u16LE/reserved:u16=0。
+  action 0=布局或当前图、1=N、2=P、3=取消、4=PC D 保留、5=D 完成释放。
+  preferred FF=按当前光标，FE=使用本地触摸命令发生时锁定窗口，否则 0–3。
+- 0x004A：8-byte body：seq/result/window/layout/gen:u16LE/base-index/valid-mask。
+  result 0=准备完成，1=忙，2=非法，3=代次过期。首次进入多窗 window=0，后续依序装入。
+- 本地触摸 N/P 用 V1 `0x6E/0x70` 私有小写命令转发，媒体再按 FE 准备；公开 N/P 仍为大写。
+- 0x0048：16-byte body：seq/gen:u16LE/layout/busy/focus/mask/indices[4]/width:u16LE/height:u16LE/result。
+  媒体转发 PC V1 type=0003、LEN=16；USB 为 A7 + body。48 长度 1 或原 42 状态查询均触发新状态。
+
+已经通过的定向仿真：
+
+- `view-framepath`：真实生产异步 FIFO，三种模式全部 App 地址/数据与视频字验证；隐藏窗黑字；
+  多窗突发不跨 320 字行。尚需补充“旧突发进行中切换 epoch”的专门压力用例。
+- `view-session`：准备/排空屏障、整页原子提交、按窗失败重试、非法切换/过时代次、本地焦点锁定、D 保留。
+- `view-control-path`：两板真实 PREPARE/STATUS/RESULT 序列化/解析，源/写完成为有界行为模型；
+  覆盖开机、双图/四图、独立 N/P、回环、忙时不排队、触摸锁定、D 焦点选择。它不是像素整机验收。
+- `view-image-pipeline`：与 `view-bilinear` 共用独立四角 golden，以 `PIPELINE=1` 加入完整窗口补黑，
+  9 组连续源图、奇数尾字/单像素轴/截断/源和目标反压，所有输出字逐像素正确。
+- `view-usb`：真实 TX 串行解码，8/17/8 字节完整性及 control ready 已授予时新 VIEW 竞争。
+- 返回单图音频源在 pair_off 时提交的用例通过；Web `test_view_status.py`、原 D 和 JS 渲染用例通过。
+
+Web 已加入布局按钮、权威 VIEW_STATUS、忙时灰显与 S 恢复；HTTP 成功/旧 ACK 不解锁。
+仍需真实浏览器交互检查及板级联调，特别是 FPGA 状态与前端锁定/恢复一致性。
+
+首轮综合（当前源码之后又有 USB 等修补，故这些网表不能直接作为最终 bit）：
+显示 17120 LUT / 12473 FF / 45 BRAM9K / 13 BRAM32K / 21 DSP；媒体 14607 LUT / 10578 FF。
+布局布线尚未进行。TD `.al` 与 syn `.prj` 已登记 9 个显示 view 模块、媒体 scheduler/packet arbiter；
+**新加的 `media_usb_view_tx.v` 还必须登记到媒体 `.al`/syn `.prj` 后再重新综合。**
+
+接下来：补齐 USB 以及新端口的工程/历史测试接线 → 新调度器执行多图无音频的定向仿真，
+真实突发中隐藏排空/设置与 DATA 交错/忙时命令标记测试 → 两板重新综合及 P&R → 下载并用
+隔离显示扫描探针对照独立多窗 golden；同时验证 D 焦点与返回单图音频提交。
+保留原有测试；未完成实板验收前不作第二阶段提交。不因当前模块通过就结束整个任务。
+
+
+### 19.6 第二阶段实板调试现场（2026-10-23 01:40，优先读本节）
+
+19.5 是较早快照；以下覆盖其中“尚未下载/工程列表未补齐”等旧状态。
+第一阶段已提交 2c930d0，第二阶段仍未通过实板验收、未提交。
+
+- 双线性串行共享 RGB/轴计算、原生 DSP 输入/输出寄存器、几何除法器收窄、
+  manager 元数据按 bank 存 BRAM、协议 RX 去重复清零/共用包校验累计器均已实现并通过定向仿真。
+  新增 display_levels_rgb 用闲置 DSP 精确复现原亮度/对比度公式，65536 组合逐值相同。
+  当前正式显示候选完整 P&R 成功：16911 LUT、12046 FF、47 BRAM9K、13 BRAM32K、18 DSP，
+  4829/4900 MSlice；setup -7.791ns / hold -2.935ns。不是已验收产品。
+- 资源瓶颈是 MSlice 打包（98.6%），不能只看 LUT 比例；全四边界诊断构建仍超限 5094 MSlice。
+  正在用隔离 CV bypass + Appwrite/scan 两边界探针减小诊断体积，生产 CV 源码不删除。
+- 当前 cable0 是隔离 scan-only / CV bypass / test-cursor bit
+  2C2DC610BA219A9C9C0A436A701E15F1297D89F6E92BACEA9012FCE363BFD55E。
+  私有 004B 只在诊断复制顶层里注入 manager 焦点，不进入生产源列表。
+- 用户实见撕裂。实际 SDRAM scan 已证明有像素差异：IMG1 连续 8 帧固定为
+  count=460800, sum=fb062ffd, hash=589e3bbb；golden 为 c5022484 / 80940754。
+  新装 IMG2、IMG3 也不符，但各自源 D 与 BMP 完全一致、缺口零。
+  因此不可宣称“只有 HDMI 观感”或仅凭源 D 判定显示正确。
+  先比 Appwrite 与 scan，再决定上游像素/写地址/读地址哪条路继续定位。
+- 当前 cable1 仍为 00:33 成功的 FCB697539CBA681FF49F588C7B2ADEE5273F8929ABC0FF2C8EF05FA88BFFD3CC。
+  它包含 view 调度，但不含最新多窗 500us 包间隔/RESULT3 不提交等小修。
+  最新媒体源已有这些修复；P&R 在 hold 修补后剩两条冲突网失败，同名旧 bit 并未删除。
+  不能将该旧 bit 当成新源码产物。正在按 TD 有效参数 route effort high 重跑。
+- program_sram.ps1 已增加默认产物新鲜度检查：bit 比 place/route/bitgen 任一 begin 标记旧就拒绝，
+  防止 TD 退出码 0、旧 bit 残留造成误烧。显式 CandidateBit 用于已知 A/B/隔离诊断。
+  无 UAC，仍需宿主非沙箱 USB 访问；cable0 显示、cable1 媒体，SRAM only。
+- /api/status.view 权威状态、USB A7、前端布局和忙互锁、两板 TD 源列表都已补齐。
+  app 已重启加载工作区；网络显式源地址 192.168.137.1 的两板 ping 可通。
+  中途 IMG4 装载失败，页面通过 S 回到 idle/result1；还需一并收口。
+
+定向 view-framepath 已补“旧目标窗突发进行中隐藏”，证明 ACK 前旧返回排空；
+现有测试仍是存储行为模型，不能替代上述真实 SDRAM scan 失败。
+下一步先修实际像素差异，再全覆盖双窗/四窗/独立切图/D/返回单图音频，恢复无探针产品 bit，
+最后更新协议文档及验收记录再做第二阶段提交。最多还可用两次提交，不推送。
+
+
+### 19.7 用户暂停板级供电，转为优先资源重构（2026-10-23，当前执行入口）
+
+用户确认将关闭两块板子，授权更积极地离线开发资源优化；资源占用回落后再重新上电，
+继续撕裂 debug 和多窗口功能验收。**现在不再 ping/下载/运行实板脚本，也不请求用户协助。**
+继续仿真、CLI 综合/P&R、记录资源与时序；候选不得标成实板稳定，不自行提交半成品。
+仍留在 main，不推送。完整功能计划没有取消；先优化，再回到像素/仲裁验收。
+
+版本状态：main 最新提交仍是阶段一 2c930d0；所有第二阶段 RTL、前端、测试、报告都在工作区。
+阶段一已验收内容不能整体回退。保留全部历史仿真。阶段提交总上限仍按原约定最多三次。
+
+断电前最后明确下载：
+
+- cable0 显示：scan-only/CV bypass/test-cursor 隔离诊断 bit
+  2C2DC610BA219A9C9C0A436A701E15F1297D89F6E92BACEA9012FCE363BFD55E，
+  不等于最新产品 bit。真实单图 SDRAM scan 不匹配：IMG1/IMG2/IMG3 均出现稳定摘要差异；
+  源 D 与对应 BMP 全同。IMG4 的一次装载失败后回 idle/result1。用户目视撕裂待修。
+- cable1 媒体：最新正式候选 426E8623CD1D2F9FEE2413405B1F11769E1014B724F66991EE648585D721C223，
+  01:50 通过 program_sram.ps1 写入 SRAM。包含多窗 500us 包间隔、RESULT3 不作为提交、
+  关闭 MAC_CAPTURE；15544 LUT / 10689 FF / 20 BRAM9K / 2 BRAM32K / 5 DSP。
+  默认布线曾重复残余两条冲突；本次使用 TD 有效参数 place pr_strategy 2、route effort high 完成。
+  此 bit 下载后还没有全功能板测；断电后 SRAM 丢失，恢复时必须明确选择将要验证的候选。
+
+资源重构进度：
+
+1. 显示 packet 元数据 union 已实现并通过协议、1280/504 两种整帧、图音及多窗口握手仿真。
+   原 packet_frame_id/sequence/index/flags/total/sample/checksum 等互斥字段现共用128-bit wire body；
+   实际源尺寸上界/坏长度/坏校验等保护保留。
+2. 试过 TX 移位回复，但门级 LUT/FF 均没有收益，已仅撤回该候选，恢复原 packet TX；
+   不要把这次实验写成已保留的优化。带 union+TX 实验的产品候选 P&R 成功，约4784 MSlice，
+   只是过渡量化结果，当前源码已经继续改变。
+3. 正在实现更实质的缓存合并：写事务留在 UDP 125MHz 域，移除中间 frame/audio async FIFO，
+   复用 frame_read_write 最后的 UDP->SDRAM FIFO；音频消费仍保留 sd_card_clk。
+   media_transaction_writer 新参数 DIRECT_STREAM=1（生产顶层启用，历史默认0）；
+   frame_read_write 新参数 STREAM_CLOCK=1 和 stream_clk（顶层 eth_app_clk）。
+   legacy write_clk 仍作音频 FIFO 消费时钟；write_ready 只跟新 producer_clk。
+   writer 对 mem 写 ACK 新加两拍同步；完成/转场继续原来的 toggle CDC。
+   当前代码刚落盘，**还没跑新 DIRECT_STREAM 仿真、没综合此重构**。必须先验证再保留。
+4. 两个1280x16缩小行 RAM 的属性已试改 bram_32k，候选未量化；预期是2 BRAM32K换8 BRAM9K，
+   不是保证结果，实际报告确认；若形成新短板/无收益可单独撤回。
+5. display_levels_rgb 的3个DSP精确增益替代、串行 bilinear 原生DSP输入/输出寄存器及其定向测试
+   是较早已验证仿真/综合的工作区内容，仍保留；不是另开分支或提交。
+
+缓存合并尚需检查：
+
+- 新参数默认0保持历史接口行为；所有 frame_read_write 历史实例已补 stream_clk=0。
+- 当前生产 writer.write_clk=eth_app_clk，frame_read_write.stream_clk=eth_app_clk，
+  frame_read_write.write_clk 仍为 sd_card_clk。检查两个路径确实只跨一次域。
+- 顶层 auto_play_w 已随 writer 改为 eth_app_clk 域采 frame_commit_pulse；消费者原已有同步。
+- 隔离 digest 构建器 producer_clk 原硬写 sd_card_clk；DIRECT_STREAM 后必须随真实 writer 改，
+  否则8ns write_en 会被100MHz误采，导致假失配。板测恢复前修改诊断构建器。
+- 仿真需新增125MHz直连写事务的图像、PCM、反压、截断补黑、切换收尾用例；
+  再用真实生产 FIFO 验证独立音频消费时钟和 mem100MHz 读写。
+- 检查当前仍后台运行的 TD 构建；它们来自变更前网表，只能作对比，不能误烧当最新源码。
+  日志 view_display_union_shift_phy.log、view_write_scan_strategy2_phy.log 等在 ignored captures 内。
+  禁止仅凭旧同名 bit/TD exit0 报成功；program_sram 的新鲜度保护必须保留。
+
+继续顺序：完成 DIRECT_STREAM 等价仿真 → 重新综合量化资源/相关时钟路径 → 单独检查其他重复
+缓存/宽寄存器/共享运算候选，逐项保留有证据的收益 → 更新离线候选清单 → 用户重新上电后
+先实际 SDRAM 边界定位撕裂，再完成双窗/四窗/独立切图/音频与前端验收。
+
+
+### 19.8 单级生产写 FIFO 仿真完成，综合进行中（2026-10-23）
+
+在两板关闭期间完成新的 DIRECT_STREAM 候选：显示协议解析、图像缩放/补黑和事务 writer
+同在 UDP 125MHz 域；移除 writer 内两条 512×32 async BRAM FIFO，复用 `frame_read_write`
+最终 FIFO 作为唯一 producer→SDRAM CDC。writer 的 `write_req_ack` 加两拍同步；
+SDRAM FIFO 写域改为显式 `stream_clk=eth_app_clk`；音频 read FIFO/播放域继续 `sd_card_clk`。
+顶层 `auto_play_w` 也留在 UDP 域，因为 `frame_commit_pulse` 现在本来就在该域。
+历史验证默认参数 `DIRECT_STREAM=0` / `STREAM_CLOCK=0` 保持旧结构。
+
+以下直接模式 Verilator 验收全部通过，日志 `boardtest/captures/variable_frame_stage1/direct_stream_tests.log`：
+
+- writer 图像与5样本 PCM，先图像完成、再 PCM、提交字段与第一/第二音频字节顺序。
+- 实际 parser→pad→writer→display TX，图像成功/拒绝及音频 checksum reason 回路。
+- 504×720 小图居中补黑、完整460800字输出、RESULT0/RESULT2、DPI式全量图写模型。
+- `frame_read_write` 真异步写/读 FIFO：UDP125写时钟、独立音频消费者时钟、mem100读写；
+  完整单图/双图/四图扫描、隐藏窗读排空、黑字生成、地址/data检查及突发边界均通过。
+- 以上是 Verilator 行为模型检查，仍不能证明厂商 SDRAM IP 的板上访问和 HDMI 显示正确。
+
+显示板全量当前源码 SYN/P&R 正在运行（尚未结束）。该候选还加入行缓存从 BRAM9K 移到 BRAM32K，
+故以最后成功 gate/phy 报告比较 BRAM9K / BRAM32K / LUT / MSlice 和时序。过渡之前的显示正式
+P&R是16911 LUT、12046 FF、47 BRAM9K、13 BRAM32K、18 DSP、4829/4900 MSlice，
+WNS−7.791ns/hold−2.935ns；这不是新 DIRECT_STREAM 候选的结果。
+
+移位式 `media_display_tx` 已放弃并恢复原实现（量化没收益）。保留了共用包字段寄存器，
+协议回归及 full-frame 1280/504 和普通视图握手测试均通过；最终是否保留看这一轮综合的
+component/hierarchy结果，不能只用单独字段计数推断节省。
+
+
+### 19.9 直连写入 SYN/P&R 量化中（2026-10-23 02:40）
+
+此前 19.7/19.8 的“DIRECT_STREAM 还没有跑仿真”文字已过期，以本节为准。
+此方案已完成以下离线仿真：writer图像+PCM、parser/pad/拒绝与audio checksum reason、
+504×720补黑整帧、1280×720全帧、真实读写FIFO三种布局全画面扫描。
+1280与504均写460800字，图像结果先0接受后2提交；真实memory-model读回逐字一致。
+`direct_stream_tests.log`及`direct_1280.log`留在captures忽略目录。
+
+最新全量显示SYN：16247 LUT / 11863 FF / 39 BRAM9K / 11 BRAM32K / 18 DSP。
+相对之前完整多窗口正式候选P&R (16911 LUT /12046 FF /47 BRAM9K /13 BRAM32K /18DSP)：
+LUT少664、FF少183，BRAM9K少8，BRAM32K少2。层级writer从约723 LUT降到63 LUT左右。
+行缓存BRAM32K迁移和两条512×32 bridge FIFO移除都已包含。
+
+布局完成报4804/4900 MSlice（之前4829/4900）；当前换布局后有一条网络布线冲突，正在routing/ECO。
+布线早期timing更新setup WNS约−6.03 ns、hold−2.935 ns；之前完整候选final为−7.791/−2.935 ns。
+最终route没结束前MSlice/WNS/bit SHA都还未确认。该方案尚未烧录实板，不能作为正式稳定候选。
+实时状态/日志：`boardtest/captures/variable_frame_stage1/view_direct_stream_phy.log`（ignored）。
+用户已经关掉两板，所以本阶段完成后只继续离线仿真/综合，不进行下载。
+
+如果普通布局持续残留网络冲突，下一轮考虑从同一最新gate网表重新布局，设置已从TD参数查询确认有效的
+`place pr_strategy 2`（并按需 route effort high），比较能否路由成功；不要改RTL来掩盖放置冲突。
+若替代布局不能route，再保留SYN/功能仿真结论，不能报告“完整P&R通过”。
+当前工作区仍有直接candidate未提交变更；撕裂的实板扫描失败仍是板重新上电后的优先定位点。
+
+
+### 19.10 首轮完整路由报告与第二种布局（2026-10-23 02:40）
+
+SYN/P&R 的首轮 DIRECT_STREAM 候选完成综合和布局，但默认 `pr_strategy=1` 末尾 route/eco 留有一条
+原语理位置冲突：`u_gt911_trackpad/cursor_mailbox_x_b_n` 与 `u_spectrum_dft/mux67_syn_2863`
+在 `(x12y46_local3)`。TD 报错为 `RUN-8102 Incremental route failed`，所以该次没有生成新的
+完整 PR 数据库/时序终态或可下载 bit；旧同名 bit 与旧 final_timing 不得用于新 candidate。
+路由前布局面积4804 MSlice，SYN LUT16247/FF11863/BRAM9K39/BRAM32K11/DSP18；
+P&R中间setup WNS -6.025ns (route pre-ECO)。它不是最终路径收敛数字。
+
+第二次完整流程正对同一最新门级网表尝试 `place pr_strategy 2` 与 route high effort，日志：
+`boardtest/captures/variable_frame_stage1/view_direct_stream_strategy2_phy.log`。
+如果完成，记录其真实资源、setup/hold WNS、route违例、bit时间/SHA和 CLI exit检查；
+若路由仍失败，保留可复现证据并把该候选留在工作区待进一步离线布局研究，板不重新上电。
+
+
+### 19.11 Strategy 2 复跑结果（2026-10-23 03:01）
+
+同一最新 gate 网表以 `place pr_strategy 2` 重新完整放置/路由后仍在固定同一位置失败：
+`(x12y46_local3)` 上的 `u_gt911_trackpad/cursor_mailbox_x_b_n` 与
+`u_spectrum_dft/mux67_syn_2863` 冲突；TD 最终报 `RUN-8102 Incremental route failed`，
+没有 bitgen，也没有新的产品 bit。流程在 setup timing 上约 -6.025ns、hold -2.935ns，但不等于最终route timing。
+布局仍4808 MSlice。重建 P&R 中间文件覆盖了 layout candidate 的 place DB；
+working source/gate area 16247 LUT / 11863FF /39BRAM9K /11BRAM32K/18DSP 保留。
+下一次使用确认有效的 `place pr_strategy 3`，route 完再判断是否能消除同一局部布线冲突。
+若3也失败，结束反复切换 P&R 参数，转入 RTL fanout/register placement 资源优化或保留此前完整P&R版本，
+并明确报告没有可交付的新 bit；不要继续盲目烧板。
+
+
+### 19.12 Strategy 3 P&R conclusion and route-local RTL candidate (2026-10-23 03:17)
+
+第三轮 `place pr_strategy 3` 完整走到 bitgen，消除了Route error，但最终 setup WNS=-10.351ns、hold=-3.200ns，
+相对之前正式候选 -7.791/-2.935ns 明显变差，故不能作为保留的资源优化设置，也没有实板通过。
+这轮仅证明同一个RTL换布局能route，未烧写，现成同名bit SHA为诊断构建，不可用于板级。
+相同 gate area仍16247 LUT/11863FF/39 BRAM9K/11 BRAM32K/18DSP、布局4808MSlice；
+最终routing策略不能仅拿这组物理时序不合格的candidate当可交付。
+
+Strategy1/2冲突准确位置仍为 `(x12y46_local3)`，网是
+`u_gt911_trackpad/cursor_mailbox_x_b_n` 和 `u_spectrum_dft/mux67_syn_2863`；不是像素算法或 SDRAM地址冲突。
+离线考虑的下一项 RTL 只把GT911的稳定坐标邮箱副本拆成独立显示/manager分支，减少跨模块共扇出，
+保持 mailbox 更新时点/值和现有同步协议；它不是功能精简。如实现需增加寄存器，先保持output bus严格等价，
+Verilator验证原 GT911游标/滑动行为、启动、ACK间稳定，再只尝试一次完整P&R。
+倘若路径代价或拥塞更差就回滚该小项；不要再连续试不受限的 place 参数。
+两板仍断电，候选不得下载或称稳定。优先保持新综合改善和未提交功能的完整性。
+
+
+### 19.13 Bilinear phase decode pipelined: full P&R candidate (2026-10-23 03:40)
+
+Timing report implicated the path from `view_scale_geometry.dest_height` through the current 15-state FSM
+branch mux and Y interpolation inputs. `view_bilinear_shrink` now registers the upcoming arithmetic `operation`
+on transitions into READ1 / HORIZONTAL1 / VERTICAL / next-channel HORIZONTAL; the DSP operand/fraction mux
+uses this 2-bit registered phase instead of recomputing from FSM state each channel. The per-pixel formula,
+rounding, row order, frame-control latency, ready/backpressure protocol, and arithmetic results are unchanged.
+
+Verilator `make view-bilinear view-image-pipeline` passed: all 9 consecutive full-source goldens, including
+1280×720→640×360, 571×720, 504×720, no-resize, narrow/degenerate axes, truncation, source/sink backpressure,
+and complete pad pipeline, are exact RGB565. Log is
+`boardtest/captures/variable_frame_stage1/bilinear_phase_mux_tests.log`.
+
+Current unboardtested product candidate completed strategy-1 full SYN/P&R and bitgen:
+
+- SYN `#lut` 16313, FF 11864, BRAM9K 39, BRAM32K 11, DSP 18.
+- Routed `#lut` 16864, FF 11824, BRAM9K 39, BRAM32K 11, DSP18; placement 4784/4900 MSlice.
+- Setup WNS -6.130ns, hold WNS -3.042ns. Compared with previous full multiview product candidate 16911 LUT,
+  4829 MSlice, -7.791/-2.935ns: LUT -47 after placement, MSlice -45, setup improves 1.661ns, hold -0.107ns.
+- Candidate bit SHA256 `31431CC6D8C15B7EEE3692243A5144E9DC80118B48462F72278443EA737BB7C2`.
+  It was generated into the run folder and has **not been downloaded**; two boards remain off.
+- Critical setup endpoint moved from `mix_b` to FSM `state_reg[0]`, slack -6.057ns; the two scaling coordinate paths
+  are next at -5.658/-5.573ns. Further optimization, if it proves worth the risk, should pipeline frame-invariant
+  geometry or separate the destination-window control, not alter SDRAM pixel addresses based on speculation.
+
+The third P&R strategy bit from 19.12 remains a timing-poor -10.351ns candidate and was superseded by this default
+strategy-1 image; only the new SHA above represents the latest successfully routed+bit-generated source snapshot.
+Until board scan checks pass after power is restored, no candidate is product-verified or committed.
+
+
+### 19.14 Interpolator operand phase register P&R complete (2026-10-23 03:40)
+
+Following the routed strategy-1 candidate that used the shared frame writer but still had the old FSM decode
+on every RGB operation, `view_bilinear_shrink` now registers `operation` at READ1/STORE transitions.
+This breaks the state decode from geometry/destination-height into the multiplier operand select.
+
+- `make view-bilinear view-image-pipeline` passed all exact RGB565 goldens, 9 backpressure/degenerate/truncated cases.
+- Full strategy-1 SYN/P&R/bitgen completed without routing conflicts.
+- Latest candidate bit SHA256: `31431CC6D8C15B7EEE3692243A5144E9DC80118B48462F72278443EA737BB7C2`.
+- SYN area: 16313 LUT-equivalent, 11864 FF, BRAM9K39/BRAM32K11, DSP18.
+  Routed area: 16864 LUT-equivalent, 11824 FF, BRAM9K39/BRAM32K11, DSP18, 4784/4900 MSlice.
+- Final setup/hold WNS: -6.130ns / -3.042ns. Compared with pre-phase-reg full product P&R,
+  setup improves 1.661ns and MSlice reduces45; hold worsens0.107ns.
+  P&R is complete; the candidate has not been downloaded because the boards are off.
+
+This makes the workspace's newest bit technically route-complete, but it does not close the user-visible image-torn
+issue. The existing actual SDRAM scan failure must be reproduced and fixed after power returns. Do not download this
+bit during the optimization-only/offline phase.
+
+
+### 19.15 Resource-optimization checkpoint (2026-10-23)
+
+The current workspace was saved on branch `fix/multiview-resource-optimization`, based on
+`dual-V2.1` / commit `2c930d0`. This is a development checkpoint, not a board-verified release.
+The boards remain powered off.
+
+The current checked-in TD P&R reports show:
+
+| Board | LUT | FF | BRAM9K | BRAM32K | DSP | Final setup / hold WNS |
+|---|---:|---:|---:|---:|---:|---:|
+| Display / cable0 | 16,803 / 19,600 (85.73%) | 11,830 / 19,600 | 39 / 64 | 11 / 16 | 18 / 29 | -6.130 ns / -3.042 ns |
+| Media / cable1 | 15,544 / 19,600 (79.31%) | 10,689 / 19,600 | 20 / 64 | 2 / 16 | 5 / 29 | -3.947 ns / -3.188 ns |
+
+These values are per-board and are not combined. The display candidate bit SHA256 is
+`31431CC6D8C15B7EEE3692243A5144E9DC80118B48462F72278443EA737BB7C2`; the media candidate bit SHA256 is
+`426E8623CD1D2F9FEE2413405B1F11769E1014B724F66991EE648585D721C223`. Neither is board-verified.
+
+The checkpoint’s focused verification passed: geometry and bilinear RGB565 goldens, full image pipeline,
+scan/write address bounds, real asynchronous frame FIFOs, black-window drain, session manager, media/display
+control path, USB view status, image jobs, command admission, and direct-stream image/audio write tests. The
+web-console `VIEW_STATUS` parser/API test also passed with the local Windows Python environment. WSL was
+initially blocked by the ordinary sandbox and the same Verilator run passed after using the already authorized
+local execution route. Existing Verilator missing-pin warnings in legacy FIFO models remain informational.
+
+Next, reduce resource use on this branch one RTL candidate at a time. Preserve the current reports and source
+as the baseline, compare exact per-board LUT/FF/BRAM/DSP and setup/hold after each synthesis/P&R, and keep a
+candidate only when the functional tests remain green. No programming is part of the offline optimization step.

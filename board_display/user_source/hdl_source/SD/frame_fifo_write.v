@@ -8,7 +8,8 @@ module frame_fifo_write
 	parameter BURST_SIZE             = 128,
 	parameter WRITE_V_FLIP           = 1,      // 1: write image rows upside-down to cancel BMP bottom-up storage
 	parameter FRAME_WIDTH            = 640,
-	parameter FRAME_HEIGHT           = 480
+	parameter FRAME_HEIGHT           = 480,
+    parameter VIEW_ENABLE = 0
 )               
 (
 	input                            rst,                  
@@ -42,7 +43,8 @@ module frame_fifo_write
 	                                                             // y0 + img_h - FRAME_HEIGHT（≤0）。
 	                                                             // 仅 vflip_en 通道参与寻址；0 = 原行为。
 	output reg                       fifo_aclr,                  // to fifo asynchronous clear
-	input[9:0]                      rdusedw                     // from fifo read used words
+	input[9:0]                      rdusedw,                    // from fifo read used words
+    input wire [1:0] view_layout,view_window
 );
 localparam ONE                       = 256'd1;                   //256 bit '1'   you can use ONE[n-1:0] for n bit '1'
 localparam ZERO                      = 256'd0;                   //256 bit '0'
@@ -88,6 +90,24 @@ wire								wr_burst_finish;
 
 reg App_wr_en_r;
 reg App_wr_en_d0;
+reg [1:0] layout_d0,layout_d1,window_d0,window_d1;
+reg [BURST_BITS-1:0] burst_limit;
+wire [20:0] slot_address;
+wire [9:0] slot_line_words;
+wire [20:0] slot_base=write_addr_index_d1[0] ? write_addr_1 : write_addr_0;
+generate if(VIEW_ENABLE)begin:g_view
+    view_write_address u_map(.clk(mem_clk),.rst(rst),.start(state==S_ACK),
+        .advance(App_wr_en && vflip_en),.frame_base(slot_base),
+        .layout(layout_d1),.window(window_d1),.address(slot_address),
+        .total_words(),.line_words(slot_line_words),.active(),.done(),.error());
+end else begin:g_legacy_view
+    assign slot_address=0;assign slot_line_words=640;
+end endgenerate
+always @(posedge mem_clk or posedge rst)begin
+    if(rst)begin layout_d0<=0;layout_d1<=0;window_d0<=0;window_d1<=0;end
+    else begin layout_d0<=view_layout;layout_d1<=layout_d0;
+        window_d0<=view_window;window_d1<=window_d0;end
+end
 
 wire into_burst;
 // 尾部清空判据：rem_words <= rdusedw+1。窗口形式拆解：高 11 位为零（NOR，快）
@@ -107,10 +127,10 @@ always @(posedge mem_clk or posedge rst)
 // O_wr_busy=0 并进入突发，写侧随后仍按旧判决启动，两个 App 口重叠。
 assign into_burst = into_burst_r && ~App_rd_busy;
 
-assign App_wr_addr = {App_wr_addr_r[ADDR_BITS - 1:0]};
+assign App_wr_addr = VIEW_ENABLE && vflip_en ? slot_address : App_wr_addr_r;
 //assign O_wr_busy = (state != S_IDLE || (S_IDLE && write_req_d2));
 assign O_wr_busy = (state == S_WRITE_BURST || (state == S_CHECK_FIFO && into_burst));//在突发，或者将要突发，则显示busy
-assign wr_burst_finish = (burst_cnt >= BURST_SIZE) || (write_cnt >= write_len_latch);
+assign wr_burst_finish = (burst_cnt >= burst_limit) || (write_cnt >= write_len_latch);
 assign write_finish = (state == S_END) ? 1'b1 : 1'b0;            //write finish at state 'S_END'
 assign App_wr_en = App_wr_en_d0;
 
@@ -156,7 +176,7 @@ begin
 		else
 			burst_cnt <= burst_cnt;
 		//
-		if(state == S_ACK)
+		if(state == S_ACK && (!VIEW_ENABLE || write_addr_index_d1[1]))
 			begin
 				wr_x <= 16'd0;
 				// 多分辨率信箱：部分高度会话的首行不再钉在 FRAME_HEIGHT-1，
@@ -173,7 +193,7 @@ begin
 			end
 		else if(App_wr_en)
 			begin
-				if(vflip_en)
+				if(vflip_en && !VIEW_ENABLE)
 				begin
 					if(wr_x == VFLIP_LINE_LAST_X)
 					begin
@@ -195,7 +215,7 @@ begin
 		// App_wr_en 是寄存输出，本拍若已弹出一字，下一拍的允许条件必须
 		// 预先把它计入；否则会话尾部会再多发一个 App_wr_en（真板写口
 		// 460801/460800，地址回卷进入音频 BUF3 尾部）。burst 边界同理。
-		if(App_wr_en_r && (burst_cnt + App_wr_en < BURST_SIZE) &&
+		if(App_wr_en_r && (burst_cnt + App_wr_en < burst_limit) &&
 		   (write_cnt + App_wr_en < write_len_latch))begin
             App_wr_en_d0 <= 1'b1;
         end
@@ -220,6 +240,7 @@ begin
 		rem_words <= ZERO[ADDR_BITS - 1:0];
 		fifo_aclr <= 1'b0;
 		write_req_ack <= 1'b0;
+        burst_limit <= BURST_SIZE;
 		//wr_burst_len <= ZERO[BURST_BITS - 1:0];
 		
 		
@@ -291,6 +312,8 @@ begin
 					//wr_burst_len <= BURST_SIZE[BURST_BITS - 1:0];
 					//wr_burst_req <= 1'b1;
 					App_wr_en_r <= 1'b1;
+                    burst_limit <= VIEW_ENABLE && vflip_en && slot_line_words<BURST_SIZE ?
+                                   slot_line_words[BURST_BITS-1:0] : BURST_SIZE;
 				end
 			end 
 			

@@ -3,6 +3,7 @@
 // Full 1280x720 image transaction through the real variable-frame parser,
 // display pad, SDRAM transaction writer, and display UDP result transmitter.
 module tb_media_display_full_frame;
+    parameter integer DIRECT_STREAM = 0;
     parameter integer IMAGE_WIDTH = 1280;
     parameter integer IMAGE_HEIGHT = 720;
     parameter integer TOTAL_WORDS = (IMAGE_WIDTH * IMAGE_HEIGHT + 1) / 2;
@@ -12,9 +13,10 @@ module tb_media_display_full_frame;
     localparam [31:0] PIXEL_WORD = 32'h01234567;
     localparam [31:0] FRAME_SUM = PIXEL_WORD * TOTAL_WORDS;
 
-    reg udp_clk = 0, write_clk = 0;
+    reg udp_clk = 0, slow_write_clk = 0;
+    wire write_clk=DIRECT_STREAM ? udp_clk : slow_write_clk;
     always #4 udp_clk = ~udp_clk;
-    always #5 write_clk = ~write_clk;
+    always #5 slow_write_clk = ~slow_write_clk;
     reg rst = 1;
     reg [7:0] rx_data = 0;
     reg rx_valid = 0;
@@ -88,6 +90,7 @@ module tb_media_display_full_frame;
     );
 
     media_frame_pad u_pad (
+        .layout(2'd0),
         .clk(udp_clk), .rst(rst), .frame_begin(frame_begin_valid),
         .image_width(image_width), .image_height(image_height), .frame_end(frame_end_valid),
         .in_is_audio(stream_is_audio), .in_start(stream_start), .in_count(stream_word_count),
@@ -97,7 +100,8 @@ module tb_media_display_full_frame;
         .out_ready(padded_stream_ready), .out_done(padded_stream_done), .frame_done(pad_frame_done)
     );
 
-    media_transaction_writer u_writer (
+    media_transaction_writer #(.DIRECT_STREAM(DIRECT_STREAM)) u_writer (
+        .image_layout(2'd0),.image_window(2'd0),.view_target_buffer(1'b0),.write_layout(),.write_window(),
         .udp_clk(udp_clk), .udp_rst(rst), .frame_begin_valid(frame_begin_valid),
         .frame_id(frame_id), .image_index(image_index), .image_flags(image_flags),
         .image_total_words(image_total_words), .image_width(image_width), .image_height(image_height),
@@ -136,6 +140,7 @@ module tb_media_display_full_frame;
     reg tx_in_packet = 0;
 
     media_display_tx #(.TX_GAP_CYCLES(4)) u_display_tx (
+        .view_busy(1'b0),.view_prepare_valid(1'b0),.view_prepare_body(64'd0),.view_status_valid(1'b0),.view_status_body(128'd0),
         .clk(udp_clk), .rst(rst), .local_cmd_toggle_async(1'b0), .local_cmd_async(8'd0),
         .ready_valid(ready_request), .image_result_valid(image_result_valid),
         .image_result_code(image_result_code), .image_result_frame(frame_id),

@@ -25,6 +25,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path,
                         default=ROOT / "boardtest/captures/display_digest_stage1")
+    parser.add_argument("--scan-only", action="store_true", help="prune all three write-side diagnostic records")
+    parser.add_argument("--write-scan-only", action="store_true",
+                        help="keep SDRAM Appwrite and scan records; prune the two producer records")
+    parser.add_argument("--bypass-cv", action="store_true",
+                        help="isolated acceptance build only: free CV resources; SDRAM/video reader is unchanged")
+    parser.add_argument("--test-cursor", action="store_true",
+                        help="isolated V1 004B x/y injection for unattended window-focus coverage")
     args = parser.parse_args()
     out = args.output.resolve()
     out.relative_to((ROOT / "boardtest/captures").resolve())
@@ -44,7 +51,8 @@ eth_subsys #(.MEDIA_PEER_IP""")
     top = replace_once(top, "transition_line_read transition_line_read_m0 (", """display_frame_digest u_acceptance_digest (
     .mem_clk(ext_mem_clk), .app_clk(eth_app_clk), .producer_clk(sd_card_clk), .rst(rst_all),
     .video_ack(video_read_req_ack), .video_valid(frame_sdr_rd_valid),
-    .video_audio(mem_rd_audio), .video_data(Sdr_rd_dout), .video_bank(disp_buf_idx),
+    .video_audio(mem_rd_audio), .video_data(Sdr_rd_dout),
+    .video_bank(view_video_layout==0 ? disp_buf_idx : {1'b0,view_video_buffer}),
     .write_valid(App_wr_en), .write_addr(App_wr_addr), .write_data(App_wr_din),
     .image_begin(media_frame_begin_valid), .source_words(media_write_len),
     .producer_start(media_write_req && !write_buf_idx[1]),
@@ -56,7 +64,35 @@ eth_subsys #(.MEDIA_PEER_IP""")
     .tx_length(digest_length), .tx_ready(digest_ready), .tx_ack(digest_ack)
 );
 transition_line_read transition_line_read_m0 (""")
+    if ".DIRECT_STREAM(1)" in top:
+        top=replace_once(top,".producer_clk(sd_card_clk)",".producer_clk(eth_app_clk)")
     top += "\n" + (Path(__file__).parent / "display_frame_digest.v").read_text(encoding="utf-8")
+    if args.scan_only or args.write_scan_only:
+        pruned = [
+            (".image_begin(media_frame_begin_valid)", ".image_begin(1'b0)"),
+            (".producer_start(media_write_req && !write_buf_idx[1])", ".producer_start(1'b0)"),
+            (".raw_valid(media_write_en && !write_buf_idx[1])", ".raw_valid(1'b0)"),
+            (".padded_valid(media_padded_stream_valid && media_padded_stream_ready && !media_padded_stream_audio)",
+             ".padded_valid(1'b0)")]
+        if args.scan_only:
+            pruned.append((".write_valid(App_wr_en)", ".write_valid(1'b0)"))
+        for before, after in pruned:
+            top=replace_once(top,before,after)
+    if args.bypass_cv:
+        top,count=re.subn(r"cv_pixel_effects_runtime\s*#\(.*?\)\s*u_cv_pixel_effects\s*\(.*?\);",
+            "// Isolated memory-scan acceptance only; product CV RTL stays intact.\n"
+            "assign cv_data=vout_data_raw;assign cv_de=de;assign cv_vs=vs;",top,flags=re.S)
+        if count!=1:raise ValueError("CV diagnostic bypass anchor changed")
+    if args.test_cursor:
+        top=replace_once(top,"wire digest_req, digest_valid, digest_ready, digest_ack;",
+            "wire diagnostic_cursor_enabled;wire [10:0] diagnostic_cursor_x;wire [9:0] diagnostic_cursor_y;\n"
+            "display_test_cursor u_test_cursor(.clk(eth_app_clk),.rst(rst_all),.data(eth_rx_data),.valid(eth_rx_valid),\n"
+            "    .enabled(diagnostic_cursor_enabled),.x(diagnostic_cursor_x),.y(diagnostic_cursor_y));\n"
+            "wire digest_req, digest_valid, digest_ready, digest_ack;")
+        top=replace_once(top,".cursor_x(view_cursor_x1),.cursor_y(view_cursor_y1)",
+            ".cursor_x(diagnostic_cursor_enabled ? diagnostic_cursor_x : view_cursor_x1),"
+            ".cursor_y(diagnostic_cursor_enabled ? diagnostic_cursor_y : view_cursor_y1)")
+        top+="\n"+(Path(__file__).parent / "display_test_cursor.v").read_text(encoding="utf-8")
     eth = replace_once(eth, "output wire        media_packet_ready\n", """output wire        media_packet_ready,
     input wire digest_req, digest_valid,
     input wire [7:0] digest_data,

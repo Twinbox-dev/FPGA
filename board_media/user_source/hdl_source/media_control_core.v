@@ -2,7 +2,8 @@
 // PC command bytes remain [CMD,~CMD]. Media actions stay local; display settings
 // use absolute 0x0040 requests and wait for the display board's 0x0041 ACK.
 module media_control_core #(
-    parameter integer CLK_HZ = 125000000
+    parameter integer CLK_HZ = 125000000,
+    parameter VIEW_ENABLE = 0
 )(
     input wire clk, rst,
     input wire [7:0] cmd,
@@ -57,7 +58,10 @@ module media_control_core #(
     output reg [1:0] osd_mode,
     output reg spectrum_on,
     output reg [1:0] spectrum_sensitivity,
-    output reg [7:0] last_control_error
+    output reg [7:0] last_control_error,
+    input wire view_busy,uart_cmd_was_busy,
+    output reg layout_request,image_touch_request,
+    output reg [1:0] requested_layout
 );
     localparam [4:0] IDLE=0, WAIT_REQ_TX=1, WAIT_SET_REPLY=2,
                      WAIT_STATUS_REPLY=3, WAIT_STATUS_TX=4,
@@ -109,6 +113,14 @@ module media_control_core #(
     wire [1:0] event_source=eth_event?2'd0:uart_cmd_source;
     wire event_from_uart=(event_source!=2'd0);
     wire [7:0] event_cmd=eth_event?cmd:uart_cmd;
+    wire image_command=event_cmd==8'h4e || event_cmd==8'h50 || event_cmd==8'h6e || event_cmd==8'h70 ||
+                       event_cmd==8'h44 || event_cmd==8'h36 || event_cmd==8'h37 || event_cmd==8'h38;
+    reg arrival_seen,arrival_busy;
+    always @(posedge clk)begin
+        if(rst)begin arrival_seen<=0;arrival_busy<=0;end
+        else if(!cmd_pending)begin arrival_seen<=0;arrival_busy<=0;end
+        else if(!arrival_seen)begin arrival_seen<=1;arrival_busy<=view_busy;end
+    end
     wire event_accept=(state==IDLE) && !eth_event && !subtitle_ack_pulse && serial_source_match;
     assign uart_cmd_ready=event_accept;
     assign uart_source_lock=!subtitle_active ? 2'd0 :
@@ -293,6 +305,7 @@ module media_control_core #(
             pending_source<=0;subtitle_source<=0;
             uart_tx_req<=0;bt_tx_req<=0;uart_tx_pkt<=0;uart_stage<=0;uart_busy_seen<=0;
             image_next_pulse<=0;image_prev_pulse<=0;
+            layout_request<=0;requested_layout<=0;image_touch_request<=0;
             sequence_id<=0;pending_sequence<=0;pending_op<=0;pending_value<=0;
             subtitle_active<=0;subtitle_success<=0;subtitle_swap_ack<=0;
             subtitle_parse_state<=0;subtitle_remaining<=0;subtitle_sum_hi<=0;subtitle_length<=0;
@@ -305,6 +318,7 @@ module media_control_core #(
             contrast<=2;effect<=0;cv_mode<=0;osd_mode<=1;spectrum_on<=0;spectrum_sensitivity<=1;last_control_error<=0;
         end else begin
             debug_request<=0;pc_snapshot_request<=0;uart_tx_req<=0;bt_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
+            layout_request<=0;image_touch_request<=0;
             if(local_auto_toggle)auto_on<=~auto_on;
             if(!cmd_pending)cmd_seen<=0;
             if(state==WAIT_SET_REPLY || state==WAIT_STATUS_REPLY || state==WAIT_REQ_TX) begin
@@ -358,7 +372,10 @@ module media_control_core #(
                         if(eth_event)cmd_seen<=1;
                         pending_cmd<=event_cmd;pending_uart<=event_from_uart;pending_source<=event_source;
                         suppress_cmd_ack<=0;last_control_error<=0;subtitle_success<=0;
-                        case(event_cmd)
+                        if(VIEW_ENABLE && image_command && (view_busy || (eth_event && arrival_busy) ||
+                           (!eth_event && uart_cmd_was_busy)))begin
+                            last_control_error<=8;state<=PREP_ACK;
+                        end else case(event_cmd)
                         8'h2B:start_display_set(event_cmd,1,(volume < 4'd8) ? ({4'd0,volume}+8'd1) : 8'd8);
                         8'h2D:start_display_set(event_cmd,1,(volume > 4'd0) ? ({4'd0,volume}-8'd1) : 8'd0);
                         8'h5D:start_display_set(event_cmd,2,(brightness < 4'd8) ? ({4'd0,brightness}+8'd1) : 8'd8);
@@ -391,8 +408,12 @@ module media_control_core #(
                         end
                         8'h49:send_sd_diagnostics(event_from_uart);
                         8'h4C:begin if(!event_from_uart)cmd_ack_t<=~cmd_ack_t;state<=IDLE;end // V1 lean diagnostic: no response packet
-                        8'h4E:begin image_next_pulse<=1;state<=PREP_ACK;end
-                        8'h50:begin image_prev_pulse<=1;state<=PREP_ACK;end
+                        8'h4E,8'h6e:begin image_next_pulse<=1;image_touch_request<=VIEW_ENABLE && event_cmd==8'h6e && !event_from_uart;state<=PREP_ACK;end
+                        8'h50,8'h70:begin image_prev_pulse<=1;image_touch_request<=VIEW_ENABLE && event_cmd==8'h70 && !event_from_uart;state<=PREP_ACK;end
+                        8'h36,8'h37,8'h38:begin
+                            if(VIEW_ENABLE)begin layout_request<=1;requested_layout<=event_cmd[1:0]-2'd2;state<=PREP_ACK;end
+                            else begin if(!event_from_uart)cmd_ack_t<=~cmd_ack_t;state<=IDLE;end
+                        end
                         default:begin if(!event_from_uart)cmd_ack_t<=~cmd_ack_t;state<=IDLE;end
                         endcase
                     end

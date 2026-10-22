@@ -39,6 +39,7 @@ module tb_uart;
         .CLK_FREQ_HZ    (100_000_000),
         .BAUD           (1_000_000)
     ) dut (
+        .tx_count(5'd8),
         .clk           (clk),
         .rst           (rst),
         .rx            (rx),
@@ -91,6 +92,7 @@ module tb_uart;
     wire tx_full, vk_next_n_full, vk_auto_n_full, vk_prev_n_full;
     wire [7:0]  cmd_f;  wire cmd_val_f, txr_f;  wire [63:0] pkt_f;  wire [3:0] vg_f, ap_f, bg_f, ctg_f;
     uart_link dut_full (
+        .tx_count(5'd8),
         .clk           (clk),
         .rst           (rst),
         .rx            (rx),

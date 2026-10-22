@@ -66,11 +66,30 @@ module top (
     wire usb_cmd_valid,bt_cmd_valid;wire [7:0] usb_cmd,bt_cmd;
     wire serial_cmd_valid,serial_cmd_ready;wire [7:0] serial_cmd;wire [1:0] serial_cmd_source,serial_source_lock;
     wire usb_tx_ready,bt_tx_ready,usb_tx_req,bt_tx_req;wire [63:0] serial_tx_pkt;
+    wire usb_physical_ready,usb_packet_request;
+    wire [135:0] usb_packet_data;
+    wire [4:0] usb_packet_length;
     wire control_debug_request,pc_snapshot_request,media_to_pc;reg [1:0] control_debug_sync;
     // N/P are translated by media_control_core to one-cycle local pulses.
     // Passing them to media_image_tx as well queues the same step twice.
     wire media_internal_cmd_pending = cmd_pending && (cmd==8'h4d);
     wire local_next_pulse,local_prev_pulse;
+    wire view_busy,view_layout_request,view_touch_request,serial_cmd_was_busy;
+    wire [1:0] view_requested_layout,view_active_layout;
+    wire [3:0] view_active_mask;
+    wire [15:0] view_active_generation;
+    wire [4:0] view_current_index;
+    wire view_current_valid,view_status_valid;
+    wire [127:0] view_status_body;
+    wire job_start,job_snapshot,job_previous,job_ready,job_done;
+    wire [4:0] job_index;
+    wire [1:0] job_layout,job_window;
+    wire [15:0] job_generation;
+    wire [7:0] job_result;
+    wire formal_request,formal_valid,formal_ack,formal_to_pc;
+    wire [7:0] formal_data;wire [15:0] formal_length;
+    wire view_request,view_valid,view_ack,view_to_pc;
+    wire [7:0] view_data;wire [15:0] view_length;
     wire key_next_press,key_auto_press,key_prev_press;
     reg key_next_toggle,key_auto_toggle,key_prev_toggle;
     reg [2:0] key_next_cdc,key_auto_cdc,key_prev_cdc;
@@ -120,7 +139,7 @@ module top (
     always @(posedge clk) if(media_sd_rst)start_sync<=0;else start_sync<={start_sync[1:0],start_toggle};
     wire formal_start=start_sync[2]^start_sync[1];
     media_autoplay_timer u_autoplay_timer(
-        .clk(app_clk),.rst(media_app_rst),.enable(auto_on),.busy(tx_busy),.committed_valid(committed_valid),
+        .clk(app_clk),.rst(media_app_rst),.enable(auto_on),.busy(view_busy),.committed_valid(view_current_valid),
         .period_s(auto_period_s),.next_pulse(auto_next_pulse)
     );
     always @(posedge clk) begin
@@ -194,12 +213,15 @@ module top (
         .rd_clk(app_clk),.rd_rst(media_app_rst || clear_sync[1]),.rd_en(production_read),
         .rd_data(production_data),.rd_empty(production_empty),.rd_avail(production_available)
     );
-    media_image_tx u_formal_tx (
+    media_image_tx #(.EXTERNAL_SCHEDULE(1)) u_formal_tx (
         .clk(app_clk),.rst(media_app_rst),.mounted(mounted_sync[2]),.source_busy(busy_sync[1]),.source_error(error_sync[1]),
         .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),
         .image_width(image_width_s1),.image_height(image_height_s1),
         .cmd(cmd),.cmd_pending(media_internal_cmd_pending),.auto_next(auto_next_pulse),.auto_status(auto_on),
-        .pc_snapshot_request(pc_snapshot_request),.media_to_pc(media_to_pc),
+        .pc_snapshot_request(1'b0),.media_to_pc(formal_to_pc),
+        .job_start(job_start),.job_snapshot(job_snapshot),.job_previous(job_previous),
+        .job_index(job_index),.job_layout(job_layout),.job_window(job_window),.job_generation(job_generation),
+        .job_ready(job_ready),.job_done(job_done),.job_result(job_result),
         .local_next(local_next_pulse || key_next_app_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse),
         .prepared_toggle(prepared_sync[1]),.done_toggle(done_sync[1]),.source_has_wav_async(source_has_wav),
         .source_wav_index_async(source_wav_index),.audio_prepared_toggle(audio_prepared_toggle),
@@ -208,29 +230,54 @@ module top (
         .start_toggle(start_toggle),.source_index(source_index),
         .audio_start_toggle(audio_start_toggle),.audio_file_index(audio_file_index),
         .fifo_empty(production_empty),.fifo_data(production_data),.fifo_read(production_read),
-        .rx_data(rx_byte),.rx_valid(rx_valid),.tx_request(media_request),.tx_valid(media_valid),
-        .tx_data(media_data),.tx_length(media_length),.tx_ack(media_ack),
+        .rx_data(rx_byte),.rx_valid(rx_valid),.tx_request(formal_request),.tx_valid(formal_valid),
+        .tx_data(formal_data),.tx_length(formal_length),.tx_ack(formal_ack),
         .busy(tx_busy),.committed_index(committed_index),.committed_valid(committed_valid),.committed_wav(committed_wav),.error_code(tx_error),.state_code(tx_state)
     );
-    uart_link #(.CLK_FREQ_HZ(125000000),.BAUD(1000000)) u_uart_usb (
-        .clk(app_clk),.rst(media_app_rst),.rx(uart_rx),.tx(uart_tx),.tx_ready(usb_tx_ready),
-        .cmd(usb_cmd),.cmd_val(usb_cmd_valid),.tx_req(usb_tx_req),.tx_pkt(serial_tx_pkt)
+    media_view_scheduler u_view_scheduler(.clk(app_clk),.rst(media_app_rst),.link_ready(job_ready),
+        .next_request(local_next_pulse || key_next_app_pulse || auto_next_pulse!=0),
+        .prev_request(local_prev_pulse || key_prev_app_pulse),.snapshot_request(pc_snapshot_request),
+        .layout_request(view_layout_request),.requested_layout(view_requested_layout),.touch_request(view_touch_request),
+        .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.rx_data(rx_byte),.rx_valid(rx_valid),
+        .job_start(job_start),.job_snapshot(job_snapshot),.job_previous(job_previous),.job_index(job_index),
+        .job_layout(job_layout),.job_window(job_window),.job_generation(job_generation),
+        .job_done(job_done),.job_result(job_result),.busy(view_busy),.current_index(view_current_index),
+        .current_valid(view_current_valid),.active_layout(view_active_layout),.active_mask(view_active_mask),
+        .active_generation(view_active_generation),.view_status_valid(view_status_valid),.view_status_body(view_status_body),
+        .tx_request(view_request),.tx_valid(view_valid),.tx_data(view_data),.tx_length(view_length),
+        .tx_to_pc(view_to_pc),.tx_ack(view_ack));
+    media_packet_arbiter u_view_packet_arbiter(.clk(app_clk),.rst(media_app_rst),
+        .a_request(formal_request),.a_valid(formal_valid),.a_to_pc(formal_to_pc),.a_data(formal_data),
+        .a_length(formal_length),.a_ack(formal_ack),.b_request(view_request),.b_valid(view_valid),
+        .b_to_pc(view_to_pc),.b_data(view_data),.b_length(view_length),.b_ack(view_ack),
+        .request(media_request),.valid(media_valid),.data(media_data),.length(media_length),
+        .to_pc(media_to_pc),.ack(media_ack));
+    media_usb_view_tx u_usb_view(.clk(app_clk),.rst(media_app_rst),.physical_ready(usb_physical_ready),
+        .control_request(usb_tx_req),.control_packet(serial_tx_pkt),.control_ready(usb_tx_ready),
+        .view_valid(view_status_valid),.view_body(view_status_body),
+        .tx_request(usb_packet_request),.tx_packet(usb_packet_data),.tx_count(usb_packet_length));
+    uart_link #(.CLK_FREQ_HZ(125000000),.BAUD(1000000),.TX_BYTES(17)) u_uart_usb (
+        .clk(app_clk),.rst(media_app_rst),.rx(uart_rx),.tx(uart_tx),.tx_ready(usb_physical_ready),
+        .cmd(usb_cmd),.cmd_val(usb_cmd_valid),.tx_req(usb_packet_request),.tx_pkt(usb_packet_data),.tx_count(usb_packet_length)
     );
     uart_link #(.CLK_FREQ_HZ(125000000),.BAUD(9600)) u_uart_bt (
         .clk(app_clk),.rst(media_app_rst),.rx(bt_rx),.tx(bt_tx),.tx_ready(bt_tx_ready),
-        .cmd(bt_cmd),.cmd_val(bt_cmd_valid),.tx_req(bt_tx_req),.tx_pkt(serial_tx_pkt)
+        .cmd(bt_cmd),.cmd_val(bt_cmd_valid),.tx_req(bt_tx_req),.tx_pkt(serial_tx_pkt),.tx_count(5'd8)
     );
     media_uart_arbiter u_uart_arbiter (
         .clk(app_clk),.rst(media_app_rst),.usb_cmd(usb_cmd),.usb_valid(usb_cmd_valid),
         .bt_cmd(bt_cmd),.bt_valid(bt_cmd_valid),.cmd(serial_cmd),.cmd_source(serial_cmd_source),
         .source_lock(serial_source_lock),.cmd_valid(serial_cmd_valid),.cmd_ready(serial_cmd_ready),
+        .view_busy(view_busy),.cmd_was_busy(serial_cmd_was_busy),
         .usb_overflow_count(),.bt_overflow_count()
     );
-    media_control_core u_control (
+    media_control_core #(.VIEW_ENABLE(1)) u_control (
         .clk(app_clk),.rst(media_app_rst),.cmd(cmd),.cmd_pending(cmd_pending),.cmd_ack_t(cmd_ack_t),
         .rx_data(rx_byte),.rx_valid(rx_valid),.tx_done_tog(tx_done_tog),.tx_tog(tx_tog),
         .uart_cmd(serial_cmd),.uart_cmd_valid(serial_cmd_valid),.uart_cmd_source(serial_cmd_source),
         .uart_cmd_ready(serial_cmd_ready),.uart_source_lock(serial_source_lock),
+        .view_busy(view_busy),.uart_cmd_was_busy(serial_cmd_was_busy),
+        .layout_request(view_layout_request),.requested_layout(view_requested_layout),.image_touch_request(view_touch_request),
         .uart_tx_ready(usb_tx_ready),.bt_tx_ready(bt_tx_ready),
         .uart_tx_req(usb_tx_req),.bt_tx_req(bt_tx_req),.uart_tx_pkt(serial_tx_pkt),
         .sd_diag_flags(sd_diag_s1),.sd_init_debug_word(sd_debug_s1),
@@ -240,8 +287,8 @@ module top (
         .sd_stream_debug(sd_stream_debug_s1),
         .image_next_pulse(local_next_pulse),.image_prev_pulse(local_prev_pulse),.local_auto_toggle(key_auto_app_pulse),
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),
-        .first_bmp(first_s1),.committed_index(committed_s1),.committed_valid(committed_valid_sync[1]),
-        .paired_wav(committed_wav),.fat_state(fat_state_s1),.fat_error(fat_error_s1),
+        .first_bmp(first_s1),.committed_index(view_current_index),.committed_valid(view_current_valid),
+        .paired_wav(committed_wav && view_active_layout==0),.fat_state(fat_state_s1),.fat_error(fat_error_s1),
         .media_state(media_status_state),
         .debug_request(control_debug_request),.pc_snapshot_request(pc_snapshot_request),
         .auto_on(auto_on),.auto_period_s(auto_period_s),.volume(),.brightness(),.contrast(),
@@ -252,7 +299,10 @@ module top (
     // Production SD/media flow keeps PC D snapshot and source taps in RTL.
     // MAC wire capture remains enabled for this SD/BT acceptance baseline;
     // evaluate disabling it later as a separate resource candidate.
-    eth_subsys #(.MAC_CAPTURE(1),.LOCAL_IP(32'hc0a88903),.LOCAL_MAC(48'h020000000003),.DST_IP(32'hc0a88901),.DISPLAY_IP(32'hc0a88902),.PC_UDP_PORT(16'h0002),.DISPLAY_UDP_PORT(16'h0001)) u_eth (
+    // Raw MAC capture was temporary packet debugging. Keep the reusable
+    // implementation in eth_subsys, but omit it from the product netlist;
+    // formal D snapshots and both application data taps are independent.
+    eth_subsys #(.MAC_CAPTURE(0),.LOCAL_IP(32'hc0a88903),.LOCAL_MAC(48'h020000000003),.DST_IP(32'hc0a88901),.DISPLAY_IP(32'hc0a88902),.PC_UDP_PORT(16'h0002),.DISPLAY_UDP_PORT(16'h0001)) u_eth (
         .clk_50(clk),.rst_all(boot_rst),.phy1_rgmii_rx_clk(eth_rgmii_rxc),.phy1_rgmii_rx_ctl(eth_rgmii_rx_ctl),
         .phy1_rgmii_rx_data(eth_rgmii_rxd),.phy1_rgmii_tx_clk(eth_rgmii_txc),.phy1_rgmii_tx_ctl(eth_rgmii_tx_ctl),
         .phy1_rgmii_tx_data(eth_rgmii_txd),.phy_reset(eth_phy_reset),
