@@ -222,14 +222,6 @@
                     <Attr Name="CompileOrder" Val="29"/>
                 </FileInfo>
             </File>
-            <File Path="../../../user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v">
-                <FileInfo>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="33"/>
-                </FileInfo>
-            </File>
             <File Path="../../../user_source/hdl_source/ETH/eth_subsys.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
@@ -519,6 +511,7 @@
 <File Path="../../../user_source/hdl_source/ETH/view_protocol_rx.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="908"/></FileInfo></File>
 <File Path="../../../user_source/hdl_source/ETH/view_black_mask.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="909"/></FileInfo></File>
 <File Path="../../../user_source/hdl_source/SD/display_levels_rgb.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="910"/></FileInfo></File>
+<File Path="../../../user_source/hdl_source/ETH/display_udp_lite.v"><FileInfo><Attr Name="UsedInSyn" Val="true"/><Attr Name="UsedInP&R" Val="true"/><Attr Name="BelongTo" Val="design_1"/><Attr Name="CompileOrder" Val="911"/></FileInfo></File>
 </Verilog>
         <ADC_FILE>
             <File Path="../../../user_source/constraints_source/pin.adc">

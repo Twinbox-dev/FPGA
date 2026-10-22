@@ -994,3 +994,59 @@ local execution route. Existing Verilator missing-pin warnings in legacy FIFO mo
 Next, reduce resource use on this branch one RTL candidate at a time. Preserve the current reports and source
 as the baseline, compare exact per-board LUT/FF/BRAM/DSP and setup/hold after each synthesis/P&R, and keep a
 candidate only when the functional tests remain green. No programming is part of the offline optimization step.
+
+
+### 19.16 Display-only resource pass 1: fixed-topology UDP/ARP stack
+
+User-approved scope for this optimization branch:
+
+- Only optimize the display board; do not increase media-board use.
+- Target at least 2,000–3,000 fewer display LUTs through a combination of local RTL,
+  redundant-path cleanup, architecture changes, and feature tradeoffs.
+- Preserve Ethernet application control. The user permits dropping ping only when the
+  resource return is substantial. D snapshot is handled on the media board and cannot
+  save display-board resources. Other product features remain preserved unless the user
+  later approves a specific cut.
+
+The display board's encrypted vendor UDP/IP stack was replaced in this candidate with
+`display_udp_lite`: fixed local/media IP and MAC addresses, ARP reply, IPv4/UDP RX/TX, and
+the existing TEMAC client byte-stream interface. ICMP echo is omitted; the media board
+is unchanged and retains its vendor stack and ping behavior. The display application
+still receives media packets on UDP port 1 and returns display results/status to the
+fixed media peer on UDP port 1. The receive path accepts IPv4 IHL=5, unfragmented UDP to
+the configured local port, checks the IPv4 header checksum, and forwards application
+payload for the existing media protocol length/checksum validation. The transmit path
+uses a zero IPv4 UDP checksum, which [RFC 768](https://www.rfc-editor.org/rfc/rfc768.html)
+permits, although [RFC 8085](https://www.rfc-editor.org/rfc/rfc8085.html) recommends using
+the checksum. This candidate relies on TEMAC frame CRC plus the existing image-data
+checksum; small control messages rely on the frame CRC.
+
+The candidate passed `make -C boardtest display-udp-lite`, including ARP request/reply,
+IPv4 checksum, UDP port filtering, malformed checksum rejection, ICMP omission, the
+real `media_tx_mux` handshake, TEMAC active-low backpressure, 1,020-byte maximum media UDP
+payload exactness, and the maximum 24-byte display response. The full display design
+completed TD SYN/P&R/bitgen; it has not been downloaded or board-verified.
+
+| Display resource | Checkpoint `d2b4566` | UDP-lite candidate | Change |
+|---|---:|---:|---:|
+| Gate LUT | 16,228 | 14,438 | -1,790 |
+| Final P&R LUT | 16,803 | 14,998 | -1,805 |
+| FF (P&R report) | 11,830 | 10,134 | -1,696 |
+| BRAM9K | 39 | 37 | -2 |
+| BRAM32K | 11 | 11 | 0 |
+| DSP | 18 | 18 | 0 |
+| Final setup WNS | -6.130 ns | -5.699 ns | +0.431 ns |
+| Final hold WNS | -3.042 ns | -3.054 ns | -0.012 ns |
+
+The encrypted stack's hierarchy row was 3,174 LE; the replacement row is 1,190 LE.
+The display TD source lists no longer include the unused encrypted stack file; the media
+board project and source remain untouched. The top-level gate LUT drop is smaller than
+the hierarchy difference because TD reports count and pack logic differently. Final
+setup improves by 0.431 ns and hold worsens by 0.012 ns. Candidate bit SHA-256:
+`A2D9C8F3762038F78BFC982909465EAD421A264781094293C8783658C34C28B3`.
+Do not download it during the offline optimization phase.
+
+Remaining target after pass 1: about 195–1,195 LUTs to reach the requested 2,000–3,000
+display LUT reduction. Pass 2 will continue with display-local RTL sharing and removal
+of genuinely redundant logic; do not cut the other listed product features unless the
+user approves them.

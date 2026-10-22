@@ -460,6 +460,11 @@ media-eth-subtitle-rx:
 
 .PHONY: touch-command-path cv-unit
 
+.PHONY: display-udp-lite
+display-udp-lite:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_display_udp_lite vsrc/tb_display_udp_lite.sv ../board_display/user_source/hdl_source/ETH/display_udp_lite.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v --Mdir build_display_udp_lite -o sim_display_udp_lite
+	./build_display_udp_lite/sim_display_udp_lite
+
 # HDMI-only CV pixel effects: all modes share a deterministic raster stimulus.
 build_cv_pixel_effects/sim_cv_pixel_effects: vsrc/tb_cv_pixel_effects.sv $(TSD)/cv_pixel_effects.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_cv_pixel_effects $^ --Mdir build_cv_pixel_effects -o sim_cv_pixel_effects
