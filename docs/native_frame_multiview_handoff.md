@@ -1050,3 +1050,39 @@ Remaining target after pass 1: about 195–1,195 LUTs to reach the requested 2,0
 display LUT reduction. Pass 2 will continue with display-local RTL sharing and removal
 of genuinely redundant logic; do not cut the other listed product features unless the
 user approves them.
+
+
+### 19.17 Display-only resource pass 2: disable unused EDID read trigger
+
+The display output is fixed at 1280×720 / VIC 4. The top level does not consume the
+HDMI transmitter wrapper's `O_edid_read_valid` or `O_edid_read_data`, and the timing
+generator is not selected from monitor data. The startup pulse that initiated an EDID
+read was therefore removed and `I_edid_read_trig` is tied low. The HDMI DDC pins and
+transmitter wrapper remain connected; the change only disables the source-side EDID
+read transaction. It does not change the generated video timing, pixel stream, audio,
+or application control path. Monitors that depend on source EDID polling for mode
+selection may behave differently; the current design always sends its fixed 720p mode.
+
+TD completed SYN, placement, routing, timing analysis, and bit generation. The run
+reports `route_flow.status` as complete. The final routed report still has the design's
+existing negative setup/hold slack; relative to the preceding UDP-lite candidate, the
+global setup WNS changed from -5.699 ns to -5.964 ns (-0.265 ns), and hold WNS changed
+from -3.054 ns to -3.066 ns (-0.012 ns). Both changes are within the branch's 0.3 ns
+candidate threshold, but this does not make the design timing-clean or board-verified.
+
+| Display resource | UDP-lite baseline | EDID-read-disabled candidate | Change |
+|---|---:|---:|---:|
+| Gate LUT | 14,438 | 14,242 | -196 |
+| Final P&R LUT | 14,998 | 14,775 | -223 |
+| FF (P&R report) | 10,134 | 9,925 | -209 |
+| BRAM9K | 37 | 35 | -2 |
+| BRAM32K | 11 | 11 | 0 |
+| DSP | 18 | 18 | 0 |
+| Final setup WNS | -5.699 ns | -5.964 ns | -0.265 ns |
+| Final hold WNS | -3.054 ns | -3.066 ns | -0.012 ns |
+
+Relative to checkpoint `d2b4566`, the combined display reduction is 1,986 gate LUT and
+2,028 final P&R LUT; BRAM9K is down by four. Candidate bit SHA-256:
+`4DF6DFF66A5948C1C2BFE6070AF79A5E4E2875751BCB72CF165BAC8944911088`.
+This candidate has not been downloaded or board-verified. Its source and TD reports are
+saved in this optimization branch for offline review; no media-board source was changed.

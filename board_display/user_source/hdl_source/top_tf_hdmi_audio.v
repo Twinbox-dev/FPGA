@@ -190,7 +190,9 @@ wire        axis_s_last;
 wire [23:0] axis_s_data;
 wire        axis_s_ready;
 
-wire        edid_trig;
+// Output timing is fixed to 1280x720 / VIC 4, and the top does not consume
+// EDID data. The EDID read engine can therefore remain idle in this candidate.
+wire        edid_trig = 1'b0;
 wire        edid_valid;
 wire [7:0]  edid_data;
 
@@ -1276,15 +1278,6 @@ video_rgb_to_axis_640x480 #(.H_ACTIVE(1280)) u_video_rgb_to_axis_640x480(
     .O_video_valid (axis_s_valid),
     .O_video_last  (axis_s_last),
     .O_video_data  (axis_s_data)
-);
-
-// 上电后自动打一拍，触发一次 EDID 读取
-startup_pulse #(
-    .CNT_MAX(20'd100000)
-) u_startup_pulse (
-    .I_clk   (video_clk),
-    .I_rst   (rst_all),
-    .O_pulse (edid_trig)
 );
 
 // ===================== HDMI 1.4b 发射 =====================
