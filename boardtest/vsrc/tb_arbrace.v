@@ -8,6 +8,7 @@ module tb_arbrace;
     wire [20:0] app_wr_addr;
 
     frame_fifo_write #(.BURST_SIZE(16), .WRITE_V_FLIP(0)) dut (
+        .view_layout(2'd0),.view_window(2'd0),
         .rst(rst), .mem_clk(clk), .Sdr_init_done(1'b1),
         .Sdr_init_ref_vld(1'b0), .Sdr_busy(1'b0),
         .App_rd_busy(app_rd_busy), .O_wr_busy(wr_busy),

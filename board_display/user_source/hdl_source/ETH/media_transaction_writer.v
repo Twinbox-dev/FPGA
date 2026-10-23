@@ -7,7 +7,9 @@
 // END checks pass and the new audio buffer has been written.
 module media_transaction_writer #(
     parameter [20:0] FRAME_WORDS = 21'd460800,
-    parameter [20:0] AUDIO_REGION_WORDS = 21'd587776
+    parameter [20:0] AUDIO_REGION_WORDS = 21'd587776,
+    parameter VIEW_ENABLE = 0,
+    parameter DIRECT_STREAM = 0 // write_clk == udp_clk; final SDRAM FIFO provides CDC
 )(
     input  wire        udp_clk,
     input  wire        udp_rst,
@@ -72,13 +74,23 @@ module media_transaction_writer #(
     output reg  [1:0]  audio_buffer_index,
     output reg  [20:0] audio_buffer_length,
     output reg  [31:0] audio_sample_count_out,
-    output reg         audio_source_toggle
+    output reg         audio_source_toggle,
+    input wire [1:0] image_layout,image_window,
+    input wire view_target_buffer,
+    output wire [1:0] write_layout,write_window
 );
     localparam [1:0] W_IDLE=2'd0, W_REQ=2'd1, W_ACTIVE=2'd2;
 
     reg [31:0] image_meta_udp;
     reg [11:0] image_width_udp, image_height_udp;
-    reg [15:0] image_id_udp, image_end_id_udp, audio_id_udp, audio_end_id_udp;
+    reg [1:0] image_layout_udp,image_window_udp,pending_layout_w,pending_window_w;
+    reg image_target_udp;
+    reg [20:0] frame_target_words;
+    reg [15:0] image_id_udp, image_end_id_udp, audio_id_legacy_udp, audio_end_id_udp;
+    // Valid audio BEGIN is admitted by media_protocol_rx only for the active
+    // image's frame_id. Reuse that ID in the direct product path instead of
+    // storing the same 16 bits twice beside the width metadata bank.
+    wire [15:0] audio_id_udp=DIRECT_STREAM ? image_id_udp : audio_id_legacy_udp;
     reg image_end_good_udp, audio_end_good_udp;
     reg [3:0] image_end_reason_udp;
     reg [3:0] audio_end_reason_udp;
@@ -96,6 +108,11 @@ module media_transaction_writer #(
     wire audio_end_event = audio_end_sync[2] ^ audio_end_sync[1];
     wire finish_event = finish_sync[2] ^ finish_sync[1];
     wire transition_event = transition_sync[2] ^ transition_sync[1];
+    reg [1:0] write_ack_sync;
+    wire write_ack_seen=DIRECT_STREAM ? write_ack_sync[1] : write_req_ack;
+    always @(posedge write_clk or posedge write_rst)
+        if(write_rst)write_ack_sync<=0;
+        else write_ack_sync<={write_ack_sync[0],write_req_ack};
 
     reg [1:0] writer_state;
     reg write_audio_mode;
@@ -133,24 +150,41 @@ module media_transaction_writer #(
     wire [31:0] audio_fifo_data;
     wire [9:0] audio_fifo_avail;
     wire frame_fifo_pop = write_ready && (writer_state == W_ACTIVE) && !write_audio_mode &&
-                          !frame_fifo_empty && frame_words_issued < FRAME_WORDS;
+                          !frame_fifo_empty && frame_words_issued < frame_target_words;
     wire audio_fifo_pop = write_ready && (writer_state == W_ACTIVE) && write_audio_mode &&
                           !audio_fifo_empty && audio_words_popped < audio_data_words;
     wire frame_fifo_push = stream_word_valid && stream_word_ready && !stream_is_audio;
     wire audio_fifo_push = stream_word_valid && stream_word_ready && stream_is_audio;
     wire frame_pad = write_ready && (writer_state == W_ACTIVE) && !write_audio_mode &&
                      frame_end_seen_w && !frame_end_good_w && frame_fifo_empty &&
-                     !frame_read_pending && frame_words_issued < FRAME_WORDS;
+                     !frame_read_pending && frame_words_issued < frame_target_words;
     wire audio_pad = write_ready && (writer_state == W_ACTIVE) && write_audio_mode && audio_end_seen_w &&
                      audio_fifo_empty && !audio_read_pending &&
                      audio_words_written < audio_target_length;
 
     assign stream_word_ready = stream_is_audio ? !audio_fifo_full : !frame_fifo_full;
     assign write_buffer_index = write_audio_mode ? audio_target_index : frame_target_index;
-    assign write_length = write_audio_mode ? audio_target_length : FRAME_WORDS;
+    assign write_length = write_audio_mode ? audio_target_length : frame_target_words;
+    assign write_layout=pending_layout_w;
+    assign write_window=pending_window_w;
     assign write_row_offset = 20'd0;
     assign audio_pair_on = display_valid && image_has_wav && audio_buffer_length != 0;
 
+    generate if(DIRECT_STREAM)begin:g_direct_stream
+        // The consumer is the existing frame_read_write async FIFO. Retain
+        // the one-edge registered pop latency used by the legacy bridge.
+        reg [31:0] word_q;
+        wire can_take=write_ready && writer_state==W_ACTIVE &&
+            (stream_is_audio==write_audio_mode) &&
+            (write_audio_mode ? audio_words_popped<audio_data_words :
+                                frame_words_issued<frame_target_words);
+        always @(posedge write_clk)if(frame_fifo_pop || audio_fifo_pop)word_q<=stream_word_data;
+        assign frame_fifo_data=word_q;assign audio_fifo_data=word_q;
+        assign frame_fifo_empty=!(stream_word_valid && !stream_is_audio);
+        assign audio_fifo_empty=!(stream_word_valid && stream_is_audio);
+        assign frame_fifo_full=!can_take;assign audio_fifo_full=!can_take;
+        assign frame_fifo_avail=0;assign audio_fifo_avail=0;
+    end else begin:g_fifo_bridge
     tap_afifo #(.AW(9), .DW(32)) u_frame_rx_fifo (
         .wr_clk(udp_clk), .wr_rst(udp_rst), .wr_en(frame_fifo_push),
         .wr_data(stream_word_data), .wr_full(frame_fifo_full),
@@ -163,6 +197,8 @@ module media_transaction_writer #(
         .rd_clk(write_clk), .rd_rst(write_rst), .rd_en(audio_fifo_pop),
         .rd_data(audio_fifo_data), .rd_empty(audio_fifo_empty), .rd_avail(audio_fifo_avail)
     );
+
+    end endgenerate
 
     function [20:0] aligned_audio_words;
         input [31:0] samples;
@@ -188,7 +224,8 @@ module media_transaction_writer #(
         if (udp_rst) begin
             image_meta_udp <= 32'd0; image_id_udp <= 16'd0;
             image_width_udp <= 12'd0; image_height_udp <= 12'd0;
-            image_end_id_udp <= 16'd0; audio_id_udp <= 16'd0; audio_end_id_udp <= 16'd0;
+            image_layout_udp<=0;image_window_udp<=0;image_target_udp<=0;
+            image_end_id_udp <= 16'd0; audio_id_legacy_udp <= 16'd0; audio_end_id_udp <= 16'd0;
             image_end_good_udp <= 1'b0; audio_end_good_udp <= 1'b0;
             image_end_reason_udp <= 4'd0;
             audio_end_reason_udp <= 4'd0;
@@ -212,6 +249,9 @@ module media_transaction_writer #(
                 audio_result_code <= audio_result_code_w;
             end
             if (frame_begin_valid) begin
+                image_layout_udp<=VIEW_ENABLE ? image_layout : 2'd0;
+                image_window_udp<=VIEW_ENABLE ? image_window : 2'd0;
+                image_target_udp<=view_target_buffer;
                 image_meta_udp <= {16'd0, image_flags, 3'd0, image_index};
                 image_id_udp <= frame_id;
                 image_width_udp <= image_width;
@@ -225,7 +265,7 @@ module media_transaction_writer #(
                 image_end_toggle_udp <= ~image_end_toggle_udp;
             end
             if (audio_begin_valid) begin
-                audio_id_udp <= audio_frame_id;
+                audio_id_legacy_udp <= audio_frame_id;
                 audio_samples_udp <= audio_sample_count;
                 audio_begin_toggle_udp <= ~audio_begin_toggle_udp;
             end
@@ -262,6 +302,7 @@ module media_transaction_writer #(
             transition_done_seen_w <= 1'b0;
             pending_frame_id_w <= 16'd0; pending_image_index_w <= 5'd0;
             pending_image_width_w <= 12'd0; pending_image_height_w <= 12'd0;
+            pending_layout_w<=0;pending_window_w<=0;frame_target_words<=FRAME_WORDS;
             pending_wav_w <= 1'b0; pending_prev_w <= 1'b0; pending_auto_w <= 1'b0;
             pending_frame_buffer_w <= 2'd0; pending_audio_buffer_w <= 2'd2;
             pending_audio_length_w <= 21'd0; pending_audio_samples_w <= 32'd0;
@@ -315,6 +356,9 @@ module media_transaction_writer #(
             end
 
             if (image_begin_event) begin
+                pending_layout_w<=image_layout_udp;pending_window_w<=image_window_udp;
+                frame_target_words<=!VIEW_ENABLE || image_layout_udp==0 ? FRAME_WORDS :
+                                    (image_layout_udp==1 ? 21'd230400 : 21'd115200);
                 pending_frame_id_w <= image_id_udp;
                 pending_image_index_w <= image_meta_udp[4:0];
                 pending_image_width_w <= image_width_udp;
@@ -322,9 +366,9 @@ module media_transaction_writer #(
                 pending_wav_w <= image_meta_udp[11];
                 pending_prev_w <= image_meta_udp[8];
                 pending_auto_w <= image_meta_udp[12];
-                pending_frame_buffer_w <= display_valid ?
+                pending_frame_buffer_w <= VIEW_ENABLE ? {1'b0,image_target_udp} : display_valid ?
                     (display_buffer_index[0] ? 2'd0 : 2'd1) : 2'd0;
-                frame_target_index <= display_valid ?
+                frame_target_index <= VIEW_ENABLE ? {1'b0,image_target_udp} : display_valid ?
                     (display_buffer_index[0] ? 2'd0 : 2'd1) : 2'd0;
                 frame_words_issued <= 21'd0;
                 frame_write_done <= 1'b0;
@@ -375,7 +419,7 @@ module media_transaction_writer #(
                 audio_end_reason_w <= audio_end_reason_udp;
             end
 
-            if (writer_state == W_REQ && write_req_ack) begin
+            if (writer_state == W_REQ && write_ack_seen) begin
                 write_req <= 1'b0;
                 writer_state <= W_ACTIVE;
             end
@@ -394,6 +438,7 @@ module media_transaction_writer #(
                     pending_audio_buffer_w <= audio_buffer_index;
                     pending_audio_length_w <= 21'd0;
                     pending_audio_samples_w <= 32'd0;
+                    if(VIEW_ENABLE && pending_layout_w!=0)frame_active_w<=0;
                 end else begin
                     frame_active_w <= 1'b0;
                     audio_retry_pending_w <= 1'b0;

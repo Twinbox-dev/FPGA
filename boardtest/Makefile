@@ -364,6 +364,65 @@ display-digest:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_display_frame_digest vsrc/tb_display_frame_digest.sv diagnostics/display_frame_digest.v --Mdir build_display_digest -o sim_display_digest
 	./build_display_digest/sim_display_digest
 
+.PHONY: view-geometry
+view-geometry:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_scale_geometry vsrc/tb_view_scale_geometry.sv ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v --Mdir build_view_geometry -o sim_view_geometry
+	./build_view_geometry/sim_view_geometry
+
+.PHONY: view-bilinear
+view-bilinear:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_bilinear_shrink vsrc/tb_view_bilinear_shrink.sv ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/view_bilinear_shrink.v --Mdir build_view_bilinear -o sim_view_bilinear
+	./build_view_bilinear/sim_view_bilinear
+
+.PHONY: view-scan-address
+view-scan-address:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_scan_address vsrc/tb_view_scan_address.sv ../board_display/user_source/hdl_source/ETH/view_scan_address.v --Mdir build_view_scan_address -o sim_view_scan_address
+	./build_view_scan_address/sim_view_scan_address
+
+.PHONY: view-write-address
+view-write-address:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_write_address vsrc/tb_view_write_address.sv ../board_display/user_source/hdl_source/ETH/view_write_address.v --Mdir build_view_write_address -o sim_view_write_address
+	./build_view_write_address/sim_view_write_address
+
+.PHONY: view-framepath
+view-framepath:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_framepath vsrc/tb_view_framepath.sv $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board_display/user_source/hdl_source/ETH/view_scan_address.v ../board_display/user_source/hdl_source/ETH/view_write_address.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v --Mdir build_view_framepath -o sim_view_framepath
+	./build_view_framepath/sim_view_framepath
+
+.PHONY: view-session
+view-session:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_session_manager vsrc/tb_view_session_manager.sv ../board_display/user_source/hdl_source/ETH/view_session_manager.v --Mdir build_view_session -o sim_view_session
+	./build_view_session/sim_view_session
+
+.PHONY: view-control-path
+view-control-path:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_control_path vsrc/tb_view_control_path.sv ../board_media/user_source/hdl_source/media_view_scheduler.v ../board_display/user_source/hdl_source/ETH/view_session_manager.v ../board_display/user_source/hdl_source/ETH/view_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v --Mdir build_view_control_path -o sim_view_control_path
+	./build_view_control_path/sim_view_control_path
+
+.PHONY: view-usb
+view-usb:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_usb_view_tx vsrc/tb_media_usb_view_tx.sv ../board_media/user_source/hdl_source/media_usb_view_tx.v ../board_media/user_source/hdl_source/uart_link.v --Mdir build_view_usb -o sim_view_usb
+	./build_view_usb/sim_view_usb
+
+.PHONY: view-image-pipeline
+view-image-pipeline:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_bilinear_shrink -GPIPELINE=1 vsrc/tb_view_bilinear_shrink.sv ../board_display/user_source/hdl_source/ETH/view_image_pipeline.v ../board_display/user_source/hdl_source/ETH/view_bilinear_shrink.v ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v --Mdir build_view_image_pipeline -o sim_view_image_pipeline
+	./build_view_image_pipeline/sim_view_image_pipeline
+
+.PHONY: view-image-jobs
+view-image-jobs:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_image_jobs vsrc/tb_view_image_jobs.sv ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_view_image_jobs -o sim_view_image_jobs
+	./build_view_image_jobs/sim_view_image_jobs
+
+.PHONY: view-commands
+view-commands:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_commands vsrc/tb_view_commands.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_view_commands -o sim_view_commands
+	./build_view_commands/sim_view_commands
+
+.PHONY: display-levels
+display-levels:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_display_levels_rgb vsrc/tb_display_levels_rgb.sv $(TSD)/display_levels_rgb.v --Mdir build_display_levels -o sim_display_levels
+	./build_display_levels/sim_display_levels
 media-image-tx:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_image_tx_flags vsrc/tb_media_image_tx_flags.sv ../board_media/user_source/hdl_source/media_image_tx.v --Mdir build_media_image_tx_flags -o sim_media_image_tx_flags
 	./build_media_image_tx_flags/sim_media_image_tx_flags
@@ -401,6 +460,11 @@ media-eth-subtitle-rx:
 
 .PHONY: touch-command-path cv-unit
 
+.PHONY: display-udp-lite
+display-udp-lite:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_display_udp_lite vsrc/tb_display_udp_lite.sv ../board_display/user_source/hdl_source/ETH/display_udp_lite.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v --Mdir build_display_udp_lite -o sim_display_udp_lite
+	./build_display_udp_lite/sim_display_udp_lite
+
 # HDMI-only CV pixel effects: all modes share a deterministic raster stimulus.
 build_cv_pixel_effects/sim_cv_pixel_effects: vsrc/tb_cv_pixel_effects.sv $(TSD)/cv_pixel_effects.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_cv_pixel_effects $^ --Mdir build_cv_pixel_effects -o sim_cv_pixel_effects
@@ -414,3 +478,20 @@ touch-command-path:
 ctrlset:
 	$(VERILATOR) --binary --timing --top-module tb_ctrl_core_set vsrc/tb_ctrl_core_set.sv ../board_display/user_source/hdl_source/SD/ctrl_core.v --Mdir build_ctrlset -o sim_ctrl_core_set
 	./build_ctrlset/sim_ctrl_core_set
+
+
+# Single CDC path: parser/padder/writer in UDP clock, final SDRAM FIFO crosses.
+.PHONY: view-direct-writer view-direct-full-frame view-direct-framepath
+view-direct-writer:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_transaction_writer -GDIRECT_STREAM=1 vsrc/tb_media_transaction_writer.sv ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_view_direct_writer -o sim_direct_writer
+	./build_view_direct_writer/sim_direct_writer
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_display_path -GDIRECT_STREAM=1 vsrc/tb_media_display_path.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_view_direct_path -o sim_direct_path
+	./build_view_direct_path/sim_direct_path
+view-direct-full-frame:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_display_full_frame -GDIRECT_STREAM=1 -GIMAGE_WIDTH=504 vsrc/tb_media_display_full_frame.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_view_direct_full -o sim_direct_full
+	./build_view_direct_full/sim_direct_full
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_display_full_frame -GDIRECT_STREAM=1 vsrc/tb_media_display_full_frame.sv ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v ../board_display/user_source/hdl_source/ETH/media_transaction_writer.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/eth_front.v --Mdir build_view_direct_full_hd -o sim_direct_full_hd
+	./build_view_direct_full_hd/sim_direct_full_hd
+view-direct-framepath:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_framepath -GUSE_STREAM_CLOCK=1 vsrc/tb_view_framepath.sv $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board_display/user_source/hdl_source/ETH/view_scan_address.v ../board_display/user_source/hdl_source/ETH/view_write_address.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v --Mdir build_view_direct_framepath -o sim_direct_framepath
+	./build_view_direct_framepath/sim_direct_framepath

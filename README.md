@@ -1,62 +1,62 @@
-# 嵌赛'2026 安路选题一 —— TF 卡 720p BMP 轮播 + 配对 WAV 伴音（单仓）
+# 双板 HDMI 多媒体系统
 
-> **重点：TD CLI 可从命令行综合、布局布线并下载 FPGA bit。**
-> 项目工程的 `syn_1`、`phy_1` 目录分别用 `settings.cfg` 选择综合和布局布线流程；
-> `td_commands_prompt.exe` 执行 TD 自带的 `DefaultFlow.tcl`。JTAG SRAM 下载命令为
-> `download -mode jtag -bit <bit路径>`。详细命令、步骤和模式差异见
-> [TD CLI 综合与 SRAM 下载指南](docs/td_cli_programming.md)。
+媒体板从 SD 卡读取 BMP/WAV，显示板负责 SDRAM、HDMI 和图像后处理。两板通过千兆以太网交换机直连传输，PC 负责控制和按需源图预览。
 
-## 基线来源（provenance）
-- 仿真框架 + boardtest：`anlogic` 仓 `6956e5d`（boardtest 即为 board 工程对应
-  版本的 Verilator 验证台快照，两者 RTL 逐字节一致）
-- 板级 TD 工程：`workspace` 仓 `8974d52`（FAT32 文件系统层替换 + sd_card_bmp
-  重写，已上板验证图像轮播）
-- 旧的「3a 音频 FIFO 方案」（workspace `6290eba` / anlogic `e958ee4`）**不带入**，
-  音频改为：WAV 整文件入 SDRAM，复用帧缓冲乒乓与原子提交；格式约定
-  **24kHz / 8bit / mono**（板内 ×2 上采样到 48k 喂 HDMI 核）。旧仓封存不动。
+## 当前功能与入口
 
-## 当前形态（多分辨率 BMP + 配对 WAV + 切换特效，2026-10-07 上板验证）
-HDMI 固定输出 1280×720@60；较小的 BMP 居中显示并填黑，RGB565 每个 32 位字存两个像素。
-SDRAM 2M 字中，视频 A/B 各 460,800 字，音频 A/B 各 587,776 字（98s）。
-以太网控制台支持写侧预览、SDRAM 返回抽样与 BMP 全帧黑边对照。
-串口和网页可选直接切、交叉溶解或 32 像素柔边替换；特效只在 HDMI 播放，
-完成时才提交新图及配对 WAV，PC 的 `D` 读回仍取原始显示帧。
-多分辨率故障的完整修复证据、曾被推翻的假设和后续调试准则见
-[`docs/multires_fix_postmortem.md`](docs/multires_fix_postmortem.md)；当前板卡资源/时序基线见
-[`docs/board_status.md`](docs/board_status.md)，按改动范围选择仿真见
-[`docs/verification.md`](docs/verification.md)。
+- 原生 4-bit SD High Speed 50 MHz 只读、FAT32、24-bit BMP 解析及同名 WAV 配对。
+- 固定 1280×720 HDMI 输出；网络只传源图尺寸的 RGB565，显示板居中填黑。
+- 单图、左右双图、四宫格；多窗口等比例双线性缩小，不放大。切图只更新请求发生时光标所在的窗口，加载期间该窗口为黑色。
+- 单图保留直接切、交叉溶解、32 像素柔边替换和配对音频；多窗口静音、直接切图。
+- 全屏原图、灰度、二值化、Sobel、锐化、雪花六种运行时 CV 模式；字幕、OSD、频谱和 GT911 角色光标继续叠加。
+- Ethernet、USB UART、HC-08（9600 baud）及实体按键控制；GT911 支持相对移动和横划切图。
+- Web 控制台保留 D 源图快照、BMP 对比及板卡忙状态互锁。
 
-HDMI 滚动字幕与 OSD 面板已上板验证；协议、操作和验收见
-[`docs/osd_subtitle.md`](docs/osd_subtitle.md)。
-真实频谱可视化已于 2026-10-09 上板验证；自研 DFT 算法、资源变化、
-当前 8-bit 音源的限制与后续 24-bit 升级见
-[`docs/audio_spectrum.md`](docs/audio_spectrum.md)。
-GT911 触控板的单指相对移动、角色光标和左右横划切图已上板验证；接线、实现和验收见
-[`docs/gt911_trackpad.md`](docs/gt911_trackpad.md)。
+2026-10-23 用户已确认本轮全功能构建使用正常，并用 GUI 重新综合、下载两板复测通过。正式 RTL、配套两板 bit/报告及本轮文档整理一并保存。本轮状态和资源数字见 [板卡资源与验收](docs/board_status.md)。
 
-## 目录
-- `board_display/` —— 当前已验证的显示板 TD 工程（`user_source` 源 + `td_project` 工程文件）
-- `board_media/` —— 媒体板正式 SD/解析/控制与图像/PCM 发送工程；分工见 `docs/dual_board_architecture.md`
-- `boardtest/` —— 板级 RTL 的 Verilator 验证台（SD 引脚级卡模型 + 帧写口 C++ 模型）
-  - `make -C boardtest regress`：7 卡全量回归
-  - `make -C boardtest smoke`：单卡首图/BMP/WAV 扫描快速集成检查
-  - `make -C boardtest regress CARDS="card_user card_user_2wav"`：只运行指定卡型
-  - `make -C boardtest readeng`：读写引擎真实 RTL 自检（主仿真盲区补充）
-  - `make -C boardtest framepath`：真实异步 FIFO 的帧写入/读回字序
-  - `make -C boardtest arbrace`：写突发寄存判决与读忙仲裁竞态回归
-  - `make -C boardtest vdelay`：video_delay 565 解包/像素序自检（同上）
-  - `make -C boardtest transition-unit`：切换混合、行缓存与读口仲裁快速验证
-  - `make -C boardtest transitionpair`：带 WAV 的切换完成回执与原子提交
-  - `make -C boardtest gt911-unit`：GT911 地址探测、坐标读取与 HDMI 光标自检
-- `scripts/` —— 素材生成（gen_bmp / gen_wav / prep_media / gen_card / gen_diag_card）
-- `img/` —— 卡镜像与生成媒体（脚本可再生，不入 git）
-- `docs/` —— 架构、调试面板、时序排查、板卡盘点等
+## 工程与网络
 
-## 开发流程（单仓两步）
-1. RTL 改动改 `board_display/user_source/hdl_source/`，涉及 SD/图像路径时同步
-   `boardtest/vsrc/` 副本（两副本差异 = 探针 + VERILATOR 加速块）。开发时先跑
-   对应模块自检或单卡检查，收口时跑七卡全量回归。
-2. `board_display/` 综合上板；对照 `docs/board_status.md` 的资源与时序基线。
+| 角色 | 目录 / TD 工程 | IP | JTAG |
+| --- | --- | --- | --- |
+| 显示板 | `board_display/td_project/lab_ex5_i2s_v1.0.al` | 192.168.137.2 | cable0 |
+| 媒体板 | `board_media/td_project/media_net.al` | 192.168.137.3 | cable1 |
+| PC | `scripts/web_console/app.py` | 192.168.137.1/24 | 回包 UDP :2 |
 
-注意：`boardtest/vsrc` 不含视频读通道（C++ 模型替代 frame_read_write），
-video_delay/frame_fifo_* 类改动必须跑 readeng/vdelay 自检。
+两套板级工程各自包含 RTL、厂商 IP 和约束。生产显示板的精简网络栈只服务固定媒体端；PC 直接 ping 显示板不能作为它是否在线的判断，使用经媒体板返回的状态/布局结果。
+
+启动控制台：
+
+```powershell
+python scripts/web_console/app.py
+```
+
+浏览器打开 `http://127.0.0.1:5000`。依赖为 Flask、pyserial；以太网目标固定到媒体板。Web 操作和 HC-08 十六进制命令分别见 [控制台](docs/web_console.md)、[命令字节表](docs/hc08_control_commands.md)。
+
+## 开发与复现
+
+1. 按两板职责修改对应工程；先与稳定提交 diff，检查新增行为逻辑，再扩大排查范围。
+2. 根据改动运行 [定向仿真](docs/verification.md)。`boardtest` 保留历史单板/SPI 模型，也包含原生 SD、双板协议、多窗口和 CV 测试；旧主仿真不等于当前双板全系统仿真。
+3. 分别完成综合和布局布线；正式 bit 与对应 RTL、报告必须成套保存。
+4. 上板功能通过后，按用户指示提交。仓库规则见 [提交与产物策略](docs/repository_commit_policy.md)。
+
+**TD CLI 综合和 SRAM 下载已实证可用。** 完整命令、权限与 USB 故障判定见 [TD CLI 指南](docs/td_cli_programming.md)，下载入口固定使用：
+
+```powershell
+.\scripts\program_sram.ps1 -Board display
+.\scripts\program_sram.ps1 -Board media
+```
+
+## 文档导航
+
+| 内容 | 文档 |
+| --- | --- |
+| 当前分工、SDRAM 与路由 | [双板架构](docs/dual_board_architecture.md) |
+| 字段、字节序、校验与重试 | [板间协议](docs/media_link_protocol.md) |
+| 可变帧、多窗口、黑窗更新、仲裁 | [多窗口实现](docs/native_frame_multiview_handoff.md) |
+| SD 原生模式与 HC-08 | [读卡与蓝牙](docs/native_sd_hc08.md) |
+| CV、字幕/OSD、频谱、触控 | [CV](docs/display_cv_effects_exploration.md)、[OSD](docs/osd_subtitle.md)、[DFT](docs/audio_spectrum.md)、[GT911](docs/gt911_trackpad.md) |
+| 验证入口、资源、时序 | [验证](docs/verification.md)、[资源](docs/board_status.md)、[时序判读](docs/timing_report_howto.md) |
+| 典型故障与修复证据 | [多分辨率复盘](docs/multires_fix_postmortem.md)、[双板联调](docs/dual_board_live_debug_20261020.md)、[音频回卷](docs/media_sd_audio_reject_debug.md) |
+| 多窗口调试与优化历史 | [开发记录](docs/history/multiview_development_log.md) |
+
+`docs/architecture.md`、`docs/design.md` 与 `docs/TODO.md` 保存早期单板架构和开发历史，不再是当前双板的实施计划。所有历史仿真保留，测试镜像和可再生输出按 `.gitignore` 管理；正式已跟踪 bit/报告不因忽略规则而停止跟踪。

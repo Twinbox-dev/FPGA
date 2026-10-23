@@ -17,7 +17,8 @@ module tb_media_display_tx;
     wire [7:0] tx_data;
     wire [15:0] tx_length;
 
-    media_display_tx #(.TX_GAP_CYCLES(4)) dut(.*);
+    media_display_tx #(.TX_GAP_CYCLES(4)) dut(
+        .view_busy(1'b0),.view_prepare_valid(1'b0),.view_prepare_body(64'd0),.view_status_valid(1'b0),.view_status_body(128'd0),.*);
     assign tx_ack=tx_request;
     reg [7:0] packets[0:8][0:15];
     integer packet_lengths[0:8];

@@ -497,6 +497,7 @@
         <div class="m"><div class="v" id="mAuto">–</div><div class="k">自动轮播</div></div>
         <div class="m"><div class="v" id="mCv">raw</div><div class="k">图像效果</div></div>
       </div>
+      <p class="sub" id="viewSummary" aria-live="polite">布局状态待查询；S 可同步板卡状态。</p>
     </section>
 
 
@@ -551,6 +552,8 @@ window.__errs = [];
 window.addEventListener("error", e => window.__errs.push(e.message + " @" + e.lineno));
 window.addEventListener("unhandledrejection", e => window.__errs.push("rej:" + String((e.reason && e.reason.stack) || e.reason)));
 let mode = "serial";            // serial | eth
+let boardView = null, viewPending = false, viewSawBusy = false, viewRecovery = false, viewTimer = null;
+const IMAGE_KEYS = ["n", "p", "d", "6", "7", "8"];
 let connected = false, count = 0, pollTimer = null;
 let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两个数
 const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
@@ -565,6 +568,50 @@ const RANGE = {"播放":"", "切换特效":"约 1 秒", "音量":"0–8", "轮�
                "亮度 / 对比度":"亮度 0–8 · 对比度 0–6"};
 RANGE["\u56fe\u50cf\u6548\u679c"] = "HDMI image mode";
 RANGE["\u8c03\u8bd5"] = "SD 状态 / 辅助调试";
+RANGE["画面布局"] = "双图 / 四图需先回单图互切";
+Object.assign(ICON, {"6":"▣", "7":"◫", "8":"▦"});
+
+function updateViewControls() {
+  const busy = viewPending || !!(boardView && boardView.busy);
+  document.querySelectorAll("#pad button[data-k]").forEach(button => {
+    const key = button.dataset.k;
+    const illegal = boardView && ((boardView.layout === 1 && key === "8") ||
+                                 (boardView.layout === 2 && key === "7"));
+    button.disabled = !connected || (key !== "s" && busy) || illegal ||
+                      (!boardView && IMAGE_KEYS.includes(key));
+    if (["6", "7", "8"].includes(key))
+      button.classList.toggle("on", !!boardView && +key === boardView.layout + 6);
+  });
+  document.getElementById("btnSnapshot").disabled = !connected || busy || !boardView;
+  for (const id of ["btnSubtitle", "btnSubtitleClear", "subtitleText"])
+    document.getElementById(id).disabled = !connected || busy;
+}
+function scheduleViewRecovery() {
+  if (viewTimer || !viewPending) return;
+  viewTimer = setTimeout(() => {
+    viewTimer = null;
+    if (viewPending) { sendKey("s"); scheduleViewRecovery(); }
+  }, 5000);
+}
+function applyViewState(state) {
+  boardView = state;
+  if (state.busy) viewSawBusy = true;
+  if (!state.busy && (!viewPending || viewSawBusy || viewRecovery || state.result !== 0)) {
+    viewPending = false;viewSawBusy = false;viewRecovery = false;
+    if (viewTimer) clearTimeout(viewTimer);
+    viewTimer = null;
+  }
+  const names = ["单图", "左右双图", "四宫格"];
+  const count = state.layout === 0 ? 1 : state.layout === 1 ? 2 : 4;
+  const slots = state.indices.slice(0, count).map((index, slot) =>
+    `${slot + 1}:${index}${state.valid_mask & (1 << slot) ? "" : "（黑窗）"}`).join(" · ");
+  document.getElementById("viewSummary").textContent =
+    `${names[state.layout]} · 窗口 ${slots} · 焦点 ${state.focus + 1} · 源图 ${state.width}×${state.height}` +
+    (state.busy || viewPending ? " · 正在装载，等待板卡完成" : " · 空闲") +
+    (state.layout ? " · 多窗口静音" : "") + (state.result ? ` · 结果 ${state.result}` : "");
+  document.getElementById("mImg").textContent = state.indices[state.focus];
+  updateViewControls();
+}
 
 /* ---------- toast ---------- */
 let toastT = null;
@@ -682,6 +729,7 @@ async function buildPad(){
     wrap.appendChild(box);
     host.appendChild(wrap);
   });
+  updateViewControls();
 }
 function fallbackPad(){   // /api/keys 不可用时退化为静态面板
   const host = document.getElementById("pad");
@@ -810,6 +858,13 @@ document.getElementById("btnRefresh").onclick = () => loadPorts(false);
 
 /* ---------- 命令发送 ---------- */
 async function sendKey(k) {
+  if (!connected) return;
+  if (k !== "s" && (viewPending || (boardView && boardView.busy))) return;
+  if (k === "s" && viewPending) viewRecovery = true;
+  if (IMAGE_KEYS.includes(k)) {
+    viewPending = true;viewSawBusy = false;viewRecovery = false;
+    updateViewControls();scheduleViewRecovery();
+  }
   try {
     const r = await fetch("/api/cmd", {
       method: "POST",
@@ -831,13 +886,14 @@ subtitleInput.addEventListener("input", () => {
 });
 async function sendSubtitle(value) {
   if (!connected) { toast("当前通道未连接", true); return; }
+  if (viewPending || (boardView && boardView.busy)) return;
   if (value.length > 160 || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) > 126)) {
     toast("仅支持最多 160 个可打印 ASCII 字符", true); return;
   }
   const btn = document.getElementById("btnSubtitle");
   btn.disabled = true;
   const j = await post("/api/subtitle", {mode, text:value});
-  btn.disabled = false;
+  updateViewControls();
   if (j.ok) {
     toast(j.acknowledged ? "显示板已确认字幕" : "字幕已发送，等待板卡确认");
     addLog(j.acknowledged ? "ack" : "sys", j.acknowledged ? "ACK" : "SYS",
@@ -874,7 +930,7 @@ function parseMetrics(text){
     document.getElementById("mBri").textContent = briShown + "/" + ctShown;
     flash("mBri");
   }
-  if (i !== null){ document.getElementById("mImg").textContent = i; flash("mImg"); }
+  if (i !== null && !boardView){ document.getElementById("mImg").textContent = i; flash("mImg"); }
   if (a !== null){                          // 瓦片 + A 按钮高亮同步
     const on = (a === "开");
     document.getElementById("mAuto").textContent = a;
@@ -905,8 +961,7 @@ function setLink(on, port){
   document.getElementById("port").disabled = !!connState.serial;
   document.getElementById("baud").disabled = !!connState.serial;
   document.getElementById("btnRefresh").disabled = !!connState.serial;
-  document.getElementById("btnSnapshot").disabled = !connected;
-  document.querySelectorAll("#pad button").forEach(b => b.disabled = !connected);
+  updateViewControls();
   if (!connected && pollTimer){ clearInterval(pollTimer); pollTimer = null; }
   if (connected && document.getElementById("poll").checked && !pollTimer)
     pollTimer = setInterval(()=> sendKey("s"), 1000);
@@ -931,6 +986,8 @@ function listen() {
       }
       addLog(m.connected ? "sys" : "err", "SYS",
              m.connected ? `${name}已连接 ${m.port || ""}` : `${name}已断开`);
+    } else if (m.type === "view") {
+      applyViewState(m);
     } else if (m.type === "pkt") {
       const cls = m.kind === "ack" ? "ack" : m.kind === "diag" ? "sys" : "st";
       const tag = m.kind === "ack" ? "ACK" : m.kind === "diag" ? "SD" : m.kind === "dump" ? "DUMP" : "STA";
@@ -1169,6 +1226,7 @@ document.getElementById("bmpFile").addEventListener("change", async e => {
   document.getElementById("autoConn").checked = st.auto_connect !== false;
   connState.serial = !!st.serial_open;
   connState.eth = !!st.eth_open;
+  if (st.view) applyViewState(st.view);
   let savedMode = "";
   try { savedMode = localStorage.getItem("fpga-web-mode") || ""; } catch (_) {}
   const initialMode = savedMode && connState[savedMode] ? savedMode :
@@ -1178,6 +1236,7 @@ document.getElementById("bmpFile").addEventListener("change", async e => {
   listen();
   slide();
   await loadPorts(!st.serial_open);
+  if (connected) setTimeout(() => sendKey("s"), 250);
 })();
 </script>
 </body>

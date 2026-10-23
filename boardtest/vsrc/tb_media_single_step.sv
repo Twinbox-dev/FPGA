@@ -20,6 +20,7 @@ module tb_media_single_step;
     end
 
     media_control_core #(.CLK_HZ(1000)) u_control (
+        .view_busy(1'b0),.uart_cmd_was_busy(1'b0),.layout_request(),.requested_layout(),.image_touch_request(),
         .clk(clk),.rst(rst),.cmd(cmd),.cmd_pending(cmd_pending),.cmd_ack_t(cmd_ack_t),
         .uart_cmd(8'd0),.uart_cmd_valid(1'b0),.uart_cmd_source(2'd1),.uart_cmd_ready(),.uart_source_lock(),
         .sd_diag_flags(8'd0),.sd_init_debug_word(16'd0),.image_read_cycles(32'd0),.sd_read_cycles(32'd0),
@@ -47,6 +48,7 @@ module tb_media_single_step;
     wire [15:0] tx_length;
     wire [3:0] state_code;
     media_image_tx #(.CLK_HZ(1000),.FRAME_WORDS(2)) u_tx (
+        .job_start(1'b0),.job_snapshot(1'b0),.job_previous(1'b0),.job_index(5'd0),.job_layout(2'd0),.job_window(2'd0),.job_generation(16'd0),.job_ready(),.job_done(),.job_result(),
         .clk(clk),.rst(rst),.mounted(1'b1),.source_busy(1'b0),.source_error(1'b0),
         .first_bmp(6'd1),.bmp_next(192'd0),.bmp_prev(192'd0),
         .image_width(12'd2),.image_height(12'd2),

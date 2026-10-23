@@ -40,6 +40,7 @@ module media_image_source (
     localparam [2:0] IDLE=3'd0, HEADER=3'd1, FULL=3'd2, RAW=3'd3,
                      CANCEL=3'd4, PAIR_NAME=3'd5, PAIR_SCAN=3'd6, AUDIO=3'd7;
     reg [2:0] state;
+    reg [1:0] debug_error_reason;
     reg [4:0] index_latched, audio_index_latched, pair_scan_index;
     reg [63:0] image_name_latched;
     reg file_req, restart, header_only, format_start, wav_restart;
@@ -132,13 +133,14 @@ module media_image_source (
     assign frame_data = state==FULL ? format_word : pcm_word;
     assign frame_valid = state==FULL ? format_word_valid :
                          (state==AUDIO ? pcm_word_valid : 1'b0);
-    assign source_status={error,state,file_done_seen,format_done_seen,img_ok,format_error};
+    assign source_status=error ? {1'b1,debug_error_reason,index_latched} :
+                          {error,state,file_done_seen,format_done_seen,img_ok,format_error};
 
     reg img_ok_d, half_pixel;
     reg [15:0] raw_low;
     always @(posedge clk) begin
         if (rst) begin
-            state<=IDLE;index_latched<=0;audio_index_latched<=0;pair_scan_index<=0;
+            state<=IDLE;index_latched<=0;audio_index_latched<=0;pair_scan_index<=0;debug_error_reason<=0;
             image_name_latched<=0;file_req<=0;restart<=0;header_only<=0;
             format_start<=0;wav_restart<=0;busy<=0;error<=0;
             prepared_toggle<=0;done_toggle<=0;audio_prepared_toggle<=0;audio_done_toggle<=0;
@@ -194,7 +196,7 @@ module media_image_source (
             end else case(state)
                 IDLE: begin
                     if(start && fat_mounted && fat_idle) begin
-                        index_latched<=file_index;busy<=1;error<=0;frame_clear<=1;
+                        index_latched<=file_index;busy<=1;error<=0;debug_error_reason<=0;frame_clear<=1;
                         file_done_seen<=0;format_done_seen<=0;half_pixel<=0;
                         paired_wav_valid<=0;paired_wav_index<=0;
                         state<=PAIR_NAME;
@@ -213,7 +215,7 @@ module media_image_source (
                 PAIR_NAME: begin
                     if(pl_valid && !pl_wav) begin
                         image_name_latched<=pl_name;pair_scan_index<=0;state<=PAIR_SCAN;
-                    end else begin error<=1;busy<=0;done_toggle<=~done_toggle;state<=IDLE;end
+                    end else begin error<=1;debug_error_reason<=!pl_valid ? 2'd1 : 2'd2;busy<=0;done_toggle<=~done_toggle;state<=IDLE;end
                 end
                 PAIR_SCAN: begin
                     if(pl_valid && pl_wav && pl_name==image_name_latched) begin
@@ -229,12 +231,12 @@ module media_image_source (
                         image_width<=width;image_height<=height;header_only<=0;
                         file_req<=1;restart<=1;format_start<=1;
                         prepared_toggle<=~prepared_toggle;state<=FULL;
-                    end else begin error<=1;busy<=0;done_toggle<=~done_toggle;state<=IDLE;end
-                end else if(fat_error) begin error<=1;busy<=0;done_toggle<=~done_toggle;state<=IDLE;end
+                    end else begin error<=1;debug_error_reason<=2'd2;busy<=0;done_toggle<=~done_toggle;state<=IDLE;end
+                end else if(fat_error) begin error<=1;debug_error_reason<=2'd3;busy<=0;done_toggle<=~done_toggle;state<=IDLE;end
                 FULL: begin
                     if(file_done) file_done_seen<=1;
                     if(format_done) format_done_seen<=1;
-                    if(img_error || fat_error || format_error) begin error<=1;state<=CANCEL;end
+                    if(img_error || fat_error || format_error) begin error<=1;debug_error_reason<=2'd3;state<=CANCEL;end
                     else if((file_done_seen || file_done) && (format_done_seen || format_done) && img_ok) begin
                         busy<=0;done_toggle<=~done_toggle;state<=IDLE;
                     end

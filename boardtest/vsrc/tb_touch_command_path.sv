@@ -15,6 +15,7 @@ module tb_touch_command_path;
     wire received_pending;
 
     media_display_tx #(.TX_GAP_CYCLES(2)) display_tx (
+        .view_busy(1'b0),.view_prepare_valid(1'b0),.view_prepare_body(64'd0),.view_status_valid(1'b0),.view_status_body(128'd0),
         .clk(clk), .rst(rst),
         .local_cmd_toggle_async(local_cmd_toggle), .local_cmd_async(local_cmd),
         .ready_valid(1'b0), .image_result_valid(1'b0),

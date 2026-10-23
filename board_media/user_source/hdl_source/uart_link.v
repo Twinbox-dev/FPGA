@@ -21,7 +21,8 @@
 // ---------------------------------------------------------------------------
 module uart_link #(
     parameter CLK_FREQ_HZ  = 100_000_000,
-    parameter BAUD         = 1_000_000
+    parameter BAUD         = 1_000_000,
+    parameter TX_BYTES     = 8
 )(
     input               clk,          // sd_card_clk 域（与 ctrl_core 同域）
     input               rst,
@@ -33,7 +34,8 @@ module uart_link #(
     output reg          cmd_val,
     // 发包入口：tx_req 脉冲触发一次发送，内容取自 tx_pkt（'S' 状态包 / ACK 应答）
     input               tx_req,
-    input  [63:0]       tx_pkt
+    input  [TX_BYTES*8-1:0] tx_pkt,
+    input [4:0] tx_count
 );
     localparam BIT_CYC = CLK_FREQ_HZ / BAUD;
 
@@ -128,23 +130,17 @@ module uart_link #(
 
     // ================= TX：状态包（8 字节，内容由 ctrl_core 提供）=================
     // 待发队列：发送中新来的请求丢弃（连按 S 会丢包，可接受）
-    reg [7:0] pkt [0:7];
-    reg [3:0] pkt_len;                    // 剩余字节数（含第 8 字节需 4 位）
-    reg [3:0] pkt_idx;                    // 已发送字节数
+    reg [7:0] pkt [0:TX_BYTES-1];
+    reg [4:0] pkt_len;
+    reg [4:0] pkt_idx;
+    integer tx_copy;
 
     always @(posedge clk or posedge rst) begin
         if (rst) pkt_len <= 4'd0;
         else begin
             if (tx_req && pkt_len == 4'd0) begin
-                pkt[0] <= tx_pkt[7:0];
-                pkt[1] <= tx_pkt[15:8];
-                pkt[2] <= tx_pkt[23:16];
-                pkt[3] <= tx_pkt[31:24];
-                pkt[4] <= tx_pkt[39:32];
-                pkt[5] <= tx_pkt[47:40];
-                pkt[6] <= tx_pkt[55:48];
-                pkt[7] <= tx_pkt[63:56];
-                pkt_len <= 4'd8;
+                for(tx_copy=0;tx_copy<TX_BYTES;tx_copy=tx_copy+1)pkt[tx_copy]<=tx_pkt[8*tx_copy+:8];
+                pkt_len <= TX_BYTES>8 && tx_count>0 && tx_count<=TX_BYTES ? tx_count : 5'd8;
             end else if (tx_done_byte)
                 pkt_len <= pkt_len - 1'b1;
         end
@@ -173,8 +169,9 @@ module uart_link #(
     always @(posedge clk or posedge rst) begin
         if (rst)
             pkt_idx <= 4'd0;
+        else if(tx_req && pkt_len==0)pkt_idx<=0;
         else if (tx_load)
-            pkt_idx <= (pkt_idx == 4'd7) ? 4'd0 : pkt_idx + 1'b1;
+            pkt_idx <= pkt_idx + 1'b1;
     end
 
 endmodule

@@ -1,9 +1,11 @@
 `timescale 1ns/1ps
 
 module tb_media_display_path;
-    reg udp_clk=0, write_clk=0;
+    parameter integer DIRECT_STREAM = 0;
+    reg udp_clk=0, slow_write_clk=0;
+    wire write_clk=DIRECT_STREAM ? udp_clk : slow_write_clk;
     always #4 udp_clk=~udp_clk;
-    always #5 write_clk=~write_clk;
+    always #5 slow_write_clk=~slow_write_clk;
     reg rst=1;
     reg [7:0] rx_data=0;
     reg rx_valid=0;
@@ -75,6 +77,7 @@ module tb_media_display_path;
         .protocol_error_toggle(protocol_error_toggle)
     );
     media_frame_pad #(.FRAME_WIDTH(11'd16),.FRAME_HEIGHT(10'd8),.FRAME_WORDS(21'd64)) u_frame_pad (
+        .layout(2'd0),
         .clk(udp_clk),.rst(rst),.frame_begin(frame_begin_valid),
         .image_width(image_width),.image_height(image_height),.frame_end(frame_end_valid),
         .in_is_audio(stream_is_audio),.in_start(stream_start),.in_count(stream_word_count),
@@ -84,7 +87,8 @@ module tb_media_display_path;
         .out_valid(padded_stream_valid),.out_ready(padded_stream_ready),
         .out_done(padded_stream_done),.frame_done(pad_frame_done)
     );
-    media_transaction_writer #(.FRAME_WORDS(21'd64)) u_writer (
+    media_transaction_writer #(.DIRECT_STREAM(DIRECT_STREAM),.FRAME_WORDS(21'd64)) u_writer (
+        .image_layout(2'd0),.image_window(2'd0),.view_target_buffer(1'b0),.write_layout(),.write_window(),
         .udp_clk(udp_clk),.udp_rst(rst),.frame_begin_valid(frame_begin_valid),
         .frame_id(frame_id),.image_index(image_index),.image_flags(image_flags),
         .image_total_words(image_total_words),.image_width(image_width),.image_height(image_height),
@@ -115,6 +119,7 @@ module tb_media_display_path;
         .audio_source_toggle(audio_source_toggle)
     );
     media_display_tx #(.TX_GAP_CYCLES(4)) u_tx (
+        .view_busy(1'b0),.view_prepare_valid(1'b0),.view_prepare_body(64'd0),.view_status_valid(1'b0),.view_status_body(128'd0),
         .clk(udp_clk),.rst(rst),.local_cmd_toggle_async(1'b0),.local_cmd_async(8'd0),
         .ready_valid(ready_request),.image_result_valid(image_result_valid),
         .image_result_code(image_result_code),.image_result_frame(frame_id),
@@ -283,7 +288,7 @@ module tb_media_display_path;
         #20000000;
         $fatal(1,"timeout rx_active=%0d rx_bad=%0d rx_words=%0d/%0d pad=%0d xy=%0d,%0d raw=%0d cache=%0d writer=%0d req=%0d issued=%0d end=%0d/%0d write_done=%0d packets=%0d",
                u_rx.frame_active,u_rx.frame_bad,u_rx.received_image_words,u_rx.image_total_words,
-               u_frame_pad.frame_active,u_frame_pad.x,u_frame_pad.y,u_frame_pad.source_pixels_consumed,
+               u_frame_pad.frame_active,u_frame_pad.x,u_frame_pad.y,0,
                u_frame_pad.source_word_valid,u_writer.writer_state,u_writer.write_req,
                u_writer.frame_words_issued,u_writer.frame_end_seen_w,u_writer.frame_end_good_w,
                u_writer.frame_write_done,output_packets);

@@ -6,7 +6,8 @@ module frame_fifo_read
 	parameter ADDR_BITS              = 21,
 	parameter BURST_BITS             = 9,
 	parameter FIFO_DEPTH             = 512,
-	parameter BURST_SIZE             = 128
+	parameter BURST_SIZE             = 128,
+    parameter VIEW_ENABLE = 0
 )
 (
 	input                            rst,
@@ -43,7 +44,12 @@ module frame_fifo_read
 	input[ADDR_BITS-1:0]             aud_read_len,               // 字数（256 整数倍）
 	output reg                       aud_fifo_aclr,              // 音频 FIFO 异步清（S_ACK 一拍）
 	input[9:0]                       aud_wrusedw,                // 音频 FIFO 写侧已用字
-	output                           aud_ch_active               // 当前读数据归属：1=音频 FIFO（写路由用）
+	output                           aud_ch_active,              // 当前读数据归属：1=音频 FIFO（写路由用）
+    input wire [1:0] view_layout,
+    input wire [3:0] view_valid_mask,
+    input wire view_epoch,
+    output reg view_drained_epoch,
+    output wire video_black_write
 );
 localparam ONE                       = 256'd1;
 localparam ZERO                      = 256'd0;
@@ -90,6 +96,29 @@ reg [BURST_BITS - 1:0]			     burst_cnt;
 wire							     rd_burst_finish;
 reg                                  App_rd_en_r;
 reg                                  App_rd_en_d0;
+reg [BURST_BITS-1:0] burst_limit;
+reg burst_black;
+reg [1:0] layout_d0,layout_d1;
+reg [3:0] mask_d0,mask_d1;
+reg epoch_d0,epoch_d1;
+wire [20:0] view_address;
+wire [9:0] view_segment;
+wire view_black;
+wire logical_advance = !cur_ch && (App_rd_en || video_black_write);
+wire [20:0] view_base = read_addr_index_d1[0] ? read_addr_1 : read_addr_0;
+generate if(VIEW_ENABLE)begin:g_view
+    view_scan_address u_map(.clk(mem_clk),.rst(rst),
+        .frame_begin(state==S_ACK && !cur_ch),.advance(logical_advance),
+        .frame_base(view_base),.layout(layout_d1),.valid_mask(mask_d1),
+        .address(view_address),.window_index(),.black(view_black),
+        .segment_words(view_segment),.active(),.done(),.error());
+end else begin:g_legacy_view
+    assign view_address=0;assign view_segment=640;assign view_black=0;
+end endgenerate
+// Fake black beats occupy the video FIFO exactly like memory data. No SDRAM
+// request is made for an invalid slot, so an in-place writer cannot race it.
+assign video_black_write=VIEW_ENABLE && !cur_ch && burst_black &&
+                         state==S_READ_BURST && burst_cnt<burst_limit;
 
 wire rd_vld;
 reg [3:0] rd_delay;
@@ -99,8 +128,8 @@ wire [9:0] cur_wrusedw = cur_ch ? aud_wrusedw : wrusedw;
 wire vid_req_rise = read_req_d2 & ~read_req_d1;   // mem_clk 域请求上升沿
 wire aud_req_rise = aud_req_d2  & ~aud_req_d1;
 
-assign App_rd_addr = {App_rd_addr_r[ADDR_BITS - 1:0]};
-assign rd_vld = (state == S_READ_BURST && burst_cnt >= BURST_SIZE);
+assign App_rd_addr = VIEW_ENABLE && !cur_ch ? view_address : App_rd_addr_r;
+assign rd_vld = (state == S_READ_BURST && burst_cnt >= burst_limit);
 assign O_rd_busy = (state == S_READ_BURST);
 assign rd_burst_finish = (rd_vld && rd_delay == 4'd10);
 assign read_finish      = vfin_r;
@@ -108,7 +137,20 @@ assign aud_read_finish  = afin_r;
 assign read_req_ack     = (state == S_ACK) && (cur_ch == 1'b0) && read_req_d2;
 assign aud_read_req_ack = (state == S_ACK) && (cur_ch == 1'b1) && aud_req_d2;
 assign aud_ch_active    = cur_ch;
-assign App_rd_en = App_rd_en_d0;
+assign App_rd_en = App_rd_en_d0 && !burst_black;
+
+always @(posedge mem_clk or posedge rst)begin
+    if(rst)begin layout_d0<=0;layout_d1<=0;mask_d0<=1;mask_d1<=1;
+        epoch_d0<=0;epoch_d1<=0;view_drained_epoch<=0;end
+    else begin
+        layout_d0<=view_layout;layout_d1<=layout_d0;
+        mask_d0<=view_valid_mask;mask_d1<=mask_d0;
+        epoch_d0<=view_epoch;epoch_d1<=epoch_d0;
+        // S_ACK is reached only after the preceding burst's return drain.
+        // Its FIFO clear also discards every prefetched old video word.
+        if(state==S_ACK && !cur_ch)view_drained_epoch<=epoch_d1;
+    end
+end
 
 always@(posedge mem_clk or posedge rst)
 begin
@@ -150,7 +192,7 @@ end
 
 always @(posedge mem_clk or posedge rst)
 begin
-	if(rst || App_rd_en)begin
+	if(rst || App_rd_en || video_black_write)begin
         rd_delay <= 4'd0;
     end
     else if(rd_delay < 4'd10)begin
@@ -170,12 +212,12 @@ begin
 
 		if(state == S_CHECK_FIFO)
 			burst_cnt <= ZERO[BURST_BITS - 1:0];
-		else if(App_rd_en)
+		else if(App_rd_en || video_black_write)
 			burst_cnt <= burst_cnt + 1'b1;
 		else
 			burst_cnt <= burst_cnt;
 		//
-		if(state == S_ACK)
+		if(state == S_ACK && (cur_ch || !VIEW_ENABLE))
 			begin
 				if(cur_ch == 1'b0)
 				begin
@@ -198,7 +240,7 @@ begin
 		else
 			App_rd_addr_r <= App_rd_addr_r;
 		//
-		if(App_rd_en_r && burst_cnt + App_rd_en < BURST_SIZE)
+		if(App_rd_en_r && burst_cnt + App_rd_en < burst_limit && !burst_black)
 			App_rd_en_d0 <= 1'b1;
 		else
 			App_rd_en_d0 <= 1'b0;
@@ -223,6 +265,7 @@ begin
 		aud_addr_hold <= ZERO[ADDR_BITS - 1:0];
 		aud_cnt_hold  <= ZERO[ADDR_BITS - 1:0];
 		aud_len_hold  <= ZERO[ADDR_BITS - 1:0];
+        burst_limit<=BURST_SIZE;burst_black<=0;
 	end
 	else
 	begin
@@ -292,6 +335,9 @@ begin
 				begin
 					state <= S_READ_BURST;
 					App_rd_en_r <= 1'b1;
+                    burst_limit <= VIEW_ENABLE && !cur_ch && view_segment<BURST_SIZE ?
+                                   view_segment[BURST_BITS-1:0] : BURST_SIZE;
+                    burst_black <= VIEW_ENABLE && !cur_ch && view_black;
 				end
 			end
 
@@ -301,7 +347,7 @@ begin
 				begin
 					App_rd_en_r <= 1'b0;
 					state <= S_READ_BURST_END;
-					read_cnt <= read_cnt + BURST_SIZE[ADDR_BITS - 1:0];
+					read_cnt <= read_cnt + burst_limit;
 				end
 			end
 

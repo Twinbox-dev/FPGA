@@ -26,6 +26,7 @@ module tb_media_eth_subtitle_rx;
         .tap2_clk(clk),.tap2_val(1'b0),.tap2_word(32'd0),.tap2_end(1'b0)
     );
     media_control_core #(.CLK_HZ(1000)) u_control (
+        .view_busy(1'b0),.uart_cmd_was_busy(1'b0),.layout_request(),.requested_layout(),.image_touch_request(),
         .clk(clk),.rst(rst),.cmd(cmd),.cmd_pending(cmd_pending),.cmd_ack_t(cmd_ack_t),
         .uart_cmd(8'd0),.uart_cmd_valid(1'b0),.uart_cmd_source(2'd1),.uart_cmd_ready(),.uart_source_lock(),
         .sd_diag_flags(8'd0),.sd_init_debug_word(16'd0),.image_read_cycles(32'd0),.sd_read_cycles(32'd0),

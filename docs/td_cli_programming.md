@@ -77,6 +77,12 @@ if ($phyExitCode -ne 0) { throw "TD place/route or bitgen failed: $phyExitCode" 
 .\scripts\program_sram.ps1 -Board media
 ```
 
+默认路径还会比较 bit 与 `.opt_place.begin.f`、`.opt_route.begin.f`、`.bitgen.begin.f`
+的 UTC 时间：任一最近运行标记比 bit 新，就拒绝下载。TD 布线失败后经常保留上一次成功的
+同名 bit，文件存在并不等于本轮构建成功。拒绝陈旧 bit 与 USB 打开失败是两类不同问题。
+明确选择已知稳定版或独立诊断构建时可用 `-CandidateBit <绝对路径>`，并核对打印的 SHA；
+该参数允许有意执行旧版 A/B，不改变 cable 映射或 SRAM 下载命令。
+
 脚本用当前普通用户令牌启动隐藏的 `cmd.exe`，把工作目录设为 TD 安装目录的 `bin`，
 再将 `download` 命令直接输入 `td_commands_prompt.exe`。完整日志写入忽略目录
 `boardtest/captures/sram_download/`。显示板为 cable 0，媒体板为 cable 1：
@@ -249,5 +255,10 @@ SRAM 下载也已找到可执行的 CLI 命令。下一步可将上述流程封�
 ```
 
 诊断完成后重新运行不带 `-CandidateBit` 的显示板命令，即恢复产品 bit。保存诊断 bit 的
-SHA、对应源清单、报告和自动验收 JSON；诊断构建与原始抓包都存放忽略目录，正式 TD 源列表
-不包含临时探针。该可选参数仅改变待下载文件，不改变目标 cable、不切换编程模式或权限。
+SHA、对应源清单、报告和自动验收 JSON；临时诊断工程和原始抓包可以放忽略目录；被确认有复现价值的构建必须按 [产物规则](repository_commit_policy.md) 保存源覆盖、bit 和说明到 `boardtest/diagnostics/` / `boardtest/reference_builds/`，不能只存在 captures。正式工程是否包含诊断模块须以当次源码/源列表和归档说明为准。该可选参数仅改变待下载文件，不改变目标 cable、不切换编程模式或权限。
+
+## 两板重新配置顺序（2026-10-23 实测）
+
+先下载显示板 cable0，再下载媒体板 cable1。用户仅重新综合并下载显示板后无图，继续重新综合/下载媒体板后恢复；同轮核对表明 GUI 和 CLI 都使用正式 `top_tf_hdmi_audio.v`，其源码未变，显示资源/WNS 也一致。现象支持两端应用状态需重新同步：显示板重配置会清空 SDRAM/布局，媒体板可能仍保留旧图已提交状态。独立重配置自动恢复尚未专项验收；本次实证恢复动作是重新下载媒体板，不必因此改下载命令。
+
+只需要重配时可复用已验证且配套的媒体 bit；“恢复动作涉及重下载”不意味着每次必须重新综合。待用户授权时再改复位/重连接机制。

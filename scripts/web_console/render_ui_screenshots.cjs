@@ -19,6 +19,7 @@ const mockKeys = {
     ['p','上一张'],['n','下一张'],['a','自动轮播'],['s','状态回读'],
     ['0','直接切'],['1','交叉溶解'],['2','柔边滑动'],
     ['3','面板关闭'],['4','面板调节后 3 秒'],['5','面板始终显示'],
+    ['6','单图直显'],['7','左右双图'],['8','四宫格'],
     ['-','音量-'],['+','音量+'],['<','周期-1s'],['>','周期+1s'],
     ['[','亮度-'],[']','亮度+'],[',','对比度-'],['.','对比度+'],
     [';','频谱灵敏度-'],["'",'频谱灵敏度+'],['q','频谱开关'],
@@ -26,6 +27,7 @@ const mockKeys = {
   ].map(([key,label]) => ({key,label})),
   groups: [
     {name:'播放',keys:['p','n','a','s']},
+    {name:'画面布局',keys:['6','7','8']},
     {name:'切换特效',keys:['0','1','2']},
     {name:'OSD 面板',keys:['3','4','5']},
     {name:'音量',keys:['-','+']},
@@ -170,10 +172,13 @@ async function capture(cdp, name, width, height) {
         return {ok:true, status:200, json:async()=>body};
       };
       window.__testCalls = calls;
+      window.__idleView = {type:'view',sequence:1,generation:0,layout:0,busy:false,
+        focus:0,valid_mask:1,indices:[1,0,0,0],width:1280,height:720,result:0};
+      applyViewState(window.__idleView);
     })()`);
     const controls = await cdp.evaluate(`(async () => {
       await buildPad();
-      const required = ['0','1','2','3','4','5','r','g','b','e','h','w','i','l'];
+      const required = ['0','1','2','3','4','5','6','7','8','r','g','b','e','h','w','i','l'];
       const missing = required.filter(k => !document.querySelector('#pad button[data-k="'+k+'"]'));
       if (missing.length) throw new Error('missing controls: '+missing.join(','));
       parseMetrics('CV=sobel');
@@ -182,13 +187,35 @@ async function capture(cdp, name, width, height) {
         throw new Error('CV status did not select/highlight the reported effect');
       document.getElementById('btnSnapshot').click();
       await new Promise(resolve => setTimeout(resolve, 0));
+      if (!viewPending || !document.querySelector('#pad button[data-k="n"]').disabled ||
+          document.querySelector('#pad button[data-k="s"]').disabled)
+        throw new Error('HTTP success must keep controls locked and S available');
+      applyViewState({...window.__idleView,busy:true});
+      applyViewState(window.__idleView);
       const padButtons = Array.from(document.querySelectorAll('#pad button[data-k]'));
       const padKeys = padButtons.map(button => button.dataset.k);
-      padButtons.forEach(button => button.click());
+      for (const button of padButtons) {
+        applyViewState(window.__idleView);
+        button.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (IMAGE_KEYS.includes(button.dataset.k)) {
+          if (!viewPending) throw new Error('image/layout click did not lock controls');
+          applyViewState({...window.__idleView,busy:true});
+          applyViewState(window.__idleView);
+        }
+      }
       await new Promise(resolve => setTimeout(resolve, 0));
       const sentKeys = window.__testCalls.filter(item => item.url === '/api/cmd').map(item => item.body.key);
       const unsent = padKeys.filter(key => !sentKeys.includes(key));
       if (unsent.length) throw new Error('buttons did not send commands: '+unsent.join(','));
+      applyViewState({...window.__idleView,layout:1,valid_mask:3,indices:[1,3,0,0]});
+      if (!document.querySelector('#pad button[data-k="8"]').disabled ||
+          document.querySelector('#pad button[data-k="6"]').disabled)
+        throw new Error('dual layout must disable quad and retain single');
+      applyViewState({...window.__idleView,layout:2,valid_mask:15,indices:[1,3,5,6]});
+      if (!document.querySelector('#pad button[data-k="7"]').disabled)
+        throw new Error('quad layout must disable dual');
+      applyViewState(window.__idleView);
       const before = window.__testCalls.length;
       const field = document.getElementById('subtitleText');
       field.value = 'n'; field.focus();
@@ -234,6 +261,7 @@ async function capture(cdp, name, width, height) {
               typedKeySent:false, logBeforePreview, statusColumns, cvColumns, compactColumns,
               debugButtonsTogether, subtitleWidth:subtitleRect.width, subtitleHeight:subtitleRect.height};
     })()`);
+    await sleep(250); // let transient click outlines expire before the artifact
     const desktop = await capture(cdp, 'console-desktop.png', 1920, 2400);
 
     await cdp.command('Emulation.setDeviceMetricsOverride', {

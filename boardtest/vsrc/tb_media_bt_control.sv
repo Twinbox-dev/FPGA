@@ -49,20 +49,24 @@ module tb_media_bt_control;
     integer i,j;
 
     uart_link #(.CLK_FREQ_HZ(CLK_HZ),.BAUD(1000000)) u_usb_uart (
+        .tx_count(5'd8),
         .clk(clk),.rst(rst),.rx(usb_rx),.tx(usb_tx),.tx_ready(usb_ready),
         .cmd(usb_cmd),.cmd_val(usb_cmd_valid),.tx_req(usb_tx_req),.tx_pkt(serial_tx_pkt)
     );
     uart_link #(.CLK_FREQ_HZ(CLK_HZ),.BAUD(9600)) u_bt_uart (
+        .tx_count(5'd8),
         .clk(clk),.rst(rst),.rx(bt_rx),.tx(bt_tx),.tx_ready(bt_ready),
         .cmd(bt_cmd),.cmd_val(bt_cmd_valid),.tx_req(bt_tx_req),.tx_pkt(serial_tx_pkt)
     );
     media_uart_arbiter u_arb (
+        .view_busy(1'b0),.cmd_was_busy(),
         .clk(clk),.rst(rst),.usb_cmd(usb_cmd),.usb_valid(usb_cmd_valid),
         .bt_cmd(bt_cmd),.bt_valid(bt_cmd_valid),.cmd(serial_cmd),.cmd_source(serial_source),
         .source_lock(serial_source_lock),.cmd_valid(serial_valid),.cmd_ready(serial_ready),
         .usb_overflow_count(usb_overflow),.bt_overflow_count(bt_overflow)
     );
     media_control_core #(.CLK_HZ(CLK_HZ)) u_core (
+        .view_busy(1'b0),.uart_cmd_was_busy(1'b0),.layout_request(),.requested_layout(),.image_touch_request(),
         .clk(clk),.rst(rst),.cmd(eth_cmd),.cmd_pending(eth_cmd_pending),.cmd_ack_t(eth_cmd_ack),
         .uart_cmd(serial_cmd),.uart_cmd_valid(serial_valid),.uart_cmd_source(serial_source),
         .uart_cmd_ready(serial_ready),.uart_source_lock(serial_source_lock),

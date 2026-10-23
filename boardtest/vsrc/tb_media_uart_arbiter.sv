@@ -9,9 +9,12 @@ module tb_media_uart_arbiter;
     wire [7:0] cmd;
     wire [1:0] cmd_source;
     wire cmd_valid;
+    reg view_busy=0;
+    wire cmd_was_busy;
     wire [7:0] usb_overflow_count,bt_overflow_count;
 
     media_uart_arbiter dut (
+        .view_busy(view_busy),.cmd_was_busy(cmd_was_busy),
         .clk(clk),.rst(rst),.usb_cmd(usb_cmd),.usb_valid(usb_valid),
         .bt_cmd(bt_cmd),.bt_valid(bt_valid),.source_lock(source_lock),.cmd(cmd),.cmd_source(cmd_source),
         .cmd_valid(cmd_valid),.cmd_ready(cmd_ready),
@@ -47,6 +50,13 @@ module tb_media_uart_arbiter;
         expect_pop(2'd2,8'h60);
         if(cmd_valid) $fatal(1,"locked source did not pause the other UART FIFO");
         source_lock=0;expect_pop(2'd1,8'h50);
+        view_busy=1;push_usb(8'h4e);view_busy=0;
+        repeat(3)@(negedge clk);
+        if(!cmd_was_busy)$fatal(1,"queued UART command lost busy-at-arrival tag");
+        expect_pop(2'd1,8'h4e);
+        push_bt(8'h50);
+        if(cmd_was_busy)$fatal(1,"idle UART command inherited a stale busy tag");
+        expect_pop(2'd2,8'h50);
         $display("PASS: per-source buffering, fair arbitration and bounded overflow");
         $finish;
     end

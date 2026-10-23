@@ -39,6 +39,7 @@ module tb_media_image_tx_flags;
     reg old_start;
 
     media_image_tx #(.CLK_HZ(1000), .FRAME_WORDS(1)) dut (
+        .job_start(1'b0),.job_snapshot(1'b0),.job_previous(1'b0),.job_index(5'd0),.job_layout(2'd0),.job_window(2'd0),.job_generation(16'd0),.job_ready(),.job_done(),.job_result(),
         .clk(clk), .rst(rst),
         .mounted(mounted), .source_busy(source_busy), .source_error(source_error),
         .first_bmp(first_bmp), .bmp_next(bmp_next), .bmp_prev(bmp_prev),

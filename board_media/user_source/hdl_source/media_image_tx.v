@@ -2,7 +2,8 @@
 // 512-word async FIFO are reused sequentially for image and audio.
 module media_image_tx #(
     parameter integer CLK_HZ=125000000,
-    parameter integer FRAME_WORDS=460800
+    parameter integer FRAME_WORDS=460800,
+    parameter EXTERNAL_SCHEDULE=0
 )(
     input wire clk,rst,
     input wire mounted,source_busy,source_error,
@@ -41,7 +42,14 @@ module media_image_tx #(
     output reg committed_wav,
     output reg [7:0] error_code,
     output wire [3:0] state_code,
-    output wire media_to_pc
+    output wire media_to_pc,
+    input wire job_start,job_snapshot,job_previous,
+    input wire [4:0] job_index,
+    input wire [1:0] job_layout,job_window,
+    input wire [15:0] job_generation,
+    output wire job_ready,
+    output reg job_done,
+    output reg [7:0] job_result
 );
     localparam [3:0] WAIT_READY=0,WAIT_HEADER=1,LOAD_IMAGE=2,ISSUE=3,SEND=4,
         WAIT_SOURCE=5,IMAGE_END_GAP=6,WAIT_RESULT=7,WAIT_COMMIT=8,IDLE=9,
@@ -81,6 +89,10 @@ module media_image_tx #(
     reg receiver_ready,boot_loaded,previous,image_has_audio,image_auto_status;
     reg pc_snapshot_pending,pc_snapshot_active,pending_next,pending_prev;
     reg [1:0] attempts,audio_attempts;
+    reg [1:0] transaction_layout,transaction_window;
+    reg [15:0] transaction_generation;
+    reg job_running;
+    reg [7:0] transaction_result;
     reg [27:0] wait_count;
     reg [27:0] packet_gap_target;
     reg [11:0] top_pad_rows_s0,bottom_pad_rows_s0;
@@ -100,6 +112,7 @@ module media_image_tx #(
     wire prev_request=(cmd_new && cmd==8'h50) || local_prev;
     wire request_new=next_request || prev_request || (cmd_new && cmd==8'h4d);
     assign busy=state!=IDLE && state!=WAIT_READY;
+    assign job_ready=(state==IDLE || state==WAIT_READY) && mounted && receiver_ready && !source_busy;
     // When this transaction is an on-demand PC snapshot, the UDP route sends
     // its formal frame to the PC. Idle/switching traffic keeps the display route.
     assign media_to_pc=pc_snapshot_active && state!=IDLE && state!=WAIT_READY;
@@ -151,6 +164,11 @@ module media_image_tx #(
         reg [63:0] cycles;
         begin
             cycles = width_gap_cycles_r;
+            // Shared display interpolation deliberately trades parallel logic
+            // for time. A full output row can hold the one-packet receiver for
+            // about 200 us; only multiview uses the 500 us drain interval.
+            if(transaction_layout!=0 && cycles<(CLK_HZ/2000 > 0 ? CLK_HZ/2000 : 1))
+                cycles=(CLK_HZ/2000 > 0 ? CLK_HZ/2000 : 1);
             if (words_sent == {12'd0,words}) cycles = cycles + top_pad_cycles_r;
             image_packet_gap = cycles[27:0];
         end
@@ -263,9 +281,9 @@ module media_image_tx #(
                         14:tx_data={3'd0,frame_total_words[20:16]};15:tx_data=8'd0;
                         16:tx_data=image_width[7:0];17:tx_data=image_width[11:8];
                         18:tx_data=image_height[7:0];19:tx_data=image_height[11:8];
-                        20:tx_data=8'd0; // single-image layout
-                        21:tx_data=8'd0; // full-frame window
-                        22:tx_data=8'd0;23:tx_data=8'd0; // layout generation
+                        20:tx_data={6'd0,transaction_layout};
+                        21:tx_data={6'd0,transaction_window};
+                        22:tx_data=transaction_generation[7:0];23:tx_data=transaction_generation[15:8];
                         default:;
                     endcase
                 end else if(kind==AUDIO_BEGIN) begin
@@ -311,12 +329,20 @@ module media_image_tx #(
             audio_error_sync<=0;audio_count_sync0<=0;audio_count_sync1<=0;
             audio_prepared_ref<=0;audio_done_ref<=0;audio_total_samples<=0;
             audio_samples_remaining<=0;audio_packet_samples<=0;audio_prep_phase<=0;
+            transaction_layout<=0;transaction_window<=0;transaction_generation<=0;
+            job_running<=0;job_done<=0;job_result<=0;transaction_result<=0;
         end else begin
             cmd_d<=cmd_pending;
             read_pending<=fifo_read;
-            if(pc_snapshot_request)pc_snapshot_pending<=1'b1;
-            if(next_request)pending_next<=1'b1;
-            if(prev_request)pending_prev<=1'b1;
+            job_done<=0;
+            if(job_running && state==IDLE)begin
+                job_running<=0;job_done<=1;job_result<=error_code!=0 ? 8'h80|error_code : transaction_result;
+            end
+            if(!EXTERNAL_SCHEDULE)begin
+                if(pc_snapshot_request)pc_snapshot_pending<=1'b1;
+                if(next_request)pending_next<=1'b1;
+                if(prev_request)pending_prev<=1'b1;
+            end
             prepared_sync<={prepared_sync[1:0],prepared_toggle};
             done_sync<={done_sync[1:0],done_toggle};
             audio_prepared_sync<={audio_prepared_sync[1:0],audio_prepared_toggle};
@@ -327,9 +353,19 @@ module media_image_tx #(
             audio_count_sync0<=audio_sample_count_async;audio_count_sync1<=audio_count_sync0;
             if(ready_pulse) receiver_ready<=1;
 
-            case(state)
+            if(EXTERNAL_SCHEDULE && job_start && job_ready)begin
+                job_running<=1;transaction_result<=0;
+                source_index<=job_index;previous<=job_previous;frame_id<=frame_id+1'b1;
+                transaction_layout<=job_snapshot ? 2'd0 : job_layout;
+                transaction_window<=job_snapshot ? 2'd0 : job_window;
+                transaction_generation<=job_snapshot ? 16'd0 : job_generation;
+                image_auto_status<=auto_status;pc_snapshot_active<=job_snapshot;
+                start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
+                attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;error_code<=0;state<=WAIT_HEADER;
+            end else case(state)
                 WAIT_READY: begin
-                    if(mounted && receiver_ready && !source_busy && !boot_loaded) begin
+                    if(EXTERNAL_SCHEDULE && job_ready)state<=IDLE;
+                    else if(!EXTERNAL_SCHEDULE && mounted && receiver_ready && !source_busy && !boot_loaded) begin
                         source_index<=first_bmp[4:0];frame_id<=frame_id+1'b1;previous<=0;
                         image_auto_status<=auto_status;
                         pc_snapshot_active<=0;
@@ -340,7 +376,7 @@ module media_image_tx #(
                     end else wait_count<=wait_count+1'b1;
                 end
                 IDLE: begin
-                    if((request_new || pending_next || pending_prev) && receiver_ready && !source_busy) begin
+                    if(!EXTERNAL_SCHEDULE && (request_new || pending_next || pending_prev) && receiver_ready && !source_busy) begin
                         if(pending_next || next_request) source_index<=bmp_next[6*base_index+:6];
                         else if(pending_prev || prev_request) source_index<=bmp_prev[6*base_index+:6];
                         else source_index<=base_index;
@@ -350,7 +386,7 @@ module media_image_tx #(
                         pending_next<=0;pending_prev<=0;
                         start_toggle<=~start_toggle;prepared_ref<=prepared_sync[2];done_ref<=done_sync[2];
                         attempts<=1;total_words<=0;sum<=0;sequence_id<=0;wait_count<=0;error_code<=0;state<=WAIT_HEADER;
-                    end else if((pc_snapshot_pending || pc_snapshot_request) && receiver_ready &&
+                    end else if(!EXTERNAL_SCHEDULE && (pc_snapshot_pending || pc_snapshot_request) && receiver_ready &&
                                 !source_busy && committed_valid) begin
                         source_index<=base_index;previous<=0;frame_id<=frame_id+1'b1;
                         image_auto_status<=auto_status;pc_snapshot_active<=1;
@@ -361,7 +397,7 @@ module media_image_tx #(
                 end
                 WAIT_HEADER: begin
                     if(prepared_sync[2]!=prepared_ref) begin
-                        image_has_audio<=pc_snapshot_active ? 1'b0 : has_wav_sync[1];
+                        image_has_audio<=pc_snapshot_active || transaction_layout!=0 ? 1'b0 : has_wav_sync[1];
                         audio_file_index<=wav_index_sync1;
                         frame_total_words<=image_word_count_pipe;
                         kind<=BEGIN_IMAGE;tx_length<=24;return_state<=LOAD_IMAGE;
@@ -424,8 +460,9 @@ module media_image_tx #(
                 end
                 WAIT_RESULT: begin
                     if(result_pulse && rx_frame==frame_id) begin
-                        if(rx_result==2) begin
-                            if(!pc_snapshot_active) begin
+                        if(rx_result==2 || (EXTERNAL_SCHEDULE && transaction_layout!=0 && rx_result==3)) begin
+                            transaction_result<=rx_result;
+                            if(!pc_snapshot_active && rx_result==2) begin
                                 committed_index<=source_index;committed_valid<=1;committed_wav<=image_has_audio;boot_loaded<=1;
                             end
                             pc_snapshot_active<=0;state<=IDLE;wait_count<=0;
@@ -456,6 +493,7 @@ module media_image_tx #(
                 end
                 WAIT_COMMIT: begin
                     if(result_pulse && rx_frame==frame_id && rx_result==2) begin
+                        transaction_result<=2;
                         if(!pc_snapshot_active) begin
                             committed_index<=source_index;committed_valid<=1;committed_wav<=image_has_audio;boot_loaded<=1;
                         end

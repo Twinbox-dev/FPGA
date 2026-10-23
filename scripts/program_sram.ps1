@@ -35,6 +35,17 @@ if (-not (Test-Path -LiteralPath $tdCli -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $bitPath -PathType Leaf)) {
     throw "Bit file not found: $bitPath"
 }
+if (-not $CandidateBit) {
+    $taskBitTime = (Get-Item -LiteralPath $bitPath).LastWriteTimeUtc
+    $taskRunDir = Split-Path -Parent $bitPath
+    foreach ($taskStage in @('.opt_place.begin.f', '.opt_route.begin.f', '.bitgen.begin.f')) {
+        $taskMarker = Join-Path $taskRunDir $taskStage
+        if ((Test-Path -LiteralPath $taskMarker) -and
+            (Get-Item -LiteralPath $taskMarker).LastWriteTimeUtc -gt $taskBitTime) {
+            throw "Refusing stale bit: the latest $taskStage is newer than $bitPath. Finish a successful build, or explicitly select a known CandidateBit."
+        }
+    }
+}
 
 New-Item -ItemType Directory -Force -Path $captureRoot | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'

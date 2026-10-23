@@ -10,7 +10,9 @@ module frame_read_write
 	parameter BURST_SIZE             = 256,
 	parameter WRITE_V_FLIP           = 1,      // 1: vertical flip when writing TF/BMP frame into SDRAM
 	parameter FRAME_WIDTH            = 640,
-	parameter FRAME_HEIGHT           = 480
+	parameter FRAME_HEIGHT           = 480,
+    parameter VIEW_ENABLE = 0,
+    parameter STREAM_CLOCK = 0
 ) 
 (
 	input                            rst,                  
@@ -86,7 +88,12 @@ module frame_read_write
 	input signed[19:0]               vrow_off,                   // 2026-10-03 信箱行偏移（透传至 frame_fifo_write）
     output                           write_ready,                // write_clk: reset released and FIFO has pipeline headroom
 	input                            write_en,                   // data write module write request for one data
-	input[WRITE_DATA_BITS - 1:0]     write_data                 // write data
+	input[WRITE_DATA_BITS - 1:0]     write_data,                // write data
+    input wire stream_clk, // optional network producer clock; audio retains write_clk
+    input wire [1:0] view_read_layout,view_write_layout,view_write_window,
+    input wire [3:0] view_valid_mask,
+    input wire view_epoch,
+    output wire view_drained_epoch
 
 );
 wire[BURST_BITS - 1:0]                           wrusedw;                    // write used words
@@ -96,6 +103,7 @@ wire[9:0]                                        aud_wrusedw;                // 
 wire[9:0]                                        aud_rdusedw;                // 音频 FIFO 读侧可用字
 wire                                             aud_fifo_aclr;              // 音频 FIFO 异步清
 wire                                             aud_ch_active;              // 读数据归属：1=音频
+wire video_black_write;
 
 wire 								 App_rd_busy;
 wire								 App_wr_busy;
@@ -105,8 +113,9 @@ wire                                 write_fifo_aclr;            // fifo Asynchr
 wire [8:0] write_fifo_used;
 wire write_fifo_full;
 wire write_reset_active = rst | write_fifo_aclr;
+wire producer_clk=STREAM_CLOCK ? stream_clk : write_clk;
 reg [2:0] write_reset_pipe;
-always @(posedge write_clk or posedge write_reset_active)
+always @(posedge producer_clk or posedge write_reset_active)
     if (write_reset_active) write_reset_pipe <= 3'b111;
     else write_reset_pipe <= {write_reset_pipe[1:0],1'b0};
 // ACK is asserted while frame_fifo_write still resets this FIFO. Do not
@@ -130,7 +139,7 @@ assign App_wr_dm = 4'b0000;
 wfifo_32_32_512 write_buf
 	(
 	.clkr                      	(mem_clk                  ),          // Read side clock
-	.clkw                      	(write_clk                ),          // Write side clock
+	.clkw                      	(producer_clk             ),          // Write side clock
 	.rst                       	(write_fifo_aclr          ),          // Asynchronous clear
 	.we                      	(write_en                 ),          // Write Request
 	.re                      	(App_wr_en        		  ),          // Read Request
@@ -151,7 +160,8 @@ frame_fifo_write
 	.BURST_SIZE                 (BURST_SIZE               ),
 	.WRITE_V_FLIP               (WRITE_V_FLIP             ),
 	.FRAME_WIDTH                (FRAME_WIDTH              ),
-	.FRAME_HEIGHT               (FRAME_HEIGHT             )
+	.FRAME_HEIGHT               (FRAME_HEIGHT             ),
+    .VIEW_ENABLE(VIEW_ENABLE)
 ) 
 frame_fifo_write_m0              
 (  
@@ -176,7 +186,8 @@ frame_fifo_write_m0
 	.write_len                  (write_len                ),
 	.vrow_off                   (vrow_off                 ),
 	.fifo_aclr                  (write_fifo_aclr          ),
-	.rdusedw                 	(rdusedw                  )
+	.rdusedw                 	(rdusedw                  ),
+    .view_layout(view_write_layout),.view_window(view_write_window)
 );
 
 //instantiate an asynchronous FIFO（视频通道：读数据仅在本通道突发期间写入）
@@ -185,9 +196,9 @@ rfifo_32_32_512 read_buf
 	.clkr                     	(read_clk                   ),          // Read side clock
 	.clkw                     	(mem_clk                    ),          // Write side clock
 	.rst                      	(read_fifo_aclr             ),          // Asynchronous clear
-	.we                     	(Sdr_rd_en & ~aud_ch_active ),          // Write Request
+	.we                     	((Sdr_rd_en & ~aud_ch_active) | video_black_write),
 	.re                     	(read_en                    ),          // Read Request
-	.di                      	(Sdr_rd_dout                ),          // Input Data
+	.di                      	(video_black_write ? {MEM_DATA_BITS{1'b0}} : Sdr_rd_dout),
 	.empty_flag					(                           ),          // Read side Empty flag
 	.full_flag					(                           ),          // Write side Full flag
 	.wrusedw                	(wrusedw         	  	  	 ),          // Read Used Words
@@ -221,7 +232,8 @@ frame_fifo_read
 	.MEM_DATA_BITS              (MEM_DATA_BITS            ),
 	.ADDR_BITS                  (ADDR_BITS                ),
 	.BURST_BITS                 (BURST_BITS               ),
-	.BURST_SIZE                 (BURST_SIZE               )
+	.BURST_SIZE                 (BURST_SIZE               ),
+    .VIEW_ENABLE(VIEW_ENABLE)
 )
 frame_fifo_read_m0
 (
@@ -255,7 +267,10 @@ frame_fifo_read_m0
     .aud_read_len               (aud_read_len             ),
     .aud_fifo_aclr              (aud_fifo_aclr            ),
     .aud_wrusedw                (aud_wrusedw              ),
-    .aud_ch_active              (aud_ch_active            )
+    .aud_ch_active              (aud_ch_active            ),
+    .view_layout(view_read_layout),.view_valid_mask(view_valid_mask),
+    .view_epoch(view_epoch),.view_drained_epoch(view_drained_epoch),
+    .video_black_write(video_black_write)
 );
 
 endmodule

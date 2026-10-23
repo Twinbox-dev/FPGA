@@ -89,3 +89,36 @@ PC D 快照此前已经下载到 `frameCvRb`，但预览父卡 `frameCard` 初�
 网页服务重新启动并连接媒体板后，D 收到 460,800 字、缺口 0；该快照逐字匹配 IMG5 的 720 行显示顺序反转数据，前端按 BMP bottom-up 映射后显示正确。用户刷新页面并按 D 后确认能看到图像。
 
 用户在新显示板 bit 上向左划一次，HDMI 成功切到下一张。随后通过 V1 `S` 回读确认媒体状态为 `img=9+wav`、`media-TX=idle error=0`。GT911 触发、媒体板切图和网页 D 预览均完成板级验收。
+
+## 早期双板控制字节序与资源快照（由旧实施计划合并）
+
+以下是 2026-10-20—21 的历史验收与产物身份，不是当前资源或当前固定帧格式。当前媒体板已改为原生 SD、可变尺寸帧；现行行为见 [双板架构](dual_board_architecture.md) 和 [多窗口说明](native_frame_multiview_handoff.md)。
+
+### 先前 PC 行为级互操作测试
+
+- **媒体发送、PC 模拟显示端**：PC stub 收 READY/RESULT。IMG1 的 460800 字图像和 24000 个 WAV 样本提交成功；无配对 WAV 的图片走零样本静音事务。显示板参数临时改为 PC `.1:2`，供媒体板数据流经 PC 校验后回 RESULT。
+- **显示端接收、PC 模拟媒体板**：PC stub 向显示板发送 READY、IMG1 图像和 WAV；460800 字图像与 golden 相同，720000 个 WAV 字节与卡镜像中的配对文件相同，图音提交 RESULT=2。
+- **正式 PC D 快照**：媒体板从已提交 SD 索引重读图片并回传 460800 字，PC 校验通过后收到图音最终提交 RESULT=2；此路径不写显示板 SDRAM。
+- 上述模拟测试及既有 Verilator 回归覆盖图像/音频协议解析、SDRAM 写入、图音提交、控制、状态、字幕、以太网发送仲裁与 UART 控制。
+
+### 本轮控制通道根因与修复
+
+媒体板通过旧版 eth_front 发出的 V1 控制头采用大端 TYPE/LEN，例如 0x0042、长度 1 的线路字节为 00 42 00 01。显示板 media_display_control_rx 原先按小端解析，因此忽略 SET、STATUS_REQ 和字幕包；显示板返回的 0x0041/0x0043 也曾按另一种字节序发送，媒体板等待约 2 秒后超时。修复后 0x0040–0x0046 控制包的双向 TYPE/LEN 都按 V1 大端收发；正式图像与 PCM 流 0x0020–0x0033 仍按小端收发。
+
+之前的字幕 round-trip 仿真自行拼了小端请求头，没有复现 eth_front 的 V1 大端头，因此仿真通过而上板控制超时。本轮仿真改为实际 V1 字节顺序，并增加显示侧 ACK/STATUS 头的字节检查。
+
+
+### 本轮 bit、资源与时序
+
+| 板卡 | bit 文件 | SHA-256 | LUT / FF | BRAM9K / BRAM32K | DSP / PLL | Setup WNS / Hold WNS |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| 显示板 | board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit | 813606D23222F03A415DFCB3F6B45FC5E90AD22B46B2D4010F1CF10A6968D9B7 | 13,178 / 9,825 | 48 / 3 | 10 / 4 | −5.699 ns / −3.200 ns |
+| 媒体板 | board_media/td_project/media_net_Runs/phy_1/media_net.bit | 0DE75D333FE0D0FE85A0C375B7502B75DAB86782B7247BB43689CA36568B72AB | 12,411 / 8,500 | 22 / 2 | 2 / 2 | −3.560 ns / −3.056 ns |
+
+当前优化分支相较 dual-V1 显示板少 1,077 LUT、539 FF 和 7 块 BRAM9K，新增使用 1 块 BRAM32K。该版移除了显示板不再使用的旧 UART 控制通路、旧 PC 直连控制入口，以及显示板本地 SDRAM 诊断读回探针；PC 网页 D 正式快照仍由媒体板处理，OSD“关闭/调节后 3 秒/始终显示”也继续保留。OSD 与字幕字体改为共用一块双读口 BRAM32K。用户已在新 bit 上确认功能正常。
+
+板间控制可用 `python scripts/dual_board_cmd_probe.py --count 1` 快速检查：脚本通过媒体板查询当前音量，发送一次音量变化并恢复原值，验证显示板 ACK 经媒体板返回。先关闭占用 PC UDP `:2` 的 Web 控制台。
+
+2026-10-20 的黑边图、单步命令、按键启动和最终 RESULT 重试修复及逐图验收见 [双板实时联调记录](dual_board_live_debug_20261020.md)。
+
+两边 TD P&R 均生成 bit；资源与最终报告位于各自 phy_1/*_phy.area、route.qor、final_timing.rpt。两份报告仍显示既有的 setup/hold 时序违例，实际网络与协议回归已通过；HDMI 目视和音频听感由用户返回后确认。

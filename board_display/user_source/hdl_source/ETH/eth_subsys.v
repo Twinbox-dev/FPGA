@@ -36,13 +36,18 @@ module eth_subsys(
     input  wire [7:0]  media_packet_data,
     input  wire [15:0] media_packet_length,
     output wire        media_packet_ack,
-    output wire        media_packet_ready
+    output wire        media_packet_ready,
+    input wire digest_req, digest_valid,
+    input wire [7:0] digest_data,
+    input wire [15:0] digest_length,
+    output wire digest_ready, digest_ack
 );
     parameter DEVICE           = "EG4";
     parameter LOCAL_UDP_PORT   = 16'h0001;
     parameter LOCAL_IP         = 32'hc0a88902;   // 192.168.137.2（板卡）
     parameter LOCAL_MAC        = 48'h0123456789ab;
     parameter MEDIA_PEER_IP    = 32'hc0a88903;    // 媒体板 .3
+    parameter MEDIA_PEER_MAC   = 48'h020000000003; // 媒体板固定 MAC
     parameter MEDIA_PEER_UDP_PORT = 16'h0001;     // 媒体应用端口
     // 速率开关（2026-10-02 定）：**当前=千兆**（GIGABIT=1）。
     // 已知风险（用户明确接受）：综合时序过不了——厂商加密 UDP 栈内部（ARP 缓存）
@@ -114,19 +119,20 @@ module eth_subsys(
     wire [7:0]  app_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
     wire [15:0] udp_data_length;
-    wire [31:0] tx_dst_ip = MEDIA_PEER_IP;
-    wire [15:0] tx_dst_port = MEDIA_PEER_UDP_PORT;
+    wire digest_chunk_active;
+    wire [31:0] tx_dst_ip = digest_chunk_active ? MEDIA_PEER_IP : 32'hc0a88901;
+    wire [15:0] tx_dst_port = digest_chunk_active ? MEDIA_PEER_UDP_PORT : 16'd4;
 
     media_tx_mux u_tx_mux (
         .clk          (udp_clk), .rst(reset),
         .stack_ready  (udp_tx_ready), .stack_ack(app_tx_ack),
-        .ctrl_req     (1'b0), .ctrl_valid(1'b0),
-        .ctrl_data    (8'd0), .ctrl_length(16'd0),
-        .ctrl_ready   (), .ctrl_ack(),
+        .ctrl_req     (digest_req), .ctrl_valid(digest_valid),
+        .ctrl_data    (digest_data), .ctrl_length(digest_length),
+        .ctrl_ready   (digest_ready), .ctrl_ack(digest_ack),
         .chunk_req    (media_packet_request), .chunk_valid(media_packet_valid),
         .chunk_data   (media_packet_data), .chunk_length(media_packet_length),
         .chunk_ack    (media_packet_ack), .chunk_ready(media_packet_ready),
-        .chunk_active(), .chunk_owner(),
+        .chunk_active(), .chunk_owner(digest_chunk_active),
         .stack_req    (app_tx_data_request), .stack_valid(app_tx_data_valid),
         .stack_data   (app_tx_data), .stack_length(udp_data_length)
     );
@@ -134,19 +140,8 @@ module eth_subsys(
     assign app_rx_data_out = app_rx_data;
     assign app_rx_data_valid_out = app_rx_data_valid;
 
-    // ================= UDP/IP 协议栈（官方 IP）=================
-    // 静态 IP/端口：地址/端口给常量，**valid 必须"复位期间 0、释放后 1"**——
-    // 官方栈在 valid 的上升沿装载 input_*。demo（udp_transmit_test.v）正是这么做的：
-    //   if(reset) valid<=0;  else valid<=1;      ← 复位后产生一次 0→1 边沿
-    // 教训：①接恒 0 → 永不装载；②接恒 1（上电即 1）→ 复位释放时**没有边沿**，
-    // 同样可能不装载。两者都会表现为"收到包但从不回包"。
-    reg local_cfg_valid;
-    always @(posedge udp_clk)
-        local_cfg_valid <= ~reset;
-    wire [31:0] local_ip_dyn     = LOCAL_IP;
-    wire [15:0] local_port_dyn   = LOCAL_UDP_PORT;
     // ================= TEMAC MAC + RGMII 的连线声明 =================
-    // 必须在 udp_ip_protocol_stack 例化之前声明：否则例化端口上的名字会被
+    // 必须在协议层例化之前声明：否则例化端口上的名字会被
     // 隐式声明成 1bit 线网（TD 报 HDL-7225 critical），与后面的显式声明冲突，
     // 且隐式线网会静默截断位宽。
     wire        temac_tx_ready, temac_tx_valid, temac_tx_sof, temac_tx_eof;
@@ -167,43 +162,40 @@ module eth_subsys(
     wire        rx_valid, tx_valid, rx_correct_frame, rx_error_frame;
     wire        rx_clk_en_int_w, tx_clk_en_int_w;
 
-    wire [7:0]  app_tx_data_dummy;   // 占位（栈要求常量目的端口/地址）
-    udp_ip_protocol_stack #(
-        .DEVICE             (DEVICE),
-        .LOCAL_UDP_PORT_NUM (LOCAL_UDP_PORT),
-        .LOCAL_IP_ADDRESS   (LOCAL_IP),
-        .LOCAL_MAC_ADDRESS  (LOCAL_MAC)
+    // The display side only exchanges IPv4/UDP with the fixed media peer.
+    // Its lightweight stack replies to ARP and intentionally omits ICMP echo.
+    display_udp_lite #(
+        .LOCAL_IP  (LOCAL_IP),
+        .LOCAL_MAC (LOCAL_MAC),
+        .PEER_IP   (MEDIA_PEER_IP),
+        .PEER_MAC  (MEDIA_PEER_MAC),
+        .LOCAL_PORT(LOCAL_UDP_PORT)
     ) u_udp_stack (
-        .udp_rx_clk            (udp_clk),
-        .udp_tx_clk            (udp_clk),
-        .reset                 (reset),
+        .clk                    (udp_clk),
+        .reset                  (reset),
         .udp2app_tx_ready      (udp_tx_ready),
         .udp2app_tx_ack        (app_tx_ack),
         .app_tx_request        (app_tx_data_request),
         .app_tx_data_valid     (app_tx_data_valid),
         .app_tx_data           (app_tx_data),
         .app_tx_data_length    (udp_data_length),
-        .app_tx_dst_port       (tx_dst_port),          // 媒体板应用端口
-        .ip_tx_dst_address     (tx_dst_ip),            // 媒体板地址
-        .input_local_udp_port_num       (local_port_dyn),
-        .input_local_udp_port_num_valid (local_cfg_valid),
-        .input_local_ip_address         (local_ip_dyn),
-        .input_local_ip_address_valid   (local_cfg_valid),
-        .app_rx_data_valid      (app_rx_data_valid),
-        .app_rx_data            (app_rx_data),
-        .app_rx_data_length     (),
-        .app_rx_port_num        (),
-        .temac_rx_ready         (temac_rx_ready),
-        .temac_rx_valid         (!temac_rx_valid_n),  // fifo 的 _n 低有效，栈要高有效
-        .temac_rx_data          (temac_rx_data),
-        .temac_rx_sof           (temac_rx_sof),
-        .temac_rx_eof           (temac_rx_eof),
-        .temac_tx_ready         (temac_tx_ready),
-        .temac_tx_valid         (temac_tx_valid),
-        .temac_tx_data          (temac_tx_data),
-        .temac_tx_sof           (temac_tx_sof),
-        .temac_tx_eof           (temac_tx_eof),
-        .ip_rx_error            (),
+        .app_tx_dst_port       (tx_dst_port),
+        .ip_tx_dst_address     (tx_dst_ip),
+        .app_rx_data_valid     (app_rx_data_valid),
+        .app_rx_data           (app_rx_data),
+        .app_rx_data_length    (),
+        .app_rx_port_num       (),
+        .temac_rx_ready        (temac_rx_ready),
+        .temac_rx_valid        (!temac_rx_valid_n),
+        .temac_rx_data         (temac_rx_data),
+        .temac_rx_sof          (temac_rx_sof),
+        .temac_rx_eof          (temac_rx_eof),
+        .temac_tx_ready        (temac_tx_ready),
+        .temac_tx_valid        (temac_tx_valid),
+        .temac_tx_data         (temac_tx_data),
+        .temac_tx_sof          (temac_tx_sof),
+        .temac_tx_eof          (temac_tx_eof),
+        .ip_rx_error           (),
         .arp_request_no_reply_error ()
     );
 

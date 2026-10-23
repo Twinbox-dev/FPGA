@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Dump the media board's existing MAC probe to inspect its latest READY request."""
+"""Inspect the latest READY request in an enabled media MAC capture build.
+
+The current product top uses MAC_CAPTURE=0. This diagnostic requires a matching
+MAC_CAPTURE=1 isolated bit; the product bit will not return capture data. Close
+the Web console first because this tool owns its UDP receive port.
+"""
 from __future__ import annotations
 
 import argparse

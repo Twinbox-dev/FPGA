@@ -13,6 +13,7 @@ module tb_media_frame_pad;
     reg out_ready=1;
 
     media_frame_pad #(.FRAME_WIDTH(CW),.FRAME_HEIGHT(CH),.FRAME_WORDS(FW)) dut (
+        .layout(2'd0),
         .clk(clk),.rst(rst),.frame_begin(frame_begin),
         .image_width(image_width),.image_height(image_height),.frame_end(frame_end),
         .in_is_audio(in_is_audio),.in_start(in_start),.in_count(in_count),

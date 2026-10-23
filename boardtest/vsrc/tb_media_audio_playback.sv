@@ -55,7 +55,10 @@ module tb_media_audio_playback;
         samples[2]=24'h7f0000;
         samples[3]=24'ha00000;
         repeat(5) @(negedge clk);rst=0;
-        @(negedge clk);pair_on=1;source_toggle=1;
+        @(negedge clk);source_toggle=1;
+        repeat(100)@(negedge clk);
+        if(read_req || rd_ptr!=0)$fatal(1,"muted source read before layout commit");
+        pair_on=1;
         #1000000;$fatal(1,"timeout");
     end
 endmodule
