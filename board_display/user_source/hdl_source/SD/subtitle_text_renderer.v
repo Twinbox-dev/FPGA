@@ -1,12 +1,12 @@
-// One 8x16 glyph row at a time. Text RAM and font ROM are both synchronous:
-// request next character at pixel 4, fetch its glyph at pixel 6, then load
-// the shift register at pixel 7 for the next cell.
+// Shared 8x16 glyphs rendered as 16x32 cells without enlarging the font ROM.
+// Fetch the next character during the current cell, load at pixel 15, and
+// shift only after each repeated pair of horizontal pixels.
 module subtitle_text_renderer(
     input  wire               video_clk,
     input  wire               rst,
     input  wire               de,
     input  wire               vs,
-    input  wire signed [11:0] ox,
+    input  wire signed [12:0] ox,
     input  wire [9:0]         oy,
     input  wire [7:0]         text_len,
     output reg  [7:0]         char_index,
@@ -15,6 +15,7 @@ module subtitle_text_renderer(
     output wire [3:0]         font_row,
     input  wire [7:0]         font_row_data,
     output reg                text_on,
+    output reg  [23:0]         text_rgb,
     output reg                in_band
 );
     reg de_d, vs_d;
@@ -35,16 +36,25 @@ module subtitle_text_renderer(
         end
     end
 
-    // x can be 1279 while ox reaches -1280; keep the full 0..2559 range.
-    wire signed [12:0] rx = $signed({2'b00, x_cnt}) - $signed({ox[11], ox});
+    // x can be 1279 while ox reaches -2560; retain signed arithmetic.
+    wire signed [13:0] rx = $signed({3'b000, x_cnt}) - $signed({ox[12], ox});
     wire signed [10:0] ry = $signed({1'b0, y_cnt}) - $signed({1'b0, oy});
-    wire [10:0] text_width = {text_len, 3'b000};
-    wire in_x = (rx >= 13'sd0) &&
+    wire [11:0] text_width = {text_len, 4'b0000};
+    wire in_x = (rx >= 14'sd0) &&
                 (rx < $signed({2'b00, text_width}));
-    wire in_y = (ry >= 11'sd0) && (ry < 11'sd16);
-    wire [2:0] bit_x = rx[2:0];
-    wire [3:0] glyph_y = ry[3:0];
-    wire signed [12:0] column = rx >>> 3;
+    wire in_y = (ry >= 11'sd0) && (ry < 11'sd32);
+    wire [3:0] bit_x = rx[3:0];
+    wire [3:0] glyph_y = ry[4:1];
+    wire signed [13:0] column = rx >>> 4;
+
+    function [23:0] caption_color(input [1:0] cell_index);
+        case (cell_index)
+            0: caption_color = 24'h6EE7F9;
+            1: caption_color = 24'hC4B5FD;
+            2: caption_color = 24'hFFADD2;
+            default: caption_color = 24'hA7F3D0;
+        endcase
+    endfunction
 
     reg [7:0] row_shift;
     wire [7:0] glyph_row = font_row_data;
@@ -55,13 +65,16 @@ module subtitle_text_renderer(
             char_index <= 8'd0;
             row_shift <= 8'd0;
         end else if (!de) begin
-            row_shift <= 8'd0;
+            // Preload the first visible (possibly clipped) character during
+            // blanking, not just after a complete on-screen cell boundary.
+            char_index <= column[7:0];
+            row_shift <= glyph_row << bit_x[3:1];
         end else begin
-            if (bit_x == 3'd4)
+            if (bit_x == 4'd8)
                 char_index <= column[7:0] + 8'd1;
-            if (bit_x == 3'd7)
+            if (bit_x == 4'd15)
                 row_shift <= glyph_row;
-            else
+            else if (bit_x[0])
                 row_shift <= {row_shift[6:0], 1'b0};
         end
     end
@@ -71,13 +84,15 @@ module subtitle_text_renderer(
     always @(posedge video_clk or posedge rst) begin
         if (rst) begin
             text_on <= 1'b0;
+            text_rgb <= 24'h6EE7F9;
             in_band <= 1'b0;
         end else begin
             text_on <= de && in_x && in_y && row_shift[7];
+            text_rgb <= caption_color(column[1:0]);
             in_band <= de && text_len != 8'd0 &&
-                       rx >= -13'sd8 &&
-                       rx < $signed({2'b00, text_width}) + 13'sd8 &&
-                       ry >= -11'sd4 && ry < 11'sd20;
+                       rx >= -14'sd8 &&
+                       rx < $signed({2'b00, text_width}) + 14'sd8 &&
+                       ry >= -11'sd4 && ry < 11'sd36;
         end
     end
 endmodule

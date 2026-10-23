@@ -169,7 +169,7 @@ build_subtitle_store/sim_subtitle_store: vsrc/tb_subtitle_store.v $(TSD)/subtitl
 build_subtitle_scroll/sim_subtitle_scroll: vsrc/tb_subtitle_scroll.v $(TSD)/subtitle_scroll.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_scroll $^ --Mdir build_subtitle_scroll -o sim_subtitle_scroll
 build_subtitle_text/sim_subtitle_text: vsrc/tb_subtitle_text.v $(TSD)/subtitle_text_renderer.v $(OSD_FONT)
-	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_text $(filter %.v,$^) --Mdir build_subtitle_text -o sim_subtitle_text
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --unroll-count 1 --top-module tb_subtitle_text $(filter %.v,$^) --Mdir build_subtitle_text -o sim_subtitle_text
 build_osd_visibility/sim_osd_visibility: vsrc/tb_osd_visibility.v $(TSD)/osd_visibility.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_visibility $^ --Mdir build_osd_visibility -o sim_osd_visibility
 build_osd_composite/sim_osd_composite: vsrc/tb_osd_composite.v $(TSD)/osd_composite.v
@@ -469,7 +469,7 @@ display-udp-lite:
 build_cv_pixel_effects/sim_cv_pixel_effects: vsrc/tb_cv_pixel_effects.sv $(TSD)/cv_pixel_effects.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_cv_pixel_effects $^ --Mdir build_cv_pixel_effects -o sim_cv_pixel_effects
 
-cv-unit: build_cv_pixel_effects/sim_cv_pixel_effects
+cv-unit: build_cv_pixel_effects/sim_cv_pixel_effects snow-unit
 	./build_cv_pixel_effects/sim_cv_pixel_effects
 
 touch-command-path:
@@ -495,3 +495,9 @@ view-direct-full-frame:
 view-direct-framepath:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_framepath -GUSE_STREAM_CLOCK=1 vsrc/tb_view_framepath.sv $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board_display/user_source/hdl_source/ETH/view_scan_address.v ../board_display/user_source/hdl_source/ETH/view_write_address.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v --Mdir build_view_direct_framepath -o sim_direct_framepath
 	./build_view_direct_framepath/sim_direct_framepath
+
+.PHONY: snow-unit
+build_snow_field/sim_snow_field: vsrc/tb_snow_field.sv $(TSD)/cv_pixel_effects.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --unroll-count 1 --top-module tb_snow_field $^ --Mdir build_snow_field -o sim_snow_field
+snow-unit: build_snow_field/sim_snow_field
+	./build_snow_field/sim_snow_field

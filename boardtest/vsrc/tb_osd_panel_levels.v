@@ -4,6 +4,7 @@ module tb_osd_panel_levels;
     always #5 clk = ~clk;
     reg rst = 1, de = 0, vs = 0;
     wire text_on, in_band;
+    wire [23:0] text_rgb;
     wire [6:0] font_ascii;
     wire [3:0] font_row;
     wire [7:0] font_row_data;
@@ -15,7 +16,7 @@ module tb_osd_panel_levels;
         .brightness_level(4'd5), .contrast_level(4'd3),
         .volume_level(4'd7),.image_width(12'd1280),.image_height(12'd720),
         .font_ascii(font_ascii), .font_row(font_row), .font_row_data(font_row_data),
-        .text_on(text_on), .in_band(in_band)
+        .text_on(text_on), .text_rgb(text_rgb), .in_band(in_band)
     );
     font_rom_2r #(
         .MEM_FILE("../board_display/user_source/hdl_source/SD/font.mem")
@@ -65,24 +66,27 @@ module tb_osd_panel_levels;
         $readmemh("../board_display/user_source/hdl_source/SD/font.mem", font_mem);
         repeat (4) @(negedge clk); rst=0;
         vs=1; @(negedge clk); vs=0;
-        for (y=0; y<80; y=y+1) begin
+        for (y=0; y<162; y=y+1) begin
             de=1;
-            for (x=0; x<80; x=x+1) begin
+            for (x=0; x<136; x=x+1) begin
                 @(negedge clk);
                 expected=0;
-                if (x>=8 && x<64) begin
-                    glyph=font_mem[panel_char(y/16,(x-8)/8)*16+(y%16)];
-                    expected=glyph[7-((x-8)%8)];
+                if (x>=8 && x<120 && y<160) begin
+                    glyph=font_mem[panel_char(y/32,(x-8)/16)*16+((y%32)/2)];
+                    expected=glyph[7-(((x-8)%16)/2)];
                 end
                 if (text_on !== expected)
                     $fatal(1,"panel pixel mismatch x=%0d y=%0d got=%b expect=%b",x,y,text_on,expected);
+                if (text_on && text_rgb !== ((y<32) ? 24'hFFC857 :
+                    (y<64) ? 24'h6EE7F9 : (y<96) ? 24'h64E6B5 : 24'hC4B5FD))
+                    $fatal(1,"panel row color mismatch y=%0d rgb=%h",y,text_rgb);
                 if (expected) lit=lit+1;
             end
             de=0;
             repeat (5) @(negedge clk);
         end
         if (lit<50) $fatal(1,"font ROM was blank");
-        $display("PASS OSD panel: BRI/CON/VOL and decimal source resolution (%0d lit pixels)",lit);
+        $display("PASS OSD panel: 2x glyph golden and colored BRI/CON/VOL/W/H (%0d lit pixels)",lit);
         $finish;
     end
 endmodule

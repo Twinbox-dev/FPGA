@@ -12,24 +12,24 @@ IO Statistics
   #inout                    0
 
 Gate Statistics
-#Basic gates            17242
-  #and                   2398
+#Basic gates            17296
+  #and                   2385
   #nand                     0
-  #or                    1494
+  #or                    1452
   #nor                      0
-  #xor                    228
+  #xor                    244
   #xnor                     0
   #buf                      0
-  #not                   1056
+  #not                   1103
   #bufif1                  35
-  #MX21                  1983
+  #MX21                  2045
   #FADD                     0
-  #DFF                  10048
+  #DFF                  10032
   #LATCH                    0
-#MACRO_ADD                673
-#MACRO_EQ                 424
+#MACRO_ADD                681
+#MACRO_EQ                 386
 #MACRO_MULT                19
-#MACRO_MUX               5112
+#MACRO_MUX               5219
 #MACRO_OTHERS              43
 
 LUT Statistics
@@ -44,7 +44,7 @@ Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |7194   |10048  |1159   |
+|top                                       |top                                               |7264   |10032  |1129   |
 |  U3                                      |sdram                                             |104    |534    |9      |
 |    u2_ram                                |sdr_as_ram                                        |104    |534    |9      |
 |      u1_init_ref                         |sdr_init_ref                                      |24     |96     |4      |
@@ -74,12 +74,13 @@ Report Hierarchy Area:
 |  transition_line_buf_m0                  |transition_line_buf                               |0      |0      |1      |
 |  transition_line_read_m0                 |transition_line_read                              |89     |62     |13     |
 |  u_acceptance_digest                     |display_frame_digest                              |104    |378    |24     |
-|  u_cv_pixel_effects                      |cv_pixel_effects_runtime                          |154    |365    |124    |
-|    u_convolution                         |cv_pixel_effects                                  |47     |231    |54     |
-|    u_point_effects                       |cv_pixel_effects                                  |78     |102    |66     |
+|  u_cv_pixel_effects                      |cv_pixel_effects_runtime                          |148    |299    |103    |
+|    u_convolution                         |cv_pixel_effects                                  |39     |231    |54     |
+|    u_point_effects                       |cv_pixel_effects                                  |80     |36     |45     |
+|      g_point_runtime$u_snow_field        |cv_snow_field                                     |73     |10     |43     |
 |    u_point_line_delay                    |cv_point_line_delay                               |16     |2      |1      |
 |  u_display_levels                        |display_levels_rgb                                |19     |0      |21     |
-|  u_eth_subsys                            |eth_subsys                                        |533    |1570   |126    |
+|  u_eth_subsys                            |eth_subsys                                        |534    |1570   |125    |
 |    u_clk_gen                             |clk_gen_rst_gen                                   |1      |0      |1      |
 |      u_pll_0                             |pll_gen                                           |0      |0      |1      |
 |    u_rx_fifo                             |rx_client_fifo                                    |66     |161    |13     |
@@ -104,7 +105,7 @@ Report Hierarchy Area:
 |      ramgen_l                            |RAMB16_S9_S9                                      |0      |0      |1      |
 |      ramgen_u                            |RAMB16_S9_S9                                      |0      |0      |1      |
 |    u_tx_mux                              |media_tx_mux                                      |36     |13     |2      |
-|    u_udp_stack                           |display_udp_lite                                  |323    |539    |77     |
+|    u_udp_stack                           |display_udp_lite                                  |324    |539    |76     |
 |  u_gt911_cursor                          |gt911_cursor_overlay                              |13     |122    |10     |
 |  u_gt911_trackpad                        |gt911_trackpad                                    |809    |271    |51     |
 |    u_i2c                                 |gt911_i2c_byte                                    |615    |68     |4      |
@@ -137,21 +138,21 @@ Report Hierarchy Area:
 |  u_media_display_control_rx              |media_display_control_rx                          |167    |194    |34     |
 |  u_media_display_tx                      |media_display_tx                                  |465    |365    |6      |
 |  u_media_frame_pad                       |view_image_pipeline                               |667    |826    |83     |
-|    u_pad                                 |media_frame_pad                                   |80     |157    |21     |
-|    u_shrink                              |view_bilinear_shrink                              |582    |669    |62     |
+|    u_pad                                 |media_frame_pad                                   |81     |157    |21     |
+|    u_shrink                              |view_bilinear_shrink                              |581    |669    |62     |
 |      u_geometry                          |view_scale_geometry                               |356    |256    |17     |
-|  u_media_protocol_rx                     |media_protocol_rx                                 |627    |557    |70     |
-|  u_media_transaction_writer              |media_transaction_writer                          |194    |570    |21     |
-|  u_osd_composite                         |osd_composite                                     |4      |52     |0      |
-|  u_osd_panel                             |osd_panel_levels                                  |183    |37     |77     |
+|  u_media_protocol_rx                     |media_protocol_rx                                 |629    |557    |70     |
+|  u_media_transaction_writer              |media_transaction_writer                          |192    |570    |21     |
+|  u_osd_composite                         |osd_composite                                     |7      |52     |0      |
+|  u_osd_panel                             |osd_panel_levels                                  |207    |46     |73     |
 |  u_osd_visibility                        |osd_visibility                                    |25     |118    |10     |
 |  u_seg0                                  |seg_decoder                                       |0      |0      |0      |
 |  u_shared_font                           |font_rom_2r                                       |1      |0      |1      |
 |  u_spectrum_dft                          |spectrum_dft                                      |1111   |427    |24     |
 |    u_sample_buf                          |spectrum_sample_buf                               |0      |0      |1      |
-|  u_spectrum_overlay                      |spectrum_overlay                                  |42     |129    |18     |
-|  u_subtitle_renderer                     |subtitle_text_renderer                            |17     |18     |13     |
-|  u_subtitle_scroll                       |subtitle_scroll                                   |16     |11     |3      |
+|  u_spectrum_overlay                      |spectrum_overlay                                  |64     |160    |21     |
+|  u_subtitle_renderer                     |subtitle_text_renderer                            |41     |27     |6      |
+|  u_subtitle_scroll                       |subtitle_scroll                                   |18     |12     |3      |
 |  u_subtitle_store                        |subtitle_store                                    |5      |30     |1      |
 |  u_test_cursor                           |display_test_cursor                               |17     |72     |15     |
 |  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |5      |28     |0      |

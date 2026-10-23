@@ -1,20 +1,21 @@
 // Move a variable-length ASCII caption from right to left at two pixels/frame.
 module subtitle_scroll #(
-    parameter signed [11:0] X_START = 12'sd1280,
-    parameter [9:0] Y_TOP = 10'd504,
-    parameter signed [11:0] STEP = 12'sd2
+    parameter signed [12:0] X_START = 13'sd1280,
+    parameter [9:0] Y_TOP = 10'd480,
+    parameter signed [12:0] STEP = 13'sd2
 )(
     input  wire               video_clk,
     input  wire               rst,
     input  wire               vs,
     input  wire               text_changed_pulse,
     input  wire [7:0]         text_len,
-    output reg  signed [11:0] ox,
+    output reg  signed [12:0] ox,
     output wire [9:0]         oy
 );
     reg vs_d;
     wire vs_rise = vs && !vs_d;
-    wire signed [11:0] x_end = -$signed({1'b0, text_len, 3'b000});
+    // 160 doubled 16-pixel cells reach -2560, beyond a signed 12-bit offset.
+    wire signed [12:0] x_end = -$signed({1'b0, text_len, 4'b0000});
     assign oy = Y_TOP;
 
     always @(posedge video_clk or posedge rst) begin
