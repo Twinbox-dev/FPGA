@@ -46,6 +46,11 @@ parameter MEDIA_PEER_PORT = 16'h0001;    // 媒体板正式应用端口
 // Runtime CV effect reset/default: 0 bypass, 1 grayscale, 2 binary,
 // 3 Sobel, 4 sharpen, 5 moving snow.
 parameter CV_EFFECT_MODE = 0;
+// Product D remains the media-board SD snapshot. These two blocks are only
+// for acceptance diagnostics (scan digest 0x4c / injected cursor 0x4b).
+// Set to 1 in an isolated diagnostic build to restore both without removing
+// any historical probe RTL or tests from the repository.
+parameter DISPLAY_DIAGNOSTICS = 0;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -490,8 +495,14 @@ reg [7:0]   subtitle_ack_seq_eth, subtitle_ack_value_eth;
 reg [63:0]  status_payload_eth;
 
 wire diagnostic_cursor_enabled;wire [10:0] diagnostic_cursor_x;wire [9:0] diagnostic_cursor_y;
+generate if(DISPLAY_DIAGNOSTICS)begin:g_diagnostic_cursor
 display_test_cursor u_test_cursor(.clk(eth_app_clk),.rst(rst_all),.data(eth_rx_data),.valid(eth_rx_valid),
     .enabled(diagnostic_cursor_enabled),.x(diagnostic_cursor_x),.y(diagnostic_cursor_y));
+end else begin:g_product_cursor
+    assign diagnostic_cursor_enabled=1'b0;
+    assign diagnostic_cursor_x=11'd640;
+    assign diagnostic_cursor_y=10'd360;
+end endgenerate
 wire digest_req, digest_valid, digest_ready, digest_ack;
 wire [7:0] digest_data;
 wire [15:0] digest_length;
@@ -1240,6 +1251,7 @@ frame_read_write #(
     .o_aud_fifo_words  (audio_read_fifo_words)
 );
 
+generate if(DISPLAY_DIAGNOSTICS)begin:g_acceptance_digest
 display_frame_digest u_acceptance_digest (
     .mem_clk(ext_mem_clk), .app_clk(eth_app_clk), .producer_clk(eth_app_clk), .rst(rst_all),
     .video_ack(video_read_req_ack), .video_valid(frame_sdr_rd_valid),
@@ -1255,6 +1267,12 @@ display_frame_digest u_acceptance_digest (
     .tx_request(digest_req), .tx_valid(digest_valid), .tx_data(digest_data),
     .tx_length(digest_length), .tx_ready(digest_ready), .tx_ack(digest_ack)
 );
+end else begin:g_product_digest
+    assign digest_req=1'b0;
+    assign digest_valid=1'b0;
+    assign digest_data=8'd0;
+    assign digest_length=16'd0;
+end endgenerate
 transition_line_read transition_line_read_m0 (
     .mem_clk (ext_mem_clk), .rst (rst_all),
     .sdr_init_done (Sdr_init_done), .sdr_busy (Sdr_busy),

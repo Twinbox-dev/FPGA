@@ -248,6 +248,20 @@ media-sd-image-source: build_media_sd_image_source/sim_media_sd_image_source
 	python3 diagnostics/export_card_pcm.py
 	./build_media_sd_image_source/sim_media_sd_image_source +CARD=../img/card_user_real.img +CARD_FULL_IMAGE=1
 
+# Keep the historical parser untouched as the cycle-accurate reference.
+build_wav_reader_compact/wav_reader_reference.v: vsrc/wav_reader.v
+	mkdir -p build_wav_reader_compact
+	python3 -c "from pathlib import Path; Path('$@').write_text(Path('$<').read_text().replace('module wav_reader (', 'module wav_reader_reference (', 1))"
+
+build_wav_reader_compact/sim_wav_reader_compact: vsrc/tb_wav_reader_compact.sv \
+	../board_media/user_source/hdl_source/SD/wav_reader.v build_wav_reader_compact/wav_reader_reference.v
+	$(VERILATOR) --binary --build-jobs 4 --timing --unroll-count 1 -Wno-fatal -Wno-WIDTH \
+	  --top-module tb_wav_reader_compact $^ --Mdir build_wav_reader_compact -o sim_wav_reader_compact
+
+.PHONY: wav-reader-unit
+wav-reader-unit: build_wav_reader_compact/sim_wav_reader_compact
+	./build_wav_reader_compact/sim_wav_reader_compact
+
 build_media_uart_arbiter/sim_media_uart_arbiter: vsrc/tb_media_uart_arbiter.sv ../board_media/user_source/hdl_source/media_uart_arbiter.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_uart_arbiter $^ --Mdir build_media_uart_arbiter -o sim_media_uart_arbiter
 

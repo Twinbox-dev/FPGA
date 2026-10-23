@@ -1,1 +1,4 @@
 The implemented result of phy_1 is saved as best result.
+
+SWNS: -5.699ns, STNS: -3124.687ns.
+HWNS: -3.054ns, HTNS: -71.878ns.

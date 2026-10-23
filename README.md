@@ -58,5 +58,7 @@ python scripts/web_console/app.py
 | 验证入口、资源、时序 | [验证](docs/verification.md)、[资源](docs/board_status.md)、[时序判读](docs/timing_report_howto.md) |
 | 典型故障与修复证据 | [多分辨率复盘](docs/multires_fix_postmortem.md)、[双板联调](docs/dual_board_live_debug_20261020.md)、[音频回卷](docs/media_sd_audio_reject_debug.md) |
 | 多窗口调试与优化历史 | [开发记录](docs/history/multiview_development_log.md) |
+| 后续视频、局部播放与多窗口音频/转场方向（尚未实现） | [讨论记录](docs/video_multiview_direction.md) |
+| 当前分支资源回收候选与独立构建 | [优化记录](docs/resource_optimization_20261024.md) |
 
 `docs/architecture.md`、`docs/design.md` 与 `docs/TODO.md` 保存早期单板架构和开发历史，不再是当前双板的实施计划。所有历史仿真保留，测试镜像和可再生输出按 `.gitignore` 管理；正式已跟踪 bit/报告不因忽略规则而停止跟踪。
