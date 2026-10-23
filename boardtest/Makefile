@@ -43,7 +43,7 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront media-net-lite media-net-lite-app dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -99,6 +99,16 @@ uart:
 ethfront:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_ethfront vsrc/tb_ethfront.v ../board_display/user_source/hdl_source/ETH/eth_front.v -o sim_ethfront --Mdir build_ethfront
 	./build_ethfront/sim_ethfront
+
+# Dual-peer media-board UDP-lite stack, including 1022-byte receive/transmit.
+media-net-lite:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-TIMESCALEMOD --top-module tb_media_udp_lite vsrc/tb_media_udp_lite.sv ../board_media/user_source/hdl_source/ETH/media_udp_lite.v -o sim_media_udp_lite --Mdir build_media_udp_lite
+	./build_media_udp_lite/sim_media_udp_lite
+
+# Exercise the real media eth_front command parser and response stream.
+media-net-lite-app:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT -Wno-TIMESCALEMOD --top-module tb_media_udp_lite_ethfront vsrc/tb_media_udp_lite_ethfront.sv ../board_media/user_source/hdl_source/ETH/media_udp_lite.v ../board_media/user_source/hdl_source/ETH/eth_front.v -o sim_media_udp_lite_ethfront --Mdir build_media_udp_lite_ethfront
+	./build_media_udp_lite_ethfront/sim_media_udp_lite_ethfront
 
 # 两板应用层命令往返：PC 帧 -> 媒体板桥 -> 显示板命令邮箱。
 dualboardcmd:

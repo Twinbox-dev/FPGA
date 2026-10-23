@@ -111,7 +111,37 @@ $taskCli = 'C:\Program Files\Anlogic\TD_6.2.1_Engineer_6.2.168.116\bin\td_comman
 - 当前选中显示板关闭诊断的候选，媒体板保持原稳定版。下一步先验证图像、布局、CV、叠加、转场、音频和真实 GT911。用户负责上电，CLI SRAM 下载及自动检查由开发端执行；不烧录已撤回的 WAV 实验。
 - 媒体板完整 Ethernet 约 5,382 LE，其内加密 UDP/IP 栈约 3,323 LE；FAT32 约 2,161 LE。大规模回收要从这些模块的存储/协议结构寻找，不能把本轮小候选说成已经完成激进优化。
 - 当前 IP 顶层仅暴露 ARP 重试次数/间隔、地址与设备参数，没有现成可调的 ARP 缓存深度。重试参数不是缓存容量开关，不应为省资源改掉网络可靠性。
-- 若重新实现媒体网络，必须保留 PC 动态 MAC 学习、ARP、ping、控制/字幕、PC D 与显示正式数据的路由，不能直接把显示板单固定对端的精简栈复制过去。
+- 媒体网络双对端 UDP-lite 候选已在下文完成 RTL、仿真和隔离综合/布局布线；PC 动态 MAC、ARP、控制/字幕、D 快照与显示数据路由保留，按已授权的资源收益取舍删除 ping。当前尚未完成板级验收。
 - FAT 文件元数据改成同步 BRAM 需核对查找延迟与配对行为；不能只加 RAM 属性，也不能因固定目录样例通过就缩短合法文件大小或删掉碎片簇链支持。
 
 现有源码、测试和正式已验收产物在提交前仍应逐项核对；本记录不构成向 main 合并或推送的授权。
+
+## 媒体板：双对端 UDP-lite 候选 A5
+
+从已提交基线报告出发，将媒体板的通用 UDP/IP 栈替换为固定拓扑实现：PC 192.168.137.1、显示板 192.168.137.2、媒体板 192.168.137.3。正式板间路由、应用层数据格式、D 快照格式、媒体发送仲裁、TEMAC/RGMII、以太网异步 FIFO 和 MAC 抓包逻辑均沿用当前实现。PC MAC 从 ARP 或有效 IPv4 包学习；显示板 MAC 固定为 `01:23:45:67:89:ab`。模块只接受本地 UDP 1 端口、固定 IPv4 头和未分片包；TX 最大 1024 字节，覆盖现有最大 1022 字节应用包。IP 头校验继续检查，UDP 校验和沿用零值发送，以太网帧仍由现有 TEMAC/FIFO 处理。
+
+为节省资源，候选移除了 ICMP echo（ping）。PC 的 UDP 控制、字幕、D 快照和媒体板到显示板的大包通道保留。删除 ping 是用户明确允许的资源取舍；板卡在线检查应使用现有 UDP 状态查询。
+
+### 综合与布局布线结果
+
+| 指标 | 已提交媒体板基线 | UDP-lite A5 | 变化 |
+| --- | ---: | ---: | ---: |
+| 布局布线 LUT | 15,640 | 14,062 | −1,578 |
+| FF | 10,687 | 8,878 | −1,809 |
+| 切片 | 8,746 | 7,810 | −936 |
+| BRAM9K / BRAM32K | 20 / 2 | 19 / 2 | −1 / 不变 |
+| DSP / PLL | 5 / 3 | 5 / 3 | 不变 |
+| Setup WNS | −3.202 ns | −3.552 ns | 恶化 0.350 ns |
+| Hold WNS | −2.935 ns | −3.200 ns | 恶化 0.265 ns |
+
+A5 的 setup WNS 比既定 0.3 ns 变化门槛多 0.050 ns，hold 仍在门槛内。板级数据通路已经通过下述实测，但时序余量变化应在后续媒体板布局或时钟改动前重新核查。A5 使用多周期累加器生成 IPv4 头校验和，以缩短 125 MHz 路径。产品 bit、`media_net_phy.area`、`route.qor` 和 `final_timing.rpt` 已归档在受跟踪的 `board_media/td_project/media_net_Runs/` 下；板测下载使用的 bit 与 `phy_1/media_net.bit`、`best_result/media_net.bit` 为同一文件。隔离目录 `boardtest/captures/resource_experiments/media_udp_lite_a5/` 仍被忽略，仅保留临时完整工程副本。
+
+### 仿真与实板验收
+
+- `make -C boardtest media-net-lite`：PC 与显示板 ARP、双对端 UDP、1022 字节收发、IP 校验和、错误端口/未知来源拒绝及 TEMAC 反压通过。
+- `make -C boardtest media-net-lite-app`：真实 `eth_front` 从 PC UDP 包解出 `N` 命令，并将真实应用响应封装回已学习的 PC MAC，通过。
+- 媒体板 A5 bit 已通过 `scripts/program_sram.ps1 -Board media -CandidateBit <A5 bit>` 写入 cable1 SRAM；显示板稳定 bit 已通过 `scripts/program_sram.ps1 -Board display` 写入 cable0 SRAM。A5 bit 现已归档为媒体板正式工程 bit，后续从正式路径下载可使用 `scripts/program_sram.ps1 -Board media`。
+- 网页状态查询成功；`N` 收到 ACK 并提交显示状态，单图索引从 1 更新为 3（状态序号由 3 到 7，布局 0、焦点 0、非忙）。
+- 随后的 `D` 快照与 `IMG2.BMP` golden 逐字节一致：1280×720、460,800 个 32-bit 字、1,843,200 字节、序号缺口 0。
+
+之前 A3 使用了错误的显示板 MAC，不能用于板级测试；A3/A4 bit 均为过期候选，不得下载。A5 的 MAC 已修正并通过实际双板路由和 PC 快照验证。Windows 普通沙箱进程曾因 USB device open error 失败；在相同主机、线缆和 SRAM 下载模式下，由已授权的非沙箱命令运行下载脚本后成功。详细 CLI 下载方式以 `docs/td_cli_programming.md` 为准。
