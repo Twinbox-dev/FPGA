@@ -33,17 +33,10 @@ python boardtest/diagnostics/prepare_media_source_diag.py
 - `boardtest/diagnostics/prepare_media_source_diag.py`
 - `boardtest/diagnostics/check_multiview_scan.py` 与 `check_multiview_scan_short.py`
 
-## 2026-10-23 正式工程提取候选
+## 后续正式工程阶段
 
-用户要求把测试构建的 RTL 放回正式工程，先以 CV 直通验证多窗口。当前工作区已将测试版的显示顶层、显示网络 wrapper、媒体图源错误状态及忙拒绝逻辑提取到正式源码，未移植生成探针的独立仿真工程。显示顶层仍保留扫描诊断和测试光标入口；CV 像素通路被直通，CV 模块源码仍保留，但本候选不验收 CV 效果。
+测试源覆盖提取到正式工程并以 CV 直通重新综合的阶段已保存为 `772abc8`；当时显示板为 13,271 LUT、9,306 FF、34 BRAM9K、7 BRAM32K、18 DSP，媒体板为 15,640 LUT、10,687 FF、20 BRAM9K、2 BRAM32K、5 DSP。该阶段不宣称 CV 效果通过。
 
-正式 TD 工程已重新综合、布局布线并生成两板 SRAM bit。Web/UDP 实板状态验收：
+随后工作区恢复 `cv_pixel_effects_runtime`，重新生成正式全功能 bit 并通过本轮自动/用户板级检查。现行功能和证据见 [多窗口实现](../../../docs/native_frame_multiview_handoff.md)，资源见 [板卡状态](../../../docs/board_status.md)。本目录两份历史 bit 不会因此升级为完整 CV 产品版；继续保留用于复现旧隔离结果。
 
-- 单图 `N`：IMG1 提交为 IMG2，`busy=0`、`result=0`。
-- 双图：布局提交成功，两个窗口均有效。
-- 双图焦点窗切图：窗口 1 从 IMG2 更新到 IMG5，窗口 0 保持 IMG4。
-- 双图直接切四宫格被拒绝；返回单图后进入四宫格成功，四个窗口有效。
-
-最终显示状态为四宫格、四窗有效、空闲、结果成功。布局和图索引来自板卡 `VIEW_STATUS` 回包；本阶段尚未采集 HDMI 屏幕图像。正式 P&R 资源：显示板 13,271 LUT、9,306 FF、BRAM9K 34、BRAM32K 7、DSP 18；媒体板 15,640 LUT、10,687 FF、BRAM9K 20、BRAM32K 2、DSP 5。两板最终 setup/hold WNS 仍为负值，按报告记录，不称时序收敛。
-
-候选 bit 保存在各自正式 TD 工程 `*_Runs/phy_1/`，当前仍未提交，待验收后与源码和报告一起提交。此候选用于确认无 CV 时的多窗口功能，不代表 CV 已恢复。
+`check_multiview_scan.py` 解析 64-byte 诊断体，`check_multiview_scan_short.py` 解析 16-byte 诊断体；short 指回包格式，不是删减版测试流程。必须选择与诊断 bit 一致的解析器。

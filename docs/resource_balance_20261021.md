@@ -46,4 +46,4 @@ python scripts/media_sd_board_acceptance.py --images 6 --timeout 45 --settle-sec
 
 候选 bit SHA-256：`B5F237FEFDFC5EA36D172A30AE4F933D09B7EF419FEE593B4BE895FB78C034BE`。布局布线报告位于显示板 TD 工程 `phy_1` 目录。
 
-该 bit 于 2026-10-21 下载到 cable0 的 SRAM。HDMI 视觉效果和喇叭输出仍由用户做最终主观确认；本轮 PC D 快照覆盖了 SDRAM 写入、读回与以太网传输数据。
+该 bit 于 2026-10-21 下载到 cable0 的 SRAM。HDMI 视觉效果和喇叭输出仍由用户做最终主观确认；本轮 PC D 快照验证的是媒体板 SD 源图及以太网传输，不覆盖显示板 SDRAM 写入/扫描；显示端还需 HDMI 或专用诊断证据。

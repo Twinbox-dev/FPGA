@@ -1,9 +1,6 @@
 # 验证与日常迭代
 
-本文记录**当前已经实现**的验证入口。已上板稳定基线是 `main` 的 `98caa0b`：
-SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上板黑屏，
-因此开发和对照均以 100 MHz 为准。最终多分辨率修复的证据见
-[`multires_fix_postmortem.md`](multires_fix_postmortem.md)。
+当前验证对象是媒体板与显示板的双板产品，功能入口见 [双板架构](dual_board_architecture.md) 和 [多窗口实现](native_frame_multiview_handoff.md)。SDRAM 维持 100 MHz。历史单板七卡框架、SPI 模型和仿真副本全部保留；它们验证对应模块，不能冒充当前双板全系统或物理层仿真。
 
 > **重要：TD CLI 综合和 SRAM 下载命令已确认。** 可从项目 `syn_1`/`phy_1`
 > 工作目录调用 TD `DefaultFlow.tcl`，再用 `download -mode jtag -bit <bit路径>`
@@ -20,10 +17,13 @@ SDRAM 时钟 100 MHz，已上板验证；用户将同一版改为 125 MHz 后上
 
 | 改动 | 开发时先运行 | 收口时 |
 |---|---|---|
-| `frame_fifo_write/read`、仲裁或跨域 FIFO | `make -C boardtest framepath arbrace readeng` | 七卡回归、TD、上板 |
-| `video_delay`、AXI 像素适配 | `make -C boardtest vdelay axis` | 七卡回归、HDMI 上板 |
-| `eth_front`、命令、Web 预览 | `make -C boardtest ethfront cmdarb uart`；`node scripts/web_console/test_frame_view.js`；`python scripts/web_console/test_stream.py` | 七卡回归、PC/板卡联测 |
+| `frame_fifo_write/read`、仲裁或跨域 FIFO | `make -C boardtest framepath arbrace readeng` | 相关数据路径回归、TD、上板 |
+| `video_delay`、AXI 像素适配 | `make -C boardtest vdelay axis` | 视频路径回归、HDMI 上板 |
+| `eth_front`、命令、Web 预览 | `make -C boardtest ethfront cmdarb uart`；`node scripts/web_console/test_frame_view.js`；`python scripts/web_console/test_stream.py` | 控制/预览回归、PC/板卡联测 |
 | SD/FAT/BMP/WAV 状态机 | `make -C boardtest smoke`；涉及配对时加 `paircheck` | 七卡回归、真实卡上板 |
+| 原生 SD / HC-08 | `make -C boardtest sd-native bt-uart-unit` | 实卡/手机及双板控制 |
+| 可变帧、多窗口、缩小 | `make -C boardtest view-geometry view-image-pipeline view-session view-control-path` | 地址/排空测试与实际双板布局 |
+| 运行时 CV | `make -C boardtest cv-unit axis` | HDMI 切模式和像素观察 |
 | 仅文档或不执行的脚本 | 相应格式/脚本检查 | 无需为了文档重跑全部仿真 |
 
 `boardtest` 需要 WSL/Linux 的 Verilator、make 和测试卡镜像。已有构建结果可复用；
@@ -53,8 +53,7 @@ SDRAM 阻塞时整行回退及真实帧 FIFO 与行预取同时工作，共六�
 `regress` 默认仍运行全部七卡。可选卡名固定为
 `card card_mbr card_empty card_frag card_diag card_user card_user_2wav`，脚本会先检查
 镜像存在。日志生成在 `boardtest/logs/`，属于可再生输出，不纳入 Git。
-修改 `boardtest/vsrc/` 中的 SD/FAT/BMP/WAV 副本时，用
-`scripts/sync_boardtest_sd.py` 核对与板级 RTL 的同步关系。
+历史 `boardtest/vsrc/sd_card_bmp.v` 保留其 SPI/SIM_FAST 增量；当前产品源在媒体板，新增定向目标直接引用对应产品模块。旧 `sync_boardtest_sd.py` 依赖已删除的显示板 SD 源文件，已清除；不要用生产单文件覆盖历史仿真副本。
 
 ## 覆盖边界
 
@@ -64,8 +63,7 @@ SDRAM 阻塞时整行回退及真实帧 FIFO 与行预取同时工作，共六�
 `arbrace`、`readeng`；视频读和封包分别看 `vdelay`、`axis`。
 厂商 IP 的物理时序和真实显示效果仍需 TD 报告与上板确认。
 
-读回探针目前每三个显存字抽一个，只能证明覆盖到的样本正确。验证图像时应同时
-比较有效图像和上下左右黑边；详见修复复盘。新增功能若在稳定版上失败，
+历史单板 1/3 读回及临时显示扫描探针只证明其覆盖位置；当前网页 D 从媒体板 SD 重读原始源图，不观察显示 SDRAM、黑边、缩小或 CV。显示端验证应使用实际 HDMI 或专用扫描诊断，不能用源图 D 代替。新增功能若在稳定版上失败，
 先 diff 新旧源码并检查新引入的行为逻辑，再扩展到时序/IP 假设。
 
 ## 容易重犯的实现错误
@@ -83,8 +81,7 @@ SDRAM 阻塞时整行回退及真实帧 FIFO 与行预取同时工作，共六�
 
 ## 合并前检查
 
-涉及功能 RTL 的变更至少运行相关模块测试和默认七卡回归，再查看 TD 的资源与
-时序报告；影响显示、音频、SDRAM、时钟或硬件接口时安排上板对照。不要把
+涉及功能 RTL 的变更先运行相关定向测试，再按实际风险选择必要的组合回归；修改历史单板公共 SD/FAT/BMP/WAV 路径时运行七卡回归，不要求每次独立模块微调都跑全部镜像。查看 TD 资源和时序报告；影响显示、音频、SDRAM、时钟或硬件接口时安排上板对照。不要把
 “仿真通过”写成“硬件时序收敛”。完整七卡、特定模块测试以及板级现象分别记录。
 
 尚未实现的增强验证包括厂商 SDRAM IP 等价模型、完整 TMDS 接收器和可听音频
@@ -98,5 +95,16 @@ golden；旧文档曾将这些规划写成已存在的测试结构，此处明�
 make -C boardtest mediamux media-protocol media-writer media-control media-tx media-audio-playback media-display-path media-image-tx ctrlset uart ethfront
 ```
 
-`media-display-path` 覆盖正式媒体包接收、像素/PCM SDRAM 写入、提交回包；`media-image-tx` 检查媒体发送 BEGIN 的自动轮播 bit4 与 WAV 配对 bit3。实网 PC 对端模拟及最终 TD 资源/时序报告见 [`dual_board_media_plan.md`](dual_board_media_plan.md) 和 [`media_link_protocol.md`](media_link_protocol.md)。
+`media-display-path` 覆盖正式媒体包接收、像素/PCM SDRAM 写入、提交回包；`media-image-tx` 检查媒体发送 BEGIN 的自动轮播 bit4 与 WAV 配对 bit3。实网 PC 对端模拟及最终 TD 资源/时序报告见 [双板架构](dual_board_architecture.md) 和 [`media_link_protocol.md`](media_link_protocol.md)。
 PC WebTransport 快照接收回包单测：python scripts/web_console/test_media_snapshot.py。
+
+## 现有工具取舍
+
+- `scripts/media_sd_board_acceptance.py`：真实双板单图 N/D 和源 BMP golden；不是显示端扫描验收。
+- `scripts/dual_board_cmd_probe.py`：经媒体板往返显示设置并恢复原音量。
+- `scripts/pc_media_display_stub.py` / `pc_display_media_probe.py`：隔离构建下分别代接媒体板/显示板；生产固定 peer 参数需匹配。
+- `scripts/media_sd_diag_probe.py`、`media_mac_ready_probe.py`：SD/历史 MAC 抓包诊断入口；当前媒体顶层 `MAC_CAPTURE=0`，MAC 探针工具需配套启用抓包的隔离 bit，正式 bit 不会提供该捕获。
+- `scripts/analyze_frame_dump.py`、`pl_dump.py`：历史探针分析，使用前检查对应 bit 是否实际包含探针。
+- `boardtest/diagnostics/check_multiview_scan.py` 读取 64-byte 诊断体；`check_multiview_scan_short.py` 读取 16-byte 诊断体。二者只有包长度判断不同，但对应不同硬件协议，均保留。
+
+仅等待早期 media demo 固定 `E1 53 45 4D` 回复的 `media_eth_probe.py` 已清除；当前在线检查用 S/VIEW_STATUS 或上述控制探针。所有仿真 RTL、模型、桩、测试目标和参考诊断 bit 均保留。

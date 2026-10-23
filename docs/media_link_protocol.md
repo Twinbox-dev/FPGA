@@ -16,15 +16,15 @@
 
 ## 正式图像流（0x20–0x24）
 
-媒体板发送 BMP 原始宽高的 RGB565 像素，不再传输居中黑边。每个字放两个连续像素，先出现的像素位于低 16 位；保留 BMP 自底向上行序，不做垂直翻转。奇数宽度的行与下一行连续打包；仅当整图像素数为奇数时，末字高 16 位补零。显示板在非活动 1280×720 图像区居中填黑，写入时翻转行序。
+媒体板发送 BMP 原始宽高的 RGB565 像素，不再传输居中黑边。每个字放两个连续像素，先出现的像素位于低 16 位；保留 BMP 自底向上行序，不做垂直翻转。奇数宽度的行与下一行连续打包；仅当整图像素数为奇数时，末字高 16 位补零。单图在非活动 1280×720 图像区居中填黑；多窗口先等比例缩小至窗口框并补黑，再写入目标槽。显示写入时翻转行序。
 
 | 类型 | 载荷 | 长度/行为 |
 | --- | --- | --- |
 | 0x0020 READY | 查询载荷为空；显示板应答 1 字节 01 | 媒体板等待显示板 ready 后才读卡发送 |
-| 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32, width:u16, height:u16, layout:u8, window:u8, generation:u16 | 16 字节；total_words=ceil(width×height/2)，宽 1–1280、高 1–720；当前单图 layout/window/generation 均为 0；flags bit0=上一张方向，bit2:1=特效，bit3=有同名 WAV 候选，bit4=自动轮播状态快照 |
+| 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32, width:u16, height:u16, layout:u8, window:u8, generation:u16 | 16 字节；total_words=ceil(width×height/2)，宽 1–1280、高 1–720；单图 layout/window 为 0，generation 使用 PREPARE 协商值；仅 PC D 快照三者均为 0；flags bit0=上一张方向，bit2:1=特效，bit3=有同名 WAV 候选，bit4=自动轮播状态快照 |
 | 0x0022 DATA | frame_id:u16, sequence:u16, N×u32 words | N 从 LEN 计算，1–253；序号从 0 连续递增 |
 | 0x0023 END | frame_id:u16, checksum:u32, reserved:u16=0 | 8 字节；前一数据包后等待 1 ms 再发 |
-| 0x0024 RESULT | frame_id:u16, result:u8 | 0 图像验收并开始音频；1 整图重传；2 图音提交完成。显示板对最终 `result=2` 连发三次，间隔 1 ms；媒体板按 frame_id 接收，后续重复包会被忽略 |
+| 0x0024 RESULT | frame_id:u16, result:u8 | 0 单图图像验收并开始音频；1 整图重传；2 图音/布局实际提交完成；3 多窗口一窗已暂存、继续后续窗。显示板对最终 `result=2` 连发三次，间隔 1 ms；媒体板按 frame_id 接收，后续重复包会被忽略 |
 
 DATA 校验为全部实际传输字相加（包括奇数末字的零高半字），32-bit 无符号溢出回绕；不含包头、BEGIN 元数据或序号。正常满片 253 字，总 UDP 载荷 1024 字节；最后一片按剩余字数发送。1280×720 共有 1822 个 DATA 包，较小源图按实际字数减少。接收端发现序号缺口、字数不等或累计和失配时不提交非活动缓冲，回 RESULT 1；发送端最多完整读取并发送三次。
 
@@ -60,6 +60,7 @@ PC 发给媒体板的 V1 type 0x0001 载荷为 [CMD, CMD XOR 0xFF]。网页小�
 | > / < | 0x3E / 0x3C | 轮播周期加 / 减 |
 | 0 / 1 / 2 | 0x30 / 0x31 / 0x32 | 直接切 / 交叉溶解 / 柔边滑动 |
 | 3 / 4 / 5 | 0x33 / 0x34 / 0x35 | OSD 关闭 / 调节后 3 秒 / 常显 |
+| 6 / 7 / 8 | 0x36 / 0x37 / 0x38 | 单图 / 左右双图 / 四宫格；多窗口间不能直接互切 |
 | q | 0x51 | 频谱开关 |
 | ' / ; | 0x27 / 0x3B | 频谱灵敏度加 / 减 |
 | d | 0x44 | 媒体侧原始 BMP 调试读回 |
@@ -91,7 +92,7 @@ PC 到媒体板的 V1 字幕仍用 T 字节流：0x54、length XOR 0x80、各 AS
 
 ## 调试探针与发送完成
 
-PC 以太网 D 命令请求“当前已提交图像”的正式快照：媒体板从 SD 重读该 BMP，将不含黑边的 `0x0021–0x0023` 原尺寸事务发给 PC `.1:2`。PC 校验后返回图像 RESULT；媒体板再发零样本静音事务 `0x0030/0x0032`，PC 返回音频 RESULT 和最终 RESULT=2。画布按 BEGIN 宽高显示，忽略奇数末字的零填充半像素。快照不写显示板 SDRAM，也不改变显示板当前提交图像。普通下一张/上一张/自动切换优先，PC 快照在媒体链路空闲后处理。
+PC 以太网 D 命令请求“当前已提交图像”的正式快照：媒体板从 SD 重读该 BMP，将不含黑边的 `0x0021–0x0023` 原尺寸事务发给 PC `.1:2`。PC 校验后返回图像 RESULT；媒体板再发零样本静音事务 `0x0030/0x0032`，PC 返回音频 RESULT 和最终 RESULT=2。画布按 BEGIN 宽高显示，忽略奇数末字的零填充半像素。快照不写显示板 SDRAM，也不改变显示板当前提交图像。窗口调度锁定焦点源图后才允许快照读取；忙时新的图像/D/布局请求被拒绝，不为它们建立无界队列。
 
 媒体板 UART D 保留原始 BMP 调试 tap `type=0x0003`，不参与正式图像提交。网页 D 正式快照仍走媒体板 SD 重读路径。显示板曾有独立 SDRAM 读回 `type=0x0004` 诊断探针；它与正式 PC 快照用途重复，已在双板资源优化中移除。移除该硬件探针不影响网页 D 按钮。
 
@@ -133,3 +134,7 @@ The display-board `0x0040 SET` operation 9 selects an HDMI-only image effect. Va
 | 5 | Moving snow | W |
 
 The existing 8-byte V1 ACK and A5 status layouts are unchanged. In non-subtitle ACKs and normal A5 status packets, the upper three bits of `image_index` carry the current CV mode and the lower five bits retain the image index. For display `0x0043 STATUS`, the upper three bits of the `volume` byte (`[6:4]`) carry CV mode while `[3:0]` remain volume. Bit 7 remains zero. Subtitle ACK `image_index` remains the subtitle RX count.
+
+## 多窗口事务扩展（0x48–0x4A）
+
+窗口 PREPARE/REPLY、VIEW_STATUS 的字段、action/result、代次、黑窗排空、整页 RESULT=3 和最终 RESULT=2 约束统一见 [可变尺寸与多窗口实现](native_frame_multiview_handoff.md#协议与状态)。控制包头 TYPE/LEN 大端，状态体中的 generation/宽高小端。媒体板以 PC V1 type=0x0003（16 字节体）或 USB 0xA7 转发状态；长度区分它与原始像素探针。测试光标 0x004B 属诊断接口，不是产品用户控制命令。

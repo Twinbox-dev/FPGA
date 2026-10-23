@@ -1,3 +1,5 @@
+> 当前双板说明（2026-10-23）：下文保留早期官方 UDP 栈及探针移植细节。媒体板 .3 保留 PC 控制入口；显示板 .2 使用固定媒体 peer 的 `display_udp_lite`，不提供通用 PC ARP/ICMP。当前协议和源图 D 边界分别见 [板间协议](media_link_protocol.md) 与 [双板架构](dual_board_architecture.md)，不要用历史显示板 ping/探针定义判断当前产品。
+
 # 以太网通道（TEMAC + UDP 栈，移植自官方 demo）
 
 板载 RTL8211 PHY（RGMII 接口）→ 官方 TEMAC_CORE（MAC）→ 官方

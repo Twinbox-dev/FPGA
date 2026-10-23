@@ -1047,8 +1047,17 @@ wire spectrum_hit, spectrum_shade;
 // Optional HDMI-only computer-vision effects. Processing precedes brightness,
 // spectrum and OSD so line RAMs can retain exact RGB565 source pixels while
 // the UI and spectrum graphics remain aligned to the processed video timing.
-// Isolated memory-scan acceptance only; product CV RTL stays intact.
-assign cv_data=vout_data_raw;assign cv_de=de;assign cv_vs=vs;
+cv_pixel_effects_runtime #(
+    .H_ACTIVE   (1280),
+    .H_TOTAL    (1650),
+    .V_ACTIVE   (720),
+    .MODE_DEFAULT (CV_EFFECT_MODE)
+) u_cv_pixel_effects (
+    .clk (video_clk), .rst (rst_all),
+    .rgb_in (vout_data_raw), .de_in (de), .vs_in (vs),
+    .mode_raw (cv_mode_video),
+    .rgb_out (cv_data), .de_out (cv_de), .vs_out (cv_vs)
+);
 
 wire [23:0] vout_adj;
 display_levels_rgb u_display_levels(.rgb(cv_data),.contrast(ct_bin_v),.brightness(bri_bin_v),.adjusted(vout_adj));
