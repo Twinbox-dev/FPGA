@@ -60,3 +60,6 @@ GT911 触控板的单指相对移动、角色光标和左右横划切图已上�
 
 注意：`boardtest/vsrc` 不含视频读通道（C++ 模型替代 frame_read_write），
 video_delay/frame_fifo_* 类改动必须跑 readeng/vdelay 自检。
+
+
+See [repository commit and artifact policy](docs/repository_commit_policy.md) for source, board-tested bit, diagnostic-build, and temporary-capture rules.

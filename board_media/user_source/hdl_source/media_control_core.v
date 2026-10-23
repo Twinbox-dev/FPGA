@@ -228,9 +228,9 @@ module media_control_core #(
                 middle_field=sd_last_failure_lba;
                 diag_flags[3]=1'b1;
             end
-            else if(image_source_busy) begin
+            else if(image_source_busy || image_source_status[7]) begin
                 last_field={4'hF,image_source_status,fat_state[3:0]};
-                middle_field=sd_stream_debug;
+                middle_field={26'd0,first_bmp};
                 diag_flags[3]=1'b1;
             end
             else if(fat_state==8'd2) begin

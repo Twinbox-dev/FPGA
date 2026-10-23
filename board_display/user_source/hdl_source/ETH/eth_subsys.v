@@ -36,7 +36,11 @@ module eth_subsys(
     input  wire [7:0]  media_packet_data,
     input  wire [15:0] media_packet_length,
     output wire        media_packet_ack,
-    output wire        media_packet_ready
+    output wire        media_packet_ready,
+    input wire digest_req, digest_valid,
+    input wire [7:0] digest_data,
+    input wire [15:0] digest_length,
+    output wire digest_ready, digest_ack
 );
     parameter DEVICE           = "EG4";
     parameter LOCAL_UDP_PORT   = 16'h0001;
@@ -115,19 +119,20 @@ module eth_subsys(
     wire [7:0]  app_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
     wire [15:0] udp_data_length;
-    wire [31:0] tx_dst_ip = MEDIA_PEER_IP;
-    wire [15:0] tx_dst_port = MEDIA_PEER_UDP_PORT;
+    wire digest_chunk_active;
+    wire [31:0] tx_dst_ip = digest_chunk_active ? MEDIA_PEER_IP : 32'hc0a88901;
+    wire [15:0] tx_dst_port = digest_chunk_active ? MEDIA_PEER_UDP_PORT : 16'd4;
 
     media_tx_mux u_tx_mux (
         .clk          (udp_clk), .rst(reset),
         .stack_ready  (udp_tx_ready), .stack_ack(app_tx_ack),
-        .ctrl_req     (1'b0), .ctrl_valid(1'b0),
-        .ctrl_data    (8'd0), .ctrl_length(16'd0),
-        .ctrl_ready   (), .ctrl_ack(),
+        .ctrl_req     (digest_req), .ctrl_valid(digest_valid),
+        .ctrl_data    (digest_data), .ctrl_length(digest_length),
+        .ctrl_ready   (digest_ready), .ctrl_ack(digest_ack),
         .chunk_req    (media_packet_request), .chunk_valid(media_packet_valid),
         .chunk_data   (media_packet_data), .chunk_length(media_packet_length),
         .chunk_ack    (media_packet_ack), .chunk_ready(media_packet_ready),
-        .chunk_active(), .chunk_owner(),
+        .chunk_active(), .chunk_owner(digest_chunk_active),
         .stack_req    (app_tx_data_request), .stack_valid(app_tx_data_valid),
         .stack_data   (app_tx_data), .stack_length(udp_data_length)
     );
