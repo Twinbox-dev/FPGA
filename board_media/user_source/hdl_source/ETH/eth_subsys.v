@@ -66,6 +66,7 @@ module eth_subsys(
 );
     parameter DEVICE           = "EG4";
     parameter MAC_CAPTURE = 1;
+    parameter MEDIA_UDP_LITE = 0;
     parameter LOCAL_UDP_PORT   = 16'h0001;
     parameter LOCAL_IP         = 32'hc0a88903;   // media board: 192.168.137.3
     parameter LOCAL_MAC        = 48'h020000000003; // media board's unique MAC
@@ -260,45 +261,48 @@ module eth_subsys(
     wire        rx_clk_en_int_w, tx_clk_en_int_w;
 
     wire [7:0]  app_tx_data_dummy;   // 占位（栈要求常量目的端口/地址）
-    udp_ip_protocol_stack #(
-        .DEVICE             (DEVICE),
-        .LOCAL_UDP_PORT_NUM (LOCAL_UDP_PORT),
-        .LOCAL_IP_ADDRESS   (LOCAL_IP),
-        .LOCAL_MAC_ADDRESS  (LOCAL_MAC)
-    ) u_udp_stack (
-        .udp_rx_clk            (udp_clk),
-        .udp_tx_clk            (udp_clk),
-        .reset                 (reset),
-        .udp2app_tx_ready      (udp_tx_ready),
-        .udp2app_tx_ack        (app_tx_ack),
-        .app_tx_request        (app_tx_data_request),
-        .app_tx_data_valid     (app_tx_data_valid),
-        .app_tx_data           (app_tx_data),
-        .app_tx_data_length    (udp_data_length),
-        .app_tx_dst_port       (tx_dst_port),          // PC 侧端口（demo 同款）
-        .ip_tx_dst_address     (tx_dst_ip),            // PC 侧 IP
-        .input_local_udp_port_num       (local_port_dyn),
-        .input_local_udp_port_num_valid (local_cfg_valid),
-        .input_local_ip_address         (local_ip_dyn),
-        .input_local_ip_address_valid   (local_cfg_valid),
-        .app_rx_data_valid      (app_rx_data_valid),
-        .app_rx_data            (app_rx_data),
-        .app_rx_data_length     (app_rx_data_length),
-        .app_rx_port_num        (),
-        .temac_rx_ready         (temac_rx_ready),
-        .temac_rx_valid         (!temac_rx_valid_n),  // fifo 的 _n 低有效，栈要高有效
-        .temac_rx_data          (temac_rx_data),
-        .temac_rx_sof           (temac_rx_sof),
-        .temac_rx_eof           (temac_rx_eof),
-        .temac_tx_ready         (temac_tx_ready),
-        .temac_tx_valid         (temac_tx_valid),
-        .temac_tx_data          (temac_tx_data),
-        .temac_tx_sof           (temac_tx_sof),
-        .temac_tx_eof           (temac_tx_eof),
-        .ip_rx_error            (),
-        .arp_request_no_reply_error ()
-    );
-
+    generate if (MEDIA_UDP_LITE) begin : g_media_udp_lite
+        media_udp_lite #(
+            .LOCAL_IP(LOCAL_IP),.LOCAL_MAC(LOCAL_MAC),.PC_IP(DST_IP),
+            .DISPLAY_IP(DISPLAY_IP),.DISPLAY_MAC(48'h0123456789ab),
+            .LOCAL_PORT(LOCAL_UDP_PORT),.MAX_TX_PAYLOAD(16'd1024)
+        ) u_udp_stack (
+            .clk(udp_clk),.reset(reset),
+            .udp2app_tx_ready(udp_tx_ready),.udp2app_tx_ack(app_tx_ack),
+            .app_tx_request(app_tx_data_request),.app_tx_data_valid(app_tx_data_valid),
+            .app_tx_data(app_tx_data),.app_tx_data_length(udp_data_length),
+            .app_tx_dst_port(tx_dst_port),.ip_tx_dst_address(tx_dst_ip),
+            .app_rx_data_valid(app_rx_data_valid),.app_rx_data(app_rx_data),
+            .app_rx_data_length(app_rx_data_length),.app_rx_port_num(),
+            .temac_rx_ready(temac_rx_ready),.temac_rx_valid(!temac_rx_valid_n),
+            .temac_rx_data(temac_rx_data),.temac_rx_sof(temac_rx_sof),.temac_rx_eof(temac_rx_eof),
+            .temac_tx_ready(temac_tx_ready),.temac_tx_valid(temac_tx_valid),
+            .temac_tx_data(temac_tx_data),.temac_tx_sof(temac_tx_sof),.temac_tx_eof(temac_tx_eof),
+            .ip_rx_error(),.arp_request_no_reply_error()
+        );
+    end else begin : g_vendor_udp_stack
+        udp_ip_protocol_stack #(
+            .DEVICE(DEVICE),.LOCAL_UDP_PORT_NUM(LOCAL_UDP_PORT),
+            .LOCAL_IP_ADDRESS(LOCAL_IP),.LOCAL_MAC_ADDRESS(LOCAL_MAC)
+        ) u_udp_stack (
+            .udp_rx_clk(udp_clk),.udp_tx_clk(udp_clk),.reset(reset),
+            .udp2app_tx_ready(udp_tx_ready),.udp2app_tx_ack(app_tx_ack),
+            .app_tx_request(app_tx_data_request),.app_tx_data_valid(app_tx_data_valid),
+            .app_tx_data(app_tx_data),.app_tx_data_length(udp_data_length),
+            .app_tx_dst_port(tx_dst_port),.ip_tx_dst_address(tx_dst_ip),
+            .input_local_udp_port_num(local_port_dyn),
+            .input_local_udp_port_num_valid(local_cfg_valid),
+            .input_local_ip_address(local_ip_dyn),
+            .input_local_ip_address_valid(local_cfg_valid),
+            .app_rx_data_valid(app_rx_data_valid),.app_rx_data(app_rx_data),
+            .app_rx_data_length(app_rx_data_length),.app_rx_port_num(),
+            .temac_rx_ready(temac_rx_ready),.temac_rx_valid(!temac_rx_valid_n),
+            .temac_rx_data(temac_rx_data),.temac_rx_sof(temac_rx_sof),.temac_rx_eof(temac_rx_eof),
+            .temac_tx_ready(temac_tx_ready),.temac_tx_valid(temac_tx_valid),
+            .temac_tx_data(temac_tx_data),.temac_tx_sof(temac_tx_sof),.temac_tx_eof(temac_tx_eof),
+            .ip_rx_error(),.arp_request_no_reply_error()
+        );
+    end endgenerate
 
     // ============ RGMII 接收时钟：PHY 的 RXC 经 rx_pll 再生 ============
     // 照厂商 **HX4S20 千兆例程**（33_..._final_1000）：百兆 demo 是把

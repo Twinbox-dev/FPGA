@@ -46,6 +46,11 @@ parameter MEDIA_PEER_PORT = 16'h0001;    // 媒体板正式应用端口
 // Runtime CV effect reset/default: 0 bypass, 1 grayscale, 2 binary,
 // 3 Sobel, 4 sharpen, 5 moving snow.
 parameter CV_EFFECT_MODE = 0;
+// Product D remains the media-board SD snapshot. These two blocks are only
+// for acceptance diagnostics (scan digest 0x4c / injected cursor 0x4b).
+// Set to 1 in an isolated diagnostic build to restore both without removing
+// any historical probe RTL or tests from the repository.
+parameter DISPLAY_DIAGNOSTICS = 0;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -77,10 +82,12 @@ wire [2:0] cv_effect_mode_cfg;
 wire [2:0] cv_effect_gray_cfg;
 wire [3:0] vol_gray;
 wire panel_show, panel_text_on, panel_band;
+wire [23:0] panel_text_rgb;
 wire [3:0] panel_bri_level, panel_ct_level, panel_vol_level;
 wire [11:0] panel_image_width,panel_image_height;
 wire subtitle_text_on, subtitle_band;
-wire signed [11:0] subtitle_ox;
+wire [23:0] subtitle_text_rgb;
+wire signed [12:0] subtitle_ox;
 wire [9:0] subtitle_oy;
 wire [7:0] subtitle_char_index, subtitle_char_data, subtitle_active_len;
 wire subtitle_text_changed;
@@ -488,8 +495,14 @@ reg [7:0]   subtitle_ack_seq_eth, subtitle_ack_value_eth;
 reg [63:0]  status_payload_eth;
 
 wire diagnostic_cursor_enabled;wire [10:0] diagnostic_cursor_x;wire [9:0] diagnostic_cursor_y;
+generate if(DISPLAY_DIAGNOSTICS)begin:g_diagnostic_cursor
 display_test_cursor u_test_cursor(.clk(eth_app_clk),.rst(rst_all),.data(eth_rx_data),.valid(eth_rx_valid),
     .enabled(diagnostic_cursor_enabled),.x(diagnostic_cursor_x),.y(diagnostic_cursor_y));
+end else begin:g_product_cursor
+    assign diagnostic_cursor_enabled=1'b0;
+    assign diagnostic_cursor_x=11'd640;
+    assign diagnostic_cursor_y=10'd360;
+end endgenerate
 wire digest_req, digest_valid, digest_ready, digest_ack;
 wire [7:0] digest_data;
 wire [15:0] digest_length;
@@ -1042,7 +1055,7 @@ endfunction
 wire [127:0] spectrum_levels;
 wire spectrum_done_toggle, spectrum_ack_toggle;
 wire [23:0] spectrum_rgb;
-wire spectrum_hit, spectrum_shade;
+wire spectrum_hit;
 
 // Optional HDMI-only computer-vision effects. Processing precedes brightness,
 // spectrum and OSD so line RAMs can retain exact RGB565 source pixels while
@@ -1074,17 +1087,13 @@ spectrum_overlay u_spectrum_overlay (
     .enable_raw (bar_en),
     .levels_raw (spectrum_levels), .done_toggle_raw (spectrum_done_toggle),
     .ack_toggle (spectrum_ack_toggle),
-    .shade (spectrum_shade), .bar_hit (spectrum_hit), .bar_rgb (spectrum_rgb)
+    .shade (), .bar_hit (spectrum_hit), .bar_rgb (spectrum_rgb)
 );
 wire view_pixel_black;
 view_black_mask u_view_black_mask(.clk(video_clk),.rst(rst_all),.de(cv_de),.vs(cv_vs),
     .layout(view_video_layout),.valid_mask(view_video_mask),.black(view_pixel_black));
 wire [23:0] base_video = display_valid && !view_pixel_black ? vout_adj : 24'd0;
-wire [23:0] shaded_video = {1'b0, base_video[23:17],
-                            1'b0, base_video[15:9],
-                            1'b0, base_video[7:1]};
-assign vout_data = spectrum_hit ? spectrum_rgb :
-                   spectrum_shade ? shaded_video : base_video;
+assign vout_data = spectrum_hit ? spectrum_rgb : base_video;
 
 subtitle_store u_subtitle_store (
     .sd_clk (sd_card_clk), .video_clk (video_clk), .rst (rst_all),
@@ -1112,7 +1121,7 @@ subtitle_text_renderer u_subtitle_renderer (
     .char_index (subtitle_char_index), .char_data (subtitle_char_data),
     .font_ascii (subtitle_font_ascii), .font_row (subtitle_font_row),
     .font_row_data (subtitle_font_row_data),
-    .text_on (subtitle_text_on), .in_band (subtitle_band)
+    .text_on (subtitle_text_on), .text_rgb (subtitle_text_rgb), .in_band (subtitle_band)
 );
 
 osd_visibility u_osd_visibility (
@@ -1137,7 +1146,7 @@ osd_panel_levels u_osd_panel (
     .image_width (panel_image_width), .image_height (panel_image_height),
     .font_ascii (panel_font_ascii), .font_row (panel_font_row),
     .font_row_data (panel_font_row_data),
-    .text_on (panel_text_on), .in_band (panel_band)
+    .text_on (panel_text_on), .text_rgb (panel_text_rgb), .in_band (panel_band)
 );
 
 font_rom_2r u_shared_font (
@@ -1152,8 +1161,10 @@ osd_composite u_osd_composite (
     .video_clk (video_clk), .rst (rst_all),
     .video_in (vout_data), .de_in (cv_de), .vs_in (cv_vs),
     .panel_show (panel_show), .panel_text_on (panel_text_on),
+    .panel_text_rgb (panel_text_rgb),
     .panel_band (panel_band),
     .subtitle_text_on (subtitle_text_on),
+    .subtitle_text_rgb (subtitle_text_rgb),
     .subtitle_band (subtitle_band),
     .video_out (osd_rgb), .de_out (osd_de), .vs_out (osd_vs)
 );
@@ -1240,6 +1251,7 @@ frame_read_write #(
     .o_aud_fifo_words  (audio_read_fifo_words)
 );
 
+generate if(DISPLAY_DIAGNOSTICS)begin:g_acceptance_digest
 display_frame_digest u_acceptance_digest (
     .mem_clk(ext_mem_clk), .app_clk(eth_app_clk), .producer_clk(eth_app_clk), .rst(rst_all),
     .video_ack(video_read_req_ack), .video_valid(frame_sdr_rd_valid),
@@ -1255,6 +1267,12 @@ display_frame_digest u_acceptance_digest (
     .tx_request(digest_req), .tx_valid(digest_valid), .tx_data(digest_data),
     .tx_length(digest_length), .tx_ready(digest_ready), .tx_ack(digest_ack)
 );
+end else begin:g_product_digest
+    assign digest_req=1'b0;
+    assign digest_valid=1'b0;
+    assign digest_data=8'd0;
+    assign digest_length=16'd0;
+end endgenerate
 transition_line_read transition_line_read_m0 (
     .mem_clk (ext_mem_clk), .rst (rst_all),
     .sdr_init_done (Sdr_init_done), .sdr_busy (Sdr_busy),

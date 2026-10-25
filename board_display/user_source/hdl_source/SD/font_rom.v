@@ -3,7 +3,9 @@
 // so a true dual-read-port RAM preserves both one-cycle read latencies while
 // avoiding two copies of the 2048 x 8 bitmap.
 module font_rom_2r #(
-    parameter MEM_FILE = "../user_source/hdl_source/SD/font.mem"
+    // TD first resolves readmemh paths beside this source file. A basename
+    // works for both GUI project builds and CLI syn_1 working directories.
+    parameter MEM_FILE = "font.mem"
 )(
     input  wire        video_clk,
     input  wire [6:0]  ascii_a,

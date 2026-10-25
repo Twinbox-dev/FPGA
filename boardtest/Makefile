@@ -43,7 +43,7 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront media-net-lite media-net-lite-app dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
 run: $(SIM)
 	./$(SIM) $(CARD)
 
@@ -99,6 +99,16 @@ uart:
 ethfront:
 	verilator --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_ethfront vsrc/tb_ethfront.v ../board_display/user_source/hdl_source/ETH/eth_front.v -o sim_ethfront --Mdir build_ethfront
 	./build_ethfront/sim_ethfront
+
+# Dual-peer media-board UDP-lite stack, including 1022-byte receive/transmit.
+media-net-lite:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-TIMESCALEMOD --top-module tb_media_udp_lite vsrc/tb_media_udp_lite.sv ../board_media/user_source/hdl_source/ETH/media_udp_lite.v -o sim_media_udp_lite --Mdir build_media_udp_lite
+	./build_media_udp_lite/sim_media_udp_lite
+
+# Exercise the real media eth_front command parser and response stream.
+media-net-lite-app:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT -Wno-TIMESCALEMOD --top-module tb_media_udp_lite_ethfront vsrc/tb_media_udp_lite_ethfront.sv ../board_media/user_source/hdl_source/ETH/media_udp_lite.v ../board_media/user_source/hdl_source/ETH/eth_front.v -o sim_media_udp_lite_ethfront --Mdir build_media_udp_lite_ethfront
+	./build_media_udp_lite_ethfront/sim_media_udp_lite_ethfront
 
 # 两板应用层命令往返：PC 帧 -> 媒体板桥 -> 显示板命令邮箱。
 dualboardcmd:
@@ -169,7 +179,7 @@ build_subtitle_store/sim_subtitle_store: vsrc/tb_subtitle_store.v $(TSD)/subtitl
 build_subtitle_scroll/sim_subtitle_scroll: vsrc/tb_subtitle_scroll.v $(TSD)/subtitle_scroll.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_scroll $^ --Mdir build_subtitle_scroll -o sim_subtitle_scroll
 build_subtitle_text/sim_subtitle_text: vsrc/tb_subtitle_text.v $(TSD)/subtitle_text_renderer.v $(OSD_FONT)
-	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_subtitle_text $(filter %.v,$^) --Mdir build_subtitle_text -o sim_subtitle_text
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --unroll-count 1 --top-module tb_subtitle_text $(filter %.v,$^) --Mdir build_subtitle_text -o sim_subtitle_text
 build_osd_visibility/sim_osd_visibility: vsrc/tb_osd_visibility.v $(TSD)/osd_visibility.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_osd_visibility $^ --Mdir build_osd_visibility -o sim_osd_visibility
 build_osd_composite/sim_osd_composite: vsrc/tb_osd_composite.v $(TSD)/osd_composite.v
@@ -247,6 +257,20 @@ build_media_sd_image_source/sim_media_sd_image_source: vsrc/tb_media_sd_image_so
 media-sd-image-source: build_media_sd_image_source/sim_media_sd_image_source
 	python3 diagnostics/export_card_pcm.py
 	./build_media_sd_image_source/sim_media_sd_image_source +CARD=../img/card_user_real.img +CARD_FULL_IMAGE=1
+
+# Keep the historical parser untouched as the cycle-accurate reference.
+build_wav_reader_compact/wav_reader_reference.v: vsrc/wav_reader.v
+	mkdir -p build_wav_reader_compact
+	python3 -c "from pathlib import Path; Path('$@').write_text(Path('$<').read_text().replace('module wav_reader (', 'module wav_reader_reference (', 1))"
+
+build_wav_reader_compact/sim_wav_reader_compact: vsrc/tb_wav_reader_compact.sv \
+	../board_media/user_source/hdl_source/SD/wav_reader.v build_wav_reader_compact/wav_reader_reference.v
+	$(VERILATOR) --binary --build-jobs 4 --timing --unroll-count 1 -Wno-fatal -Wno-WIDTH \
+	  --top-module tb_wav_reader_compact $^ --Mdir build_wav_reader_compact -o sim_wav_reader_compact
+
+.PHONY: wav-reader-unit
+wav-reader-unit: build_wav_reader_compact/sim_wav_reader_compact
+	./build_wav_reader_compact/sim_wav_reader_compact
 
 build_media_uart_arbiter/sim_media_uart_arbiter: vsrc/tb_media_uart_arbiter.sv ../board_media/user_source/hdl_source/media_uart_arbiter.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_uart_arbiter $^ --Mdir build_media_uart_arbiter -o sim_media_uart_arbiter
@@ -469,7 +493,7 @@ display-udp-lite:
 build_cv_pixel_effects/sim_cv_pixel_effects: vsrc/tb_cv_pixel_effects.sv $(TSD)/cv_pixel_effects.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_cv_pixel_effects $^ --Mdir build_cv_pixel_effects -o sim_cv_pixel_effects
 
-cv-unit: build_cv_pixel_effects/sim_cv_pixel_effects
+cv-unit: build_cv_pixel_effects/sim_cv_pixel_effects snow-unit
 	./build_cv_pixel_effects/sim_cv_pixel_effects
 
 touch-command-path:
@@ -495,3 +519,9 @@ view-direct-full-frame:
 view-direct-framepath:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_framepath -GUSE_STREAM_CLOCK=1 vsrc/tb_view_framepath.sv $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board_display/user_source/hdl_source/ETH/view_scan_address.v ../board_display/user_source/hdl_source/ETH/view_write_address.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v --Mdir build_view_direct_framepath -o sim_direct_framepath
 	./build_view_direct_framepath/sim_direct_framepath
+
+.PHONY: snow-unit
+build_snow_field/sim_snow_field: vsrc/tb_snow_field.sv $(TSD)/cv_pixel_effects.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --unroll-count 1 --top-module tb_snow_field $^ --Mdir build_snow_field -o sim_snow_field
+snow-unit: build_snow_field/sim_snow_field
+	./build_snow_field/sim_snow_field

@@ -302,7 +302,7 @@ module top (
     // Raw MAC capture was temporary packet debugging. Keep the reusable
     // implementation in eth_subsys, but omit it from the product netlist;
     // formal D snapshots and both application data taps are independent.
-    eth_subsys #(.MAC_CAPTURE(0),.LOCAL_IP(32'hc0a88903),.LOCAL_MAC(48'h020000000003),.DST_IP(32'hc0a88901),.DISPLAY_IP(32'hc0a88902),.PC_UDP_PORT(16'h0002),.DISPLAY_UDP_PORT(16'h0001)) u_eth (
+    eth_subsys #(.MEDIA_UDP_LITE(1),.MAC_CAPTURE(0),.LOCAL_IP(32'hc0a88903),.LOCAL_MAC(48'h020000000003),.DST_IP(32'hc0a88901),.DISPLAY_IP(32'hc0a88902),.PC_UDP_PORT(16'h0002),.DISPLAY_UDP_PORT(16'h0001)) u_eth (
         .clk_50(clk),.rst_all(boot_rst),.phy1_rgmii_rx_clk(eth_rgmii_rxc),.phy1_rgmii_rx_ctl(eth_rgmii_rx_ctl),
         .phy1_rgmii_rx_data(eth_rgmii_rxd),.phy1_rgmii_tx_clk(eth_rgmii_txc),.phy1_rgmii_tx_ctl(eth_rgmii_tx_ctl),
         .phy1_rgmii_tx_data(eth_rgmii_txd),.phy_reset(eth_phy_reset),

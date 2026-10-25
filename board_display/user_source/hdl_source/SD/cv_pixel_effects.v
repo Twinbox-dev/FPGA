@@ -57,18 +57,6 @@ function [23:0] expand_rgb565;
     end
 endfunction
 
-function snow_flake_hit;
-    input [10:0] px;
-    input [9:0] py;
-    input [10:0] fx;
-    input [9:0] fy;
-    reg x_near, y_near;
-    begin
-        x_near = (px == fx) || ((px + 11'd1) == fx) || (px == (fx + 11'd1));
-        y_near = (py == fy) || ((py + 10'd1) == fy) || (py == (fy + 10'd1));
-        snow_flake_hit = ((x_near && (py == fy)) || ((px == fx) && y_near));
-    end
-endfunction
 
 generate
     if (MODE == 0) begin : g_bypass
@@ -98,154 +86,47 @@ generate
         assign rgb_out = rgb_q;
         assign de_out  = de_q;
         assign vs_out  = vs_q;
-    end else if (MODE == 7) begin : g_point_runtime
+    end else if (MODE == 5 || MODE == 7) begin : g_point_runtime
         reg [10:0] x_count;
-        reg [9:0]  y_count;
+        reg [9:0] y_count;
         reg de_prev, vs_prev;
-        reg [9:0] flake_y [0:7];
         reg [23:0] rgb_q;
         reg de_q, vs_q;
-        integer i;
-        localparam [10:0] FX0 = (H_ACTIVE * 1) / 9;
-        localparam [10:0] FX1 = (H_ACTIVE * 2) / 9;
-        localparam [10:0] FX2 = (H_ACTIVE * 3) / 9;
-        localparam [10:0] FX3 = (H_ACTIVE * 4) / 9;
-        localparam [10:0] FX4 = (H_ACTIVE * 5) / 9;
-        localparam [10:0] FX5 = (H_ACTIVE * 6) / 9;
-        localparam [10:0] FX6 = (H_ACTIVE * 7) / 9;
-        localparam [10:0] FX7 = (H_ACTIVE * 8) / 9;
         wire [10:0] pixel_x = de_prev ? x_count : 11'd0;
-        wire snow_hit =
-            snow_flake_hit(pixel_x, y_count, FX0, flake_y[0]) |
-            snow_flake_hit(pixel_x, y_count, FX1, flake_y[1]) |
-            snow_flake_hit(pixel_x, y_count, FX2, flake_y[2]) |
-            snow_flake_hit(pixel_x, y_count, FX3, flake_y[3]) |
-            snow_flake_hit(pixel_x, y_count, FX4, flake_y[4]) |
-            snow_flake_hit(pixel_x, y_count, FX5, flake_y[5]) |
-            snow_flake_hit(pixel_x, y_count, FX6, flake_y[6]) |
-            snow_flake_hit(pixel_x, y_count, FX7, flake_y[7]);
+        wire snow_hit;
         wire [7:0] gray = luma(rgb_in);
-
+        cv_snow_field u_snow_field (
+            .clk(clk), .rst(rst), .frame_tick(vs_in && !vs_prev),
+            .x(pixel_x), .y(y_count), .hit(snow_hit)
+        );
         always @(posedge clk or posedge rst) begin
             if (rst) begin
-                x_count <= 11'd0;
-                y_count <= 10'd0;
-                de_prev <= 1'b0;
-                vs_prev <= 1'b0;
-                rgb_q <= 24'd0;
-                de_q <= 1'b0;
-                vs_q <= 1'b0;
-                for (i = 0; i < 8; i = i + 1)
-                    flake_y[i] <= (V_ACTIVE * (i + 1)) / 9;
+                x_count <= 0; y_count <= 0; de_prev <= 0; vs_prev <= 0;
+                rgb_q <= 0; de_q <= 0; vs_q <= 0;
             end else begin
-                de_prev <= de_in;
-                vs_prev <= vs_in;
-                de_q <= de_in;
-                vs_q <= vs_in;
-                if (!de_in)
-                    rgb_q <= 24'd0;
-                else begin
-                    case (mode_in)
-                        3'd1: rgb_q <= {gray, gray, gray};
-                        3'd2: rgb_q <= (gray >= 8'd128) ? 24'hffffff : 24'h000000;
-                        3'd5: rgb_q <= snow_hit ? 24'hffffff : rgb_in;
-                        default: rgb_q <= rgb_in;
-                    endcase
-                end
-
+                de_prev <= de_in; vs_prev <= vs_in;
+                de_q <= de_in; vs_q <= vs_in;
+                if (!de_in) rgb_q <= 0;
+                else if (MODE == 5) rgb_q <= snow_hit ? 24'hffffff : rgb_in;
+                else case (mode_in)
+                    3'd1: rgb_q <= {gray,gray,gray};
+                    3'd2: rgb_q <= gray >= 8'd128 ? 24'hffffff : 24'd0;
+                    3'd5: rgb_q <= snow_hit ? 24'hffffff : rgb_in;
+                    default: rgb_q <= rgb_in;
+                endcase
                 if (vs_in && !vs_prev) begin
-                    x_count <= 11'd0;
-                    y_count <= 10'd0;
-                    for (i = 0; i < 8; i = i + 1) begin
-                        if (flake_y[i] >= V_ACTIVE - 2)
-                            flake_y[i] <= 10'd0;
-                        else
-                            flake_y[i] <= flake_y[i] + ((i & 1) ? 2 : 1);
-                    end
+                    x_count <= 0; y_count <= 0;
                 end else if (de_in) begin
-                    if (!de_prev)
-                        x_count <= 11'd1;
-                    else
-                        x_count <= x_count + 11'd1;
+                    x_count <= !de_prev ? 11'd1 : x_count + 1'b1;
                 end else if (de_prev) begin
-                    x_count <= 11'd0;
-                    if (y_count < V_ACTIVE - 1)
-                        y_count <= y_count + 10'd1;
+                    x_count <= 0;
+                    if (y_count < V_ACTIVE-1) y_count <= y_count + 1'b1;
                 end
             end
         end
-        assign rgb_out = rgb_q;
-        assign de_out = de_q;
-        assign vs_out = vs_q;
-    end else if (MODE == 5) begin : g_snow
-        reg [10:0] x_count;
-        reg [9:0]  y_count;
-        reg de_prev, vs_prev;
-        reg [9:0] flake_y [0:7];
-        reg [23:0] rgb_q;
-        reg de_q, vs_q;
-        integer i;
-        localparam [10:0] FX0 = (H_ACTIVE * 1) / 9;
-        localparam [10:0] FX1 = (H_ACTIVE * 2) / 9;
-        localparam [10:0] FX2 = (H_ACTIVE * 3) / 9;
-        localparam [10:0] FX3 = (H_ACTIVE * 4) / 9;
-        localparam [10:0] FX4 = (H_ACTIVE * 5) / 9;
-        localparam [10:0] FX5 = (H_ACTIVE * 6) / 9;
-        localparam [10:0] FX6 = (H_ACTIVE * 7) / 9;
-        localparam [10:0] FX7 = (H_ACTIVE * 8) / 9;
-        wire [10:0] pixel_x = de_prev ? x_count : 11'd0;
-        wire snow_hit =
-            snow_flake_hit(pixel_x, y_count, FX0, flake_y[0]) |
-            snow_flake_hit(pixel_x, y_count, FX1, flake_y[1]) |
-            snow_flake_hit(pixel_x, y_count, FX2, flake_y[2]) |
-            snow_flake_hit(pixel_x, y_count, FX3, flake_y[3]) |
-            snow_flake_hit(pixel_x, y_count, FX4, flake_y[4]) |
-            snow_flake_hit(pixel_x, y_count, FX5, flake_y[5]) |
-            snow_flake_hit(pixel_x, y_count, FX6, flake_y[6]) |
-            snow_flake_hit(pixel_x, y_count, FX7, flake_y[7]);
-
-        always @(posedge clk or posedge rst) begin
-            if (rst) begin
-                x_count <= 11'd0;
-                y_count <= 10'd0;
-                de_prev <= 1'b0;
-                vs_prev <= 1'b0;
-                rgb_q   <= 24'd0;
-                de_q    <= 1'b0;
-                vs_q    <= 1'b0;
-                for (i = 0; i < 8; i = i + 1)
-                    flake_y[i] <= (V_ACTIVE * (i + 1)) / 9;
-            end else begin
-                de_prev <= de_in;
-                vs_prev <= vs_in;
-                de_q    <= de_in;
-                vs_q    <= vs_in;
-                rgb_q   <= !de_in ? 24'd0 : snow_hit ? 24'hffffff : rgb_in;
-
-                if (vs_in && !vs_prev) begin
-                    x_count <= 11'd0;
-                    y_count <= 10'd0;
-                    for (i = 0; i < 8; i = i + 1) begin
-                        if (flake_y[i] >= V_ACTIVE - 2)
-                            flake_y[i] <= 10'd0;
-                        else
-                            flake_y[i] <= flake_y[i] + ((i & 1) ? 2 : 1);
-                    end
-                end else if (de_in) begin
-                    if (!de_prev)
-                        x_count <= 11'd1;
-                    else
-                        x_count <= x_count + 11'd1;
-                end else if (de_prev) begin
-                    x_count <= 11'd0;
-                    if (y_count < V_ACTIVE - 1)
-                        y_count <= y_count + 10'd1;
-                end
-            end
-        end
-        assign rgb_out = rgb_q;
-        assign de_out  = de_q;
-        assign vs_out  = vs_q;
+        assign rgb_out=rgb_q;
+        assign de_out=de_q;
+        assign vs_out=vs_q;
     end else if (MODE == 3 || MODE == 4 || MODE == 6) begin : g_neighborhood
         // Three horizontal taps place the kernel center at x-2; two arithmetic
         // registers add two clocks. Keep the sync delay equal to that latency.
@@ -588,4 +469,55 @@ module cv_pixel_effects_runtime #(
         de_out = de_point_aligned;
         vs_out = vs_point_aligned;
     end
+endmodule
+
+// Procedural two-depth snow field. The 64/128-pixel cells each carry one
+// hashed crystal; only two global fall phases and a slow wind phase are stored.
+// No per-flake register array, frame buffer, ROM or multiplier is required.
+module cv_snow_field(
+    input wire clk,rst,frame_tick,
+    input wire [10:0] x,
+    input wire [9:0] y,
+    output wire hit
+);
+    reg [9:0] fall_phase;
+    reg [8:0] wind_phase;
+    always @(posedge clk or posedge rst)begin
+        if(rst)begin fall_phase<=0;wind_phase<=0;end
+        else if(frame_tick)begin fall_phase<=fall_phase+1'b1;wind_phase<=wind_phase+1'b1;end
+    end
+    wire [3:0] wind=wind_phase[8] ? ~wind_phase[7:4] : wind_phase[7:4];
+    wire [10:0] near_x=x-{7'd0,wind};
+    wire [9:0] near_y=y-{fall_phase[8:0],1'b0};
+    wire [10:0] far_x=x+{8'd0,wind[3:1]};
+    wire [9:0] far_y=y-fall_phase;
+    function [7:0] cell_hash(input [4:0] cx,input [3:0] cy,input [7:0] salt);
+        reg [7:0] a,b;
+        begin
+            a={3'd0,cx};b={4'd0,cy};
+            cell_hash=((a<<5)+(a<<2)+a)^((b<<6)+(b<<3)+b)^salt;
+        end
+    endfunction
+    wire [7:0] ns=cell_hash(near_x[10:6],near_y[9:6],8'd0);
+    wire [7:0] ns_y={ns[2:0],ns[7:3]};
+    wire [5:0] ncx=6'd6+(ns[5:0]<52 ? ns[5:0] : ns[5:0]-6'd52);
+    wire [5:0] ncy=6'd6+(ns_y[5:0]<52 ? ns_y[5:0] : ns_y[5:0]-6'd52);
+    wire [6:0] ndx={1'b0,near_x[5:0]}-{1'b0,ncx};
+    wire [6:0] ndy={1'b0,near_y[5:0]}-{1'b0,ncy};
+    wire [5:0] nax=ndx[6] ? (~ndx[5:0]+6'd1) : ndx[5:0];
+    wire [5:0] nay=ndy[6] ? (~ndy[5:0]+6'd1) : ndy[5:0];
+    // Six main arms (vertical plus four diagonals), with small branch tips.
+    wire crystal=(nax==0 && nay<=6) || (nax==nay && nax<=4) ||
+                 (nax==1 && nay==4) || (nax==4 && nay==2) || (nax==2 && nay==4);
+    wire near_hit=!ns[7] && crystal;
+    wire [7:0] fs=cell_hash({1'b0,far_x[10:7]},{1'b0,far_y[9:7]},8'ha7);
+    wire [7:0] fs_y={fs[3:0],fs[7:4]};
+    wire [6:0] fcx=7'd2+(fs[6:0]<124 ? fs[6:0] : fs[6:0]-7'd124);
+    wire [6:0] fcy=7'd2+(fs_y[6:0]<124 ? fs_y[6:0] : fs_y[6:0]-7'd124);
+    wire [7:0] fdx={1'b0,far_x[6:0]}-{1'b0,fcx};
+    wire [7:0] fdy={1'b0,far_y[6:0]}-{1'b0,fcy};
+    wire [6:0] fax=fdx[7] ? (~fdx[6:0]+7'd1) : fdx[6:0];
+    wire [6:0] fay=fdy[7] ? (~fdy[6:0]+7'd1) : fdy[6:0];
+    wire far_hit=fs[7:6]==2'b10 && ((fax==0 && fay<=2) || (fay==0 && fax<=2) || (fax==1 && fay==1));
+    assign hit=near_hit || far_hit;
 endmodule

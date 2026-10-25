@@ -1,6 +1,6 @@
 // Renderers register their masks from the current video pixel. Delay RGB and
 // timing by one clock to match those masks, then register the composited pixel.
-// Both bands are fixed half-opacity black; no DSP multipliers are needed.
+// Only glyphs replace video; the former panel/caption bands stay transparent.
 module osd_composite (
     input  wire        video_clk,
     input  wire        rst,
@@ -9,8 +9,10 @@ module osd_composite (
     input  wire        vs_in,
     input  wire        panel_show,
     input  wire        panel_text_on,
+    input  wire [23:0] panel_text_rgb,
     input  wire        panel_band,
     input  wire        subtitle_text_on,
+    input  wire [23:0] subtitle_text_rgb,
     input  wire        subtitle_band,
     output reg  [23:0] video_out,
     output reg         de_out,
@@ -18,11 +20,6 @@ module osd_composite (
 );
     reg [23:0] video_d;
     reg de_d, vs_d;
-    wire text_on = subtitle_text_on || (panel_show && panel_text_on);
-    wire band_on = subtitle_band || (panel_show && panel_band);
-    wire [23:0] shaded = {1'b0, video_d[23:17],
-                          1'b0, video_d[15:9],
-                          1'b0, video_d[7:1]};
     always @(posedge video_clk or posedge rst) begin
         if (rst) begin
             video_d <= 24'd0;
@@ -35,8 +32,8 @@ module osd_composite (
             video_d <= video_in;
             de_d <= de_in;
             vs_d <= vs_in;
-            video_out <= text_on ? 24'hffffff :
-                         band_on ? shaded : video_d;
+            video_out <= subtitle_text_on ? subtitle_text_rgb :
+                         (panel_show && panel_text_on) ? panel_text_rgb : video_d;
             de_out <= de_d;
             vs_out <= vs_d;
         end

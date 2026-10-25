@@ -8,11 +8,11 @@
 - 固定 1280×720 HDMI 输出；网络只传源图尺寸的 RGB565，显示板居中填黑。
 - 单图、左右双图、四宫格；多窗口等比例双线性缩小，不放大。切图只更新请求发生时光标所在的窗口，加载期间该窗口为黑色。
 - 单图保留直接切、交叉溶解、32 像素柔边替换和配对音频；多窗口静音、直接切图。
-- 全屏原图、灰度、二值化、Sobel、锐化、雪花六种运行时 CV 模式；字幕、OSD、频谱和 GT911 角色光标继续叠加。
+- 全屏原图、灰度、二值化、Sobel、锐化、雪花六种运行时 CV 模式；字幕、OSD、频谱和 GT911 角色光标继续叠加；字幕/OSD 使用透明背景的 16×32 彩色字形，频谱最高 160px，雪花使用双层六瓣样式。
 - Ethernet、USB UART、HC-08（9600 baud）及实体按键控制；GT911 支持相对移动和横划切图。
 - Web 控制台保留 D 源图快照、BMP 对比及板卡忙状态互锁。
 
-2026-10-23 用户已确认本轮全功能构建使用正常，并用 GUI 重新综合、下载两板复测通过。正式 RTL、配套两板 bit/报告及本轮文档整理一并保存。本轮状态和资源数字见 [板卡资源与验收](docs/board_status.md)。
+2026-10-23 双板 V2.2 全功能版已验收；本轮后续显示样式也已由用户在 HDMI 上确认。复位默认值保持原样：无字幕、频谱关、CV 原图、OSD 调节后 3 秒。正式 RTL、已验收 bit/报告及文档一并保存。本轮状态和资源数字见 [板卡资源与验收](docs/board_status.md)。
 
 ## 工程与网络
 
@@ -58,5 +58,7 @@ python scripts/web_console/app.py
 | 验证入口、资源、时序 | [验证](docs/verification.md)、[资源](docs/board_status.md)、[时序判读](docs/timing_report_howto.md) |
 | 典型故障与修复证据 | [多分辨率复盘](docs/multires_fix_postmortem.md)、[双板联调](docs/dual_board_live_debug_20261020.md)、[音频回卷](docs/media_sd_audio_reject_debug.md) |
 | 多窗口调试与优化历史 | [开发记录](docs/history/multiview_development_log.md) |
+| 后续视频、局部播放与多窗口音频/转场方向（尚未实现） | [讨论记录](docs/video_multiview_direction.md) |
+| 当前分支资源回收候选与独立构建 | [优化记录](docs/resource_optimization_20261024.md) |
 
 `docs/architecture.md`、`docs/design.md` 与 `docs/TODO.md` 保存早期单板架构和开发历史，不再是当前双板的实施计划。所有历史仿真保留，测试镜像和可再生输出按 `.gitignore` 管理；正式已跟踪 bit/报告不因忽略规则而停止跟踪。

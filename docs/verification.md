@@ -21,6 +21,7 @@
 | `video_delay`、AXI 像素适配 | `make -C boardtest vdelay axis` | 视频路径回归、HDMI 上板 |
 | `eth_front`、命令、Web 预览 | `make -C boardtest ethfront cmdarb uart`；`node scripts/web_console/test_frame_view.js`；`python scripts/web_console/test_stream.py` | 控制/预览回归、PC/板卡联测 |
 | SD/FAT/BMP/WAV 状态机 | `make -C boardtest smoke`；涉及配对时加 `paircheck` | 七卡回归、真实卡上板 |
+| 媒体板 WAV 解析器 | `make -C boardtest wav-reader-unit media-sd-image-source` | 逐拍参考/golden、配对 PCM 与实卡音频 |
 | 原生 SD / HC-08 | `make -C boardtest sd-native bt-uart-unit` | 实卡/手机及双板控制 |
 | 可变帧、多窗口、缩小 | `make -C boardtest view-geometry view-image-pipeline view-session view-control-path` | 地址/排空测试与实际双板布局 |
 | 运行时 CV | `make -C boardtest cv-unit axis` | HDMI 切模式和像素观察 |
@@ -99,6 +100,8 @@ make -C boardtest mediamux media-protocol media-writer media-control media-tx me
 PC WebTransport 快照接收回包单测：python scripts/web_console/test_media_snapshot.py。
 
 ## 现有工具取舍
+
+- `boardtest/diagnostics/prepare_resource_experiment.py`：冻结整份板级源码和 TD 输入到独立实验目录，避免资源实验覆盖已验收正式 bit；`--display-diagnostics` 只在副本中启用扫描摘要/测试光标。步骤和对比见 [资源优化记录](resource_optimization_20261024.md)。
 
 - `scripts/media_sd_board_acceptance.py`：真实双板单图 N/D 和源 BMP golden；不是显示端扫描验收。
 - `scripts/dual_board_cmd_probe.py`：经媒体板往返显示设置并恢复原音量。
