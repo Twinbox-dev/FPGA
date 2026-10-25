@@ -3,7 +3,7 @@
 module tb_media_display_path;
     parameter integer DIRECT_STREAM = 0;
     reg udp_clk=0, slow_write_clk=0;
-    wire write_clk=DIRECT_STREAM ? udp_clk : slow_write_clk;
+    wire write_clk=(DIRECT_STREAM != 0) ? udp_clk : slow_write_clk;
     always #4 udp_clk=~udp_clk;
     always #5 slow_write_clk=~slow_write_clk;
     reg rst=1;
@@ -128,7 +128,7 @@ module tb_media_display_path;
         .control_ack_sequence(8'd0),.control_ack_op(8'd0),.control_ack_status(8'd0),
         .control_ack_value(8'd0),.status_valid(1'b0),.status_payload(64'd0),
         .tx_ready(chunk_ready),.tx_request(tx_request),.tx_valid(tx_valid),.tx_data(tx_data),
-        .tx_length(tx_length),.tx_ack(tx_ack)
+        .tx_length(tx_length),.tx_to_source(),.tx_to_owner(),.tx_ack(tx_ack)
     );
     media_tx_mux u_tx_mux (
         .clk(udp_clk),.rst(rst),.stack_ready(1'b1),.stack_ack(stack_ack),

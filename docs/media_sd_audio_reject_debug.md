@@ -147,3 +147,44 @@ This confirms the missing audio packet pacing was the wraparound blocker. The
 final candidate retains 50 MHz SD High Speed; the 25 MHz experiment is not a
 production fallback. Boardtest continues to retain the native-SD card models
 and prior SPI-era simulations.
+
+## Follow-up: stalled image FIFO recovery (2026-10-26)
+
+During the live PC upload regression, a small temporary image committed, the
+next SD image committed, and the following previous-image request did not
+finish. The display status returned to idle while media TX remained in
+`LOAD_IMAGE`; the media status showed FAT state `0x09` and no source error. This
+matches the sender's old `LOAD_IMAGE` logic: it advanced only when
+`read_pending` was set, with no timeout or source-error exit if the production
+FIFO stopped supplying words. The view scheduler could therefore unlock while
+the media job stayed stuck.
+
+`media_image_tx` now resets a two-second no-data timer for every consumed FIFO
+word. A source error or a full timeout exits `LOAD_IMAGE`, reports media error
+2, and toggles `source_abort_toggle`. `top_media_net` synchronizes that toggle
+from the 125 MHz application clock into the 50 MHz SD/FAT clock and produces a
+one-cycle abort pulse for `media_image_source`. The source cancels the active
+file read after its in-flight FAT sector drains. The web status decoder names
+error 2 as an image source/SD/FIFO failure or stall.
+
+The targeted Verilator sender test covers both a permanently empty FIFO and an
+explicit source error. The native-SD source test was extended to abort during
+an active BMP stream, verify that the FAT/SD source returns idle without an
+error, then read the same BMP completely. The test passes with all six BMPs and
+four paired WAV PCM files compared against their existing golden data.
+
+The updated media bit was built from the current RTL and downloaded to cable1
+SRAM; TD validation succeeded in
+`boardtest/captures/sram_download/program_media_20261026_015312.log`. Its
+routed report lists 14,164 LUT, 7,877 slices, 19 BRAM9K, 2 BRAM32K and 5 DSP;
+setup/hold WNS are `-4.330/-3.042 ns`.
+
+Live regression then passed the original failure order (PC image upload, N,
+P), N/P from the SD base after PC uploads, double- and four-window entry,
+per-window N/P, PC image replacement in both layouts, and direct/fade/slide
+transitions. D returned a complete 504x720 `IMG3.BMP` snapshot: 181,440 words,
+zero packet gaps, and byte-for-byte equality with the BMP golden. A silent
+2,400-sample PC audio transaction also committed, after which SD N/P still
+worked. The board status query showed no latched video-underrun flag. That
+status does not measure a one-frame HDMI color flash; the transition and
+SDRAM-read RTL plus their unit tests were reviewed separately.

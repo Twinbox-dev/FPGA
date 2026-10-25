@@ -27,6 +27,7 @@ module media_image_tx #(
     output reg [4:0] source_index,
     output reg audio_start_toggle,
     output reg [4:0] audio_file_index,
+    output reg source_abort_toggle,
     input wire fifo_empty,
     input wire [31:0] fifo_data,
     output wire fifo_read,
@@ -323,6 +324,7 @@ module media_image_tx #(
             pending_next<=0;pending_prev<=0;
             attempts<=0;audio_attempts<=0;wait_count<=0;packet_gap_target<=DATA_PACKET_GAP_CYCLES;start_toggle<=0;source_index<=0;
             audio_start_toggle<=0;audio_file_index<=0;image_has_audio<=0;
+            source_abort_toggle<=0;
             committed_index<=0;committed_valid<=0;committed_wav<=0;error_code<=0;
             prepared_sync<=0;done_sync<=0;audio_prepared_sync<=0;audio_done_sync<=0;
             has_wav_sync<=0;wav_index_sync0<=0;wav_index_sync1<=0;
@@ -404,12 +406,25 @@ module media_image_tx #(
                         loaded<=0;target_words<=image_word_count_pipe > 21'd253 ? 9'd253 : image_word_count_pipe[8:0];state<=ISSUE;wait_count<=0;
                     end else if(done_sync[2]!=done_ref && source_error) begin error_code<=1;state<=IDLE;end
                 end
-                LOAD_IMAGE: if(read_pending) begin
-                    sum<=sum+fifo_data;loaded<=loaded+1'b1;total_words<=total_words+1'b1;
-                    if(loaded+1'b1==target_words) begin
-                        packet_words<=target_words;kind<=IMAGE_DATA;tx_length<=12+{target_words,2'b00};
-                        state<=ISSUE;wait_count<=0;
-                    end
+                LOAD_IMAGE: begin
+                    // The SD/FAT source can stall independently of the UDP
+                    // sender. Bound an empty-FIFO wait so a failed read does
+                    // not hold the view scheduler forever, and cancel the
+                    // source transaction across the clock-domain boundary.
+                    if(source_error) begin
+                        error_code<=2;source_abort_toggle<=~source_abort_toggle;
+                        state<=IDLE;wait_count<=0;
+                    end else if(read_pending) begin
+                        sum<=sum+fifo_data;loaded<=loaded+1'b1;total_words<=total_words+1'b1;
+                        wait_count<=0;
+                        if(loaded+1'b1==target_words) begin
+                            packet_words<=target_words;kind<=IMAGE_DATA;tx_length<=12+{target_words,2'b00};
+                            state<=ISSUE;wait_count<=0;
+                        end
+                    end else if(wait_count>=CLK_HZ*2-1) begin
+                        error_code<=2;source_abort_toggle<=~source_abort_toggle;
+                        state<=IDLE;wait_count<=0;
+                    end else wait_count<=wait_count+1'b1;
                 end
                 ISSUE: if(tx_ack) begin byte_index<=0;state<=SEND;end
                 SEND: begin

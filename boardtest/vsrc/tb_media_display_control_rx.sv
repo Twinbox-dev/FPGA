@@ -20,7 +20,8 @@ module tb_media_display_control_rx;
     integer set_edges=0, ack_count=0, write_edges=0, status_count=0;
     reg commit_seen=0;
     reg set_toggle_prev=0, write_toggle_prev=0, commit_toggle_prev=0;
-    reg set_value_good=0, set_value_bad=0, cv_value_good=0, cv_value_bad=0, subtitle_ack_bad=0;
+    reg set_value_good=0, set_value_bad=0, cv_value_good=0, cv_value_bad=0;
+    reg subtitle_ack_bad=0, subtitle_reason_good=0;
     reg [7:0] expected_char [0:2];
     initial begin expected_char[0]=8'h41; expected_char[1]=8'h42; expected_char[2]=8'h43; end
 
@@ -41,7 +42,10 @@ module tb_media_display_control_rx;
                 control_ack_sequence==8'h12 && control_ack_value==8'd5) set_value_good<=1;
             if (control_ack_op==8'd3 && control_ack_status==1) set_value_bad<=1;
             if (control_ack_op==8'd9 && control_ack_status==1 && control_ack_value==6) cv_value_bad<=1;
-            if (control_ack_op==8'd8 && control_ack_status==1) subtitle_ack_bad<=1;
+            if (control_ack_op==8'd8 && control_ack_status==1) begin
+                subtitle_ack_bad<=1;
+                if (control_ack_value==8'd5) subtitle_reason_good<=1;
+            end
         end
         if (subtitle_write_toggle != write_toggle_prev) begin
             write_toggle_prev <= subtitle_write_toggle;
@@ -92,7 +96,8 @@ module tb_media_display_control_rx;
         subtitle_data(8'h56,0,8'h58);
         header(8'h46,16'd3);send_byte(8'h56);send_byte(1);send_byte(8'h00);finish_packet();
         repeat(5) @(negedge clk);
-        if (!set_value_good || !set_value_bad || !cv_value_good || !cv_value_bad || !commit_seen || !subtitle_ack_bad ||
+        if (!set_value_good || !set_value_bad || !cv_value_good || !cv_value_bad || !commit_seen ||
+            !subtitle_ack_bad || !subtitle_reason_good ||
             write_edges!=4 || status_count!=1 || set_edges!=2 || ack_count!=5)
             $fatal(1,"control RX totals set=%0d ack=%0d status=%0d writes=%0d",set_edges,ack_count,status_count,write_edges);
         $display("PASS: SET ranges, status request, subtitle ordering/XOR commit and rejection");

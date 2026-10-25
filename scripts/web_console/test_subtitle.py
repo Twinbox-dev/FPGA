@@ -22,7 +22,11 @@ def main():
     assert link.subtitle == "N0P!"
     diag_ack = decode_ack(bytes([0x5A, 0x54, 0x40, 1, 4, 0xA5, 0x40, 0x00]))
     assert "FPGA_TAG=5 FPGA_ERR=2" in diag_ack
-    assert "SUB_LEN=1 RX_COUNT=4 WIRE=40 CALC=40" in diag_ack
+    display_reject = decode_ack(bytes([0x5A, 0x54, 0x40, 11, 14, 0xA5, 0x85, 0x00]))
+    assert "DISPLAY_REJECT=0x85" in display_reject and "校验字段" in display_reject
+    display_length = decode_ack(bytes([0x5A, 0x54, 0x40, 11, 14, 0xA5, 0x0B, 0x00]))
+    assert "DISPLAY_VALUE=0x0B" in display_length and "长度不符" in display_length
+    assert "SUB_LEN=1 RX_COUNT=4 WIRE=40 DISPLAY_VALUE=0x40" in diag_ack
     assert "COMMIT=OK" in decode_ack(bytes([0x5A, 0x54, 8, 1, 0, 0, 0x44, 0x80]))
     assert "COMMIT=NO" in decode_ack(bytes([0x5A, 0x54, 8, 1, 0, 0, 0x44, 0x00]))
     for invalid in ("A" * 161, "line\nbreak", "中文"):

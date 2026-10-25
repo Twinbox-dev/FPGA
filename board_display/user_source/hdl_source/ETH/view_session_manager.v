@@ -84,7 +84,9 @@ module view_session_manager #(
     reg cache_valid,local_target_valid;
     reg [1:0] local_target;
     reg [2:0] drain_sync,transition_sync;
-    reg [29:0] watchdog;
+    // A full 1280x720 PC upload is paced to protect the SDRAM writer and can
+    // take several seconds; leave margin before aborting an owned transfer.
+    reg [30:0] watchdog;
     wire [7:0] req_action=prepare_body[15:8];
     wire [7:0] req_layout=prepare_body[23:16];
     wire [7:0] req_window=prepare_body[31:24];
@@ -175,10 +177,10 @@ module view_session_manager #(
             if(busy)watchdog<=watchdog+1'b1;else watchdog<=0;
             // Timeout aborts the producer into deterministic padding first; it
             // does not unlock a bank while its old write request still exists.
-            if(owned && watchdog>=CLK_HZ*8-1 && state==TRANSFER)begin
+            if(owned && watchdog>=CLK_HZ*16-1 && state==TRANSFER)begin
                 abort_image<=1;state<=CANCEL_DRAIN;watchdog<=0;
             end
-            if(!owned && watchdog>=CLK_HZ*8-1 && (state==TRANSFER || state==SNAPSHOT))begin
+            if(!owned && watchdog>=CLK_HZ*16-1 && (state==TRANSFER || state==SNAPSHOT))begin
                 state<=IDLE;cache_valid<=0;publish_pending<=1;last_result<=1;
             end
             if(accepted_begin)begin

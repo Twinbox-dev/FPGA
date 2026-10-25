@@ -317,3 +317,29 @@ Pop-Location
 在多窗口音频保持阶段，显示板完成综合、布局布线和 bitgen。最后一次显示板资源为 14,810 LUT、8,450 slices、35 BRAM9K、11 BRAM32K、18 DSP、4 PLL；最终 setup/hold WNS 分别为 −5.858 ns / −3.188 ns。 bitgen 成功生成 `board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`，SHA-256 为 `4E9B4AFDB457983581EAB04DF07FE95D5C644785668F842C048539BDE7EF38C9`。
 
 按 `scripts/program_sram.ps1 -Board display` 下载至 cable 0 成功，日志：`boardtest/captures/sram_download/program_display_20261025_191914.log`。日志包含 `PRG-2014 : Chip validation success: EG4S20BG256`、`program -cable 0 -mode svf -spd 8 -p` 成功结束和完整 `download` 完成。此下载只写 SRAM。随后按用户要求同步重烧媒体板现有 bit 到 cable 1，日志：`boardtest/captures/sram_download/program_media_20261025_192034.log`，同样有 `PRG-2014`、内部 `program -cable 1 -mode svf -spd 8 -p` 和完整 `download` 成功记录。媒体板源码和 bit 内容未变。用户已确认 HDMI/听感符合音频跨布局保持预期。
+
+
+### 2026-10-25 display SRAM download confirmation（显示板 SRAM 下载复核）
+
+- 新显示板 bit：`board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`；目标 cable 0。仓库脚本命令：`& 'C:\Users\23506\Desktop\anlogic\scripts\program_sram.ps1' -Board display`。
+- 受限沙箱内运行同一脚本时出现 `PRG-9505 ERROR: USB device open error`，随后 `PRG-9525 ERROR: Chip validation failed`；这是进程打开 USB JTAG 设备失败，不能据此判定 bit 无效。
+- 使用非沙箱普通用户进程、未请求 UAC，原样重跑同一脚本和同一 bit 后成功：`PRG-2014 : Chip validation success: EG4S20BG256`，`program -cable 0 -mode svf -spd 8 -p` 完成，`download ... -cable 0` 完成，脚本报告 `SRAM download validated`。下载模式为 JTAG SRAM，不写 Flash。
+- 本次成功日志：`boardtest/captures/sram_download/program_display_20261025_224522.log`；沙箱失败日志：`boardtest/captures/sram_download/program_display_20261025_224405.log`。同轮未对 cable 1 或媒体板下载。
+
+
+### 2026-10-25 media subtitle pacing build
+
+The 4 ms subtitle packet-gap build was downloaded to media cable 1 using `& 'C:\Users\23506\Desktop\anlogic\scripts\program_sram.ps1' -Board media`. `PRG-2014 : Chip validation success: EG4S20BG256`, `program -cable 1 -mode svf -spd 8 -p` completed, the `download ... -cable 1` command finished, and the script reported `SRAM download validated`. No UAC was requested and Flash was not written. Log: `boardtest/captures/sram_download/program_media_20261025_235033.log`. This records the download only; it is not a board-level subtitle pass.
+
+### 2026-10-26 subtitle diagnosis rebuild and API test
+
+The 4 ms candidate still failed with `FPGA_ERR=2`, so the media packet gap was restored to 1 ms. The display and media boards were freshly synthesized and routed, then downloaded to SRAM through `scripts/program_sram.ps1`; neither Flash was written.
+
+| Board | Bit | Cable | Final resources | Final setup / hold WNS | Download log |
+| --- | --- | ---: | --- | --- | --- |
+| Display | `board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit` | 0 | 15,320 LUT; 35 BRAM9K; 11 BRAM32K; 18 DSP; 8,692 slices | -6.538 ns / -2.935 ns | `boardtest/captures/sram_download/program_display_20261026_004211.log` |
+| Media | `board_media/td_project/media_net_Runs/phy_1/media_net.bit` | 1 | 13,961 LUT; 19 BRAM9K; 2 BRAM32K; 5 DSP; 7,757 slices | -3.402 ns / -3.188 ns | `boardtest/captures/sram_download/program_media_20261026_004244.log` |
+
+The display returns a compact END rejection reason in the existing `0x0041` ACK value; the media board forwards it in the existing V1 PC subtitle ACK. `DISPLAY_REJECT=0x85` means END checksum-field mismatch, `0x86` means missing DATA, and `DISPLAY_VALUE=0xNN` means the display returned success with a mismatched value/length. These diagnostic codes were covered by `make media-control media-subtitle-roundtrip`; the media roundtrip also verifies successful 13-character commit, three retries, diagnostic propagation, 1 ms packet spacing and PC checksum rejection. PC checks `test_subtitle.py` and `python -m unittest test_console_protocol.py -v` passed.
+
+An end-to-end backend API test called `/api/eth/connect`, then `/api/subtitle` twice with `HELLO WORLD` (11 ASCII characters). Both calls returned HTTP 200 with `{"ok":true,"length":11,"acknowledged":true}`. Thus the previous `FPGA_ERR=2` did not reproduce on the rebuilt pair; the 1 ms interval is retained. This API test used the real UDP link to the FPGA, not a simulated ACK.

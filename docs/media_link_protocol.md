@@ -1,18 +1,20 @@
 # 双板媒体链路协议
 
-本文是媒体板与显示板之间正式媒体/控制包的字段约定。PC 只在测试时代接显示侧应用逻辑；正常双板运行不要求 PC 转发媒体数据。
+本文是媒体板与显示板之间正式媒体/控制包的字段约定。正常播放由媒体板读卡并发送；Ethernet 控制页另提供 PC 直接上传静态图片的旁路入口，使用同一图像/音频事务格式。
 
 ## 地址与包头
 
 | 设备 | IPv4 | UDP 端口 |
 | --- | --- | --- |
-| PC | 192.168.137.1 | 命令发送 1；回包监听 2 |
+| PC | 192.168.137.1 | 媒体命令发送 1、常规回包监听 2；直接上传使用临时回包端口 |
 | 显示板 | 192.168.137.2 | 媒体与控制接收 1 |
 | 媒体板 | 192.168.137.3 | PC 命令和显示反馈接收 1 |
 
 正式媒体包头为 `AA BB CC DD TYPE_LO TYPE_HI LEN_LO LEN_HI`，TYPE、LEN 和媒体载荷里的多字节数均小端。V1 PC 控制/显示控制包头为 `AA BB CC DD TYPE_HI TYPE_LO LEN_HI LEN_LO`，TYPE/LEN 大端；命令载荷字段按下文逐字节顺序。两种字节序属于不同报文通道。
 
-媒体板按整包选择目标并在发送期间保持：正式媒体包及显示 SET/状态请求/字幕包发显示板 .2:1；V1 命令 ACK/A5 状态与 D 调试读回发 PC .1:2。显示板的媒体结果和设置/状态响应发回媒体板 .3:1。
+媒体板按整包选择目标并在发送期间保持：正式媒体包及显示 SET/状态请求/字幕包发显示板 .2:1；V1 命令 ACK/A5 状态与 D 调试读回发 PC .1:2。正常显示板媒体结果和设置/状态响应发回媒体板 .3:1。PC 直接上传时，由显示板回到该上传 socket 的源地址/端口；当前事务的结果路由在成功 PREPARE 后锁定。
+
+PC 图片上传是正式媒体链路之外的 Ethernet 入口：PC `.1` 直接向显示板 `.2:1` 发送 `0x0020–0x0033`，不经过媒体板。媒体板的 SD 播放和固定 `.3↔.2` 路由不变。该入口面向静态图像事务，不代表已实现 PC 视频流。
 
 ## 正式图像流（0x20–0x24）
 
@@ -21,7 +23,7 @@
 | 类型 | 载荷 | 长度/行为 |
 | --- | --- | --- |
 | 0x0020 READY | 查询载荷为空；显示板应答 1 字节 01 | 媒体板等待显示板 ready 后才读卡发送 |
-| 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32, width:u16, height:u16, layout:u8, window:u8, generation:u16 | 16 字节；total_words=ceil(width×height/2)，宽 1–1280、高 1–720；单图 layout/window 为 0，generation 使用 PREPARE 协商值；仅 PC D 快照三者均为 0；flags bit0=上一张方向，bit2:1=特效，bit3=有同名 WAV 候选，bit4=自动轮播状态快照 |
+| 0x0021 BEGIN | frame_id:u16, image_index:u8, flags:u8, total_words:u32, width:u16, height:u16, layout:u8, window:u8, generation:u16 | 16 字节；total_words=ceil(width×height/2)，宽 1–1280、高 1–720；单图 layout/window 为 0，generation 使用 PREPARE 协商值；PC D 快照三者均为 0；PC 直接上传使用 image_index=31、layout/window=0 和 PREPARE generation；flags bit0=上一张方向，bit2:1=特效，bit3=有配对 WAV，bit4=自动轮播状态快照 |
 | 0x0022 DATA | frame_id:u16, sequence:u16, N×u32 words | N 从 LEN 计算，1–253；序号从 0 连续递增 |
 | 0x0023 END | frame_id:u16, checksum:u32, reserved:u16=0 | 8 字节；前一数据包后等待 1 ms 再发 |
 | 0x0024 RESULT | frame_id:u16, result:u8 | 0 单图图像验收并开始音频；1 整图重传；2 图音/布局实际提交完成；3 多窗口一窗已暂存、继续后续窗。显示板对最终 `result=2` 连发三次，间隔 1 ms；媒体板按 frame_id 接收，后续重复包会被忽略 |
@@ -94,6 +96,8 @@ PC 到媒体板的 V1 字幕仍用 T 字节流：0x54、length XOR 0x80、各 AS
 
 PC 以太网 D 命令请求“当前已提交图像”的正式快照：媒体板从 SD 重读该 BMP，将不含黑边的 `0x0021–0x0023` 原尺寸事务发给 PC `.1:2`。PC 校验后返回图像 RESULT；媒体板再发零样本静音事务 `0x0030/0x0032`，PC 返回音频 RESULT 和最终 RESULT=2。画布按 BEGIN 宽高显示，忽略奇数末字的零填充半像素。快照不写显示板 SDRAM，也不改变显示板当前提交图像。窗口调度锁定焦点源图后才允许快照读取；忙时新的图像/D/布局请求被拒绝，不为它们建立无界队列。
 
+PC 上传图片与 D 快照方向相反：浏览器先解码常见图片格式，服务端将 RGB888 打包为底部向上排列的 RGB565 字，再以同一 `0x0021–0x0024` 格式直接发往显示板。勾选音频时附带 24 kHz/8-bit/mono WAV PCM；未勾选则发送零样本静音事务。Ethernet 上传的节奏和事务限制见 [PC 直接上传说明](pc_direct_image_upload.md)。D 仍读取媒体板 SD 源图，不是 PC 上传图的显示端读回。
+
 媒体板 UART D 保留原始 BMP 调试 tap `type=0x0003`，不参与正式图像提交。网页 D 正式快照仍走媒体板 SD 重读路径。显示板曾有独立 SDRAM 读回 `type=0x0004` 诊断探针；它与正式 PC 快照用途重复，已在双板资源优化中移除。移除该硬件探针不影响网页 D 按钮。
 
 eth_front 的发送完成 toggle 在 UDP mux 返回 ready 后回传；mux 仲裁时先等 `stack_ack` 再发送。包的 owner、目的 IP/端口和长度必须保持到下一个真实 grant，不能在应用层最后一个字节时改成下一个请求的字段：UDP/MAC 此时可能仍在排空。控制回复长度由 eth_front 在 ACK 时发布，因此在首个有效数据拍锁存；媒体长度在 grant 时已稳定。PC D 发送期间，即使后台排队 SET/状态请求，也不能改变当前 DATA 的目的地址。这两条约束分别由 `display-mux-lifetime` 和 `media-route` 仿真覆盖。
@@ -138,3 +142,33 @@ The existing 8-byte V1 ACK and A5 status layouts are unchanged. In non-subtitle 
 ## 多窗口事务扩展（0x48–0x4A）
 
 窗口 PREPARE/REPLY、VIEW_STATUS 的字段、action/result、代次、黑窗排空、整页 RESULT=3 和最终 RESULT=2 约束统一见 [可变尺寸与多窗口实现](native_frame_multiview_handoff.md#协议与状态)。控制包头 TYPE/LEN 大端，状态体中的 generation/宽高小端。媒体板以 PC V1 type=0x0003（16 字节体）或 USB 0xA7 转发状态；长度区分它与原始像素探针。测试光标 0x004B 属诊断接口，不是产品用户控制命令。
+
+
+## PC 直接图像上传后的视图同步
+
+PC 上传遵循显示板当前 VIEW_STATUS：PREPARE 沿用当前布局、请求 `window=0xFE` 锁定 HDMI 光标所在窗口，并从 PREPARE 响应取回窗口、布局、代次和 SD 基准索引。BEGIN 复用这个 SD 索引，PC 图像不写入 SD 播放列表；媒体板随后 N/P 从原 SD 项继续。
+
+显示板发 VIEW_STATUS 时保留对发起请求方的回包，并附送一份至媒体板固定地址 `.3:1`。媒体板调度器据此同步布局、代次、有效窗口和 busy，并沿既有状态通路转发到 PC。图像/音频 RESULT 继续使用当前事务所有者路由。这样 PC 直传、媒体板 SD 切图和网页状态显示共享显示板的权威视图状态，不增加新的 BEGIN/DATA 格式。
+
+
+## PC 上传结果码与多窗口音频
+
+单图写入继续等待图像 `RESULT=0` 后发送音频事务，最后等待 `RESULT=2`。多窗口单窗写入由显示板在目标窗提交（含转场完成）后直接返回 `RESULT=2`，PC 端应把该码作为多窗口上传完成，不能等待不存在的中间 `RESULT=0`。
+
+音频事务仅允许单图布局。PC 界面依据 VIEW_STATUS 禁用多窗口音频；后端在 PREPARE 前复核显示板布局，多窗口带 PCM 时拒绝上传。多窗口无音频包。
+
+
+## Subtitle Ethernet pacing and ACK diagnostics（字幕以太网转发间隔与 ACK 诊断）
+
+媒体板将字幕 BEGIN、逐字符 DATA、END 包转发到显示板时，当前包间隔恢复为原来的 1 ms（`SUBTITLE_GAP_CYCLES=CLK_HZ/1000`）。显示板要求收到完整、连续的 DATA 序号后才接受 END。2026-10-26 实板复测表明临时改成 4 ms 后 `FPGA_ERR=2` 仍然复现，因此已撤回该节流猜测；4 ms 版本不作为修复或验收版本。
+
+网页字幕 ACK 中，`FPGA_ERR=2` 表示媒体板收到显示板拒绝或提交长度不匹配，并完成三次尝试；`FPGA_ERR=3` 表示等待显示板 ACK 超时。`WIRE` 仍是 PC 声明的 XOR 校验。错误码为 2 时，原 `CALC` 字节改为 `DISPLAY_REJECT` / `DISPLAY_VALUE`：最高位为 1 表示显示板拒绝 END，低 7 位给出首个失败条件；最高位为 0 表示显示板返回成功状态但 ACK 长度不匹配，低 7 位是其返回值。`RX_COUNT` 统计媒体板收到的协议字节，包含长度字节、文本字符及两个校验半字节，不等于文本长度。
+
+显示板 END 拒绝值：`1` BEGIN 未活动、`2` END 长度错误、`3` 序号不匹配、`4` 声明长度不匹配、`5` END 校验字段不匹配、`6` DATA 字符未收全、`7` 显示端 XOR 校验不符、`8` 此前收到非法 DATA、`15` 未分类拒绝。例如 `DISPLAY_REJECT=0x85` 表示显示板 END 的校验字段与 BEGIN 中的声明不符；`0x86` 表示 DATA 数量未达到声明长度。该诊断复用现有 ACK 的 value 字节，不增加网络包。
+
+
+## 2026-10-25 subtitle retry pacing follow-up
+
+The reported ACK `FPGA_TAG=5 FPGA_ERR=2 SUB_LEN=11 RX_COUNT=14 WIRE=78 CALC=78 COMMIT=NO` means the PC-to-media parser received the declared 11 characters and verified the PC checksum, then exhausted display-side retries. The 14 received protocol bytes are one length byte, 11 text bytes and two checksum nibbles. A 4 ms packet gap was tried and did not change the board failure; it has been reverted. The RTL roundtrip regression now checks successful 13-character commit, a corrupted display END, propagation of the display reject reason to the existing PC ACK, 1 ms spacing and local PC checksum rejection.
+
+After restoring the 1 ms gap and rebuilding both boards with the reason byte, a backend API test sent the same 11-character class of subtitle (`HELLO WORLD`) and received HTTP 200 with `acknowledged=true`; the error did not reproduce. The 4 ms gap candidate had failed the same board test, so the active implementation keeps the original 1 ms interval. The reject-reason path remains available if the failure recurs.

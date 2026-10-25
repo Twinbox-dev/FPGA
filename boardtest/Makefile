@@ -485,7 +485,7 @@ media-reply:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_control_reply_parse vsrc/tb_media_control_reply_parse.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_reply -o sim_media_control_reply_parse
 	./build_media_reply/sim_media_control_reply_parse
 media-subtitle-roundtrip:
-	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_subtitle_roundtrip vsrc/tb_media_subtitle_roundtrip.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_media_subtitle_roundtrip -o sim_media_subtitle_roundtrip
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_subtitle_roundtrip vsrc/tb_media_subtitle_roundtrip.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v ../board_display/user_source/hdl_source/SD/subtitle_store.v --Mdir build_media_subtitle_roundtrip -o sim_media_subtitle_roundtrip
 	./build_media_subtitle_roundtrip/sim_media_subtitle_roundtrip
 media-eth-subtitle-rx:
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_eth_subtitle_rx vsrc/tb_media_eth_subtitle_rx.sv ../board_media/user_source/hdl_source/ETH/eth_front.v ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_eth_subtitle_rx -o sim_media_eth_subtitle_rx

@@ -2,28 +2,28 @@
 | QoR metrics               |         value               |
 -----------------------------------------------------------
 | Timing                    |                             |
-|     Setup WNS             |        -5693                |
-|     Setup TNS             |      -903099                |
-|     Num of violated S-EP  |          704                |
-|     FMAX                  |    63.723MHz                |
+|     Setup WNS             |        -5743                |
+|     Setup TNS             |      -809767                |
+|     Num of violated S-EP  |          721                |
+|     FMAX                  |    63.520MHz                |
 |     SWNS path clock period |      10000ps                |
 |     Hold WNS              |          -11                |
-|     Hold TNS              |         -121                |
-|     Num of violated H-EP  |           11                |
+|     Hold TNS              |         -132                |
+|     Num of violated H-EP  |           12                |
 -----------------------------------------------------------
 | Routing Resource          |                             |
-|     Wire length           |       886784                |
+|     Wire length           |       938119                |
 -----------------------------------------------------------
 | Utilization               |                             |
-|     #slices               |         8450                |
-|     slices percentage     |       86.22%                |
+|     #slices               |         8692                |
+|     slices percentage     |       88.69%                |
 |     #RAMs                 |           46                |
 |     #DSPs                 |           18                |
 |     #DRAMHARDCON          |            0                |
 -----------------------------------------------------------
 | Congestion                |                             |
 |     Top 1% tile util      |           56                |
-|     Top 1% tile avg util  |       58.24%                |
+|     Top 1% tile avg util  |       58.86%                |
 |     Over 100% util #tile  |            0                |
 -----------------------------------------------------------
 Report place stage QoR done.

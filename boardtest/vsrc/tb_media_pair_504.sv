@@ -292,7 +292,7 @@ module tb_media_pair_504 #(
         .control_ack_op(8'd0), .control_ack_status(8'd0), .control_ack_value(8'd0),
         .status_valid(1'b0), .status_payload(64'd0), .tx_request(display_tx_request),
         .tx_valid(display_tx_valid), .tx_data(display_tx_data), .tx_length(display_tx_length),
-        .tx_ready(1'b1), .tx_ack(display_tx_ack)
+        .tx_ready(1'b1), .tx_to_source(), .tx_to_owner(), .tx_ack(display_tx_ack)
     );
     assign display_tx_ack = display_tx_request;
     assign sender_rx_valid = display_tx_valid;

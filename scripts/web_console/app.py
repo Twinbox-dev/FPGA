@@ -33,6 +33,9 @@ import threading
 import time
 
 from flask import Flask, Response, jsonify, render_template, request
+from media_upload import (AUDIO_PACKET_SAMPLES, IMAGE_PACKET_WORDS, MAX_HEIGHT, MAX_WIDTH,
+                          PC_AUDIO_MAX_SAMPLES, control_packet, image_packet, load_pcm_wav,
+                          rgb24_to_native_words, transcode_audio_stream, unpack_display_packet)
 
 app = Flask(__name__)
 sys.setswitchinterval(0.0005)   # GIL 快速切换：流帧突发期读线程不容许毫秒级停顿（默认 5ms > 64KB 内核缓冲的 1.7ms 吸收窗）
@@ -242,7 +245,8 @@ def decode_pkt(pkt: bytes) -> str:
                     6: "image-end-gap", 7: "wait-image-result", 8: "wait-commit",
                     9: "idle", 10: "read-wav-header", 11: "load-audio-chunk",
                     12: "wait-wav-source", 13: "audio-end-gap", 14: "wait-audio-result"}
-        reject_names = {6: "audio result timeout/invalid",
+        reject_names = {2: "image source/SD/FIFO error or stalled read",
+                        6: "audio result timeout/invalid",
                         9: "frame-id/state", 10: "END length/reserved",
                         11: "word-count", 12: "checksum", 13: "earlier packet",
                         14: "receiver still draining previous packet"}
@@ -310,7 +314,18 @@ def decode_ack(pkt: bytes) -> str:
     elif cmd == 0x54:
         subtitle_error = (wav >> 1) & 0x0F
         subtitle_tag = (wav >> 5) & 0x07
-        detail = f"FPGA_TAG={subtitle_tag} FPGA_ERR={subtitle_error} SUB_LEN={per} RX_COUNT={img} WIRE={vol:02X} CALC={raw_bri:02X} " + ("COMMIT=OK" if flags & 0x80 else "COMMIT=NO")
+        if subtitle_error == 2:
+            reject_code = raw_bri & 0x7F
+            reject_reason = {1: "BEGIN 未活动", 2: "END 长度错误", 3: "序号不匹配",
+                             4: "声明长度不匹配", 5: "END 校验字段不匹配",
+                             6: "DATA 字符未收全", 7: "显示端 XOR 校验不符",
+                             8: "此前收到非法 DATA", 15: "未分类的 END 拒绝"}.get(
+                                 reject_code, "显示端返回长度不符")
+            diag_kind = "DISPLAY_REJECT" if raw_bri & 0x80 else "DISPLAY_VALUE"
+            detail = (f"FPGA_TAG={subtitle_tag} FPGA_ERR={subtitle_error} SUB_LEN={per} RX_COUNT={img} "
+                      f"WIRE={vol:02X} {diag_kind}=0x{raw_bri:02X} ({reject_reason}) COMMIT=NO")
+        else:
+            detail = f"FPGA_TAG={subtitle_tag} FPGA_ERR={subtitle_error} SUB_LEN={per} RX_COUNT={img} WIRE={vol:02X} CALC={raw_bri:02X} " + ("COMMIT=OK" if flags & 0x80 else "COMMIT=NO")
     elif cmd in (0x4E, 0x50): detail = f"{img_s} | {diag}"
     elif cmd == 0x4C:         detail = diag
     else:                     detail = (f"音量={vol}/8 周期={per}s 亮度={bri}/8 "
@@ -635,6 +650,9 @@ class EthTransport:
     # The browser and environment cannot redirect control traffic elsewhere.
     BOARD_DEFAULT = "192.168.137.3"
     BOARD_PORT = 1
+    DISPLAY_IP = "192.168.137.2"
+    DISPLAY_PORT = 1
+    LOCAL_IP = "192.168.137.1"
     LOCAL_PORT = 2
     # The media RTL can wait 2 s and retry three times before its final ACK.
     SUBTITLE_ACK_TIMEOUT = 9.0
@@ -655,6 +673,12 @@ class EthTransport:
         self.subtitle_result = None
         self.subtitle_result_code = 0
         self.subtitle_result_tag = 0
+        self.image_upload_lock = threading.Lock()
+        self.image_upload_active = False
+        self.upload_sock = None
+        self.display_frame_id = 0x7000
+        self.display_sequence = 0x80
+        self.image_packet_gap_s = 0.004
         # ---- 流会话重组状态（写侧 wr / 读回 rb 各一套，仅读线程访问）----
         self.str = {"wr": self._new_sess(), "rb": self._new_sess()}
         self.snapshot = None
@@ -715,12 +739,22 @@ class EthTransport:
     def close(self):
         with self.lock:
             if self.sock is None:
-                return
+                sock = None
+            else:
+                sock = self.sock
+                self.sock = None
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+        upload_sock = self.upload_sock
+        self.upload_sock = None
+        if upload_sock is not None:
             try:
-                self.sock.close()
+                upload_sock.close()
             except Exception:
                 pass
-            self.sock = None
         self.broadcast(self.link_msg(False))
 
     def is_open(self) -> bool:
@@ -732,6 +766,8 @@ class EthTransport:
             return f"未知命令键 {key!r}"
         if self.sock is None:
             return "以太网未连接"
+        if self.image_upload_active and key != "s":
+            return "PC 图像上传中，请等待当前帧提交后再操作"
         payload = self._hdr(0x00, 0x01, 0x00, 0x02) + send_bytes(key)
         try:
             with self.send_lock:
@@ -743,6 +779,8 @@ class EthTransport:
     def send_subtitle(self, value: str):
         if self.sock is None:
             return "以太网未连接"
+        if self.image_upload_active:
+            return "PC 图像上传中，暂不能修改字幕"
         try:
             encoded = subtitle_bytes(value)
             # V1 subtitle ACK has no transaction sequence, so serialize uploads
@@ -782,6 +820,187 @@ class EthTransport:
                 self.subtitle_waiting = False
             return f"以太网字幕发送失败: {e}"
         return ""
+
+    @staticmethod
+    def _display_kind(data: bytes):
+        decoded = unpack_display_packet(data)
+        return decoded[0] if decoded else None
+
+    def _send_display(self, data: bytes):
+        sock = self.upload_sock or self.sock
+        if sock is None:
+            raise RuntimeError("以太网已断开")
+        with self.send_lock:
+            sock.sendto(data, (self.DISPLAY_IP, self.DISPLAY_PORT))
+
+    def _wait_display(self, kind: int, timeout: float, predicate=None) -> bytes:
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"display board response 0x{kind:04X} timed out")
+            if self.upload_sock is None:
+                raise RuntimeError("PC image return socket is not open")
+            try:
+                self.upload_sock.settimeout(remaining)
+                data, sender = self.upload_sock.recvfrom(2048)
+            except OSError as exc:
+                raise TimeoutError(f"display board response 0x{kind:04X} timed out") from exc
+            if sender[0] != self.DISPLAY_IP:
+                continue
+            decoded = unpack_display_packet(data)
+            if decoded is not None and decoded[0] == 0x48:
+                publish_view(decoded[1], self.broadcast)
+            if decoded is None or decoded[0] != kind:
+                continue
+            payload = decoded[1]
+            if predicate is None or predicate(payload):
+                return payload
+
+    def _next_display_sequence(self) -> int:
+        self.display_sequence = (self.display_sequence + 1) & 0xFF
+        return self.display_sequence
+
+    def _refresh_display_view(self, timeout: float = 2.0) -> bytes:
+        """Query authoritative display state and allow sequence resynchronization."""
+        global VIEW_RESYNC
+        with VIEW_LOCK:
+            VIEW_RESYNC = True
+        sequence = self._next_display_sequence()
+        self._send_display(control_packet(0x0048, bytes((sequence,))))
+        return self._wait_display(0x0048, timeout, lambda body: len(body) == 16)
+
+    def upload_image(self, rgb_top_down: bytes, width: int, height: int,
+                     pcm: bytes = b"") -> dict:
+        """Send a PC-decoded image through the display board's normal frame writer."""
+        if self.sock is None:
+            raise RuntimeError("请先连接以太网")
+        if not self.image_upload_lock.acquire(blocking=False):
+            raise RuntimeError("已有一帧 PC 图像正在传输")
+        self.image_upload_active = True
+        try:
+            if self.upload_sock is None:
+                import socket
+                self.upload_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self.upload_sock.bind((self.LOCAL_IP, 0))
+            words, checksum = rgb24_to_native_words(rgb_top_down, width, height)
+
+            # Establish that the display is alive, then acquire the same view
+            # transaction lock used by media-board image loads.
+            ready_deadline = time.monotonic() + 4.0
+            while True:
+                self._send_display(image_packet(0x20))
+                try:
+                    self._wait_display(0x20, 0.8, lambda body: body == b"\x01")
+                    break
+                except TimeoutError:
+                    if time.monotonic() >= ready_deadline:
+                        raise
+            # VIEW_STATUS carries an event sequence, not the request sequence.
+            status = self._refresh_display_view(3.0)
+            if status[4] != 0:
+                raise RuntimeError("显示板正在处理另一项图像事务，请稍后重试")
+            generation = struct.unpack_from("<H", status, 1)[0]
+            current_layout = status[3] & 0x03
+            if current_layout != 0 and pcm:
+                raise RuntimeError("PC audio upload is supported only in single-image layout")
+
+            sequence = self._next_display_sequence()
+            # Follow the active layout and lock the HDMI cursor's current
+            # window, like a media-board image switch.
+            prepare = struct.pack("<BBBBHH", sequence, 0, current_layout, 0xFE, generation, 0)
+            self._send_display(control_packet(0x0049, prepare))
+            reply = self._wait_display(0x004A, 5.0,
+                                       lambda body: len(body) == 8 and body[0] == sequence)
+            if reply[1] != 0:
+                reason = {1: "显示板忙", 2: "不支持的布局请求", 3: "布局状态已变化"}.get(reply[1], reply[1])
+                raise RuntimeError(f"显示板未接受图像准备请求：{reason}")
+            target_window = reply[2] & 0x03
+            target_layout = reply[3] & 0x03
+            generation = struct.unpack_from("<H", reply, 4)[0]
+            if target_layout != 0 and pcm:
+                raise RuntimeError("PC audio upload is supported only in single-image layout")
+            # The PC image is temporary content. Keep the SD index returned
+            # by PREPARE so later N/P actions continue from this window's
+            # previous SD selection rather than treating the PC image as a
+            # directory entry.
+            sd_base_index = reply[6] & 0x1F
+
+            frame_id = self.display_frame_id
+            self.display_frame_id = (self.display_frame_id + 1) & 0xFFFF
+            if self.display_frame_id == 0:
+                self.display_frame_id = 0x7000
+            total_words = len(words) // 4
+            flags = 0x08 if pcm else 0
+            begin = struct.pack("<HBBIHHBBH", frame_id, sd_base_index, flags, total_words,
+                                width, height, target_layout, target_window, generation)
+            for attempt in range(1, 4):
+                self._send_display(image_packet(0x21, begin))
+                for seq, offset in enumerate(range(0, total_words, IMAGE_PACKET_WORDS)):
+                    chunk = words[offset * 4:min(total_words, offset + IMAGE_PACKET_WORDS) * 4]
+                    payload = struct.pack("<HH", frame_id, seq) + chunk
+                    self._send_display(image_packet(0x22, payload))
+                    time.sleep(self.image_packet_gap_s)
+                time.sleep(0.001)
+                self._send_display(image_packet(0x23, struct.pack("<HIH", frame_id, checksum, 0)))
+                result = self._wait_display(
+                    0x24, max(12.0, total_words / IMAGE_PACKET_WORDS * 0.01),
+                    lambda body: len(body) == 3 and int.from_bytes(body[:2], "little") == frame_id
+                    and (body[2] != 2 if target_layout == 0 else
+                         body[2] in (1, 2) or 0x10 <= body[2] <= 0x1F))
+                if (target_layout == 0 and result[2] == 0) or (target_layout != 0 and result[2] == 2):
+                    break
+                if result[2] != 1 and not 0x10 <= result[2] <= 0x1F:
+                    raise RuntimeError(f"显示板拒绝图像事务，错误码 0x{result[2]:02X}")
+                if attempt == 3:
+                    raise RuntimeError("显示板连续三次拒绝图像帧校验")
+            if target_layout == 0:
+                self._send_display(image_packet(0x30, struct.pack("<HIH", frame_id, len(pcm), 0)))
+                for seq, offset in enumerate(range(0, len(pcm), AUDIO_PACKET_SAMPLES)):
+                    chunk = pcm[offset:offset + AUDIO_PACKET_SAMPLES]
+                    self._send_display(image_packet(0x31, struct.pack("<HH", frame_id, seq) + chunk))
+                    time.sleep(0.0005)
+                time.sleep(0.001)
+                self._send_display(image_packet(0x32, struct.pack("<HIH", frame_id, sum(pcm) & 0xFFFFFFFF, 0)))
+                audio_result = self._wait_display(
+                    0x33, max(10.0, len(pcm) / AUDIO_PACKET_SAMPLES * 0.01),
+                    lambda body: len(body) == 3 and int.from_bytes(body[:2], "little") == frame_id)
+                if audio_result[2] != 0:
+                    raise RuntimeError("显示板未接受音频/静音事务")
+                commit = self._wait_display(
+                    0x24, 10.0,
+                    lambda body: len(body) == 3 and int.from_bytes(body[:2], "little") == frame_id
+                    and body[2] == 2)
+            else:
+                # Multi-view commits report RESULT=2 without a preceding 0.
+                commit = result
+            try:
+                self._refresh_display_view()
+            except Exception:
+                pass
+            self.broadcast({"type": "pkt", "kind": "upload",
+                            "text": f"PC 图像已提交：{width}×{height}，音频样本 {len(pcm)}",
+                            "ts": time.strftime("%H:%M:%S")})
+            return {"frame_id": frame_id, "width": width, "height": height,
+                    "words": total_words, "audio_samples": len(pcm),
+                    "result": commit[2], "layout": target_layout,
+                    "window": target_window, "sd_index": sd_base_index}
+        except Exception:
+            # A timed-out upload must not leave the web controls locked to a
+            # stale busy bit after the display has already committed or aborted.
+            try:
+                self._refresh_display_view()
+            except Exception:
+                pass
+            raise
+        finally:
+            self.image_upload_active = False
+            if self.upload_sock is not None:
+                try:
+                    self.upload_sock.close()
+                finally:
+                    self.upload_sock = None
+            self.image_upload_lock.release()
 
     def _capture_subtitle_ack(self, pkt: bytes):
         if len(pkt) < 8 or pkt[0] != 0x5A or pkt[1] != 0x54:
@@ -956,11 +1175,18 @@ class EthTransport:
         view = memoryview(buf)
         while self.sock is not None:
             try:
-                n = self.sock.recv_into(buf)   # 热路径：零拷贝收包，解码按需
+                n, sender = self.sock.recvfrom_into(buf)   # Preserve source board for direct replies.
                 data = view[:n]
             except Exception:
                 self._stream_poll()            # 超时窗口顺带查会话收口
                 continue                       # 超时/关闭 → 回到 while 判据
+            if sender[0] == self.DISPLAY_IP:
+                decoded_display = unpack_display_packet(bytes(data))
+                if decoded_display is not None:
+                    kind, body = decoded_display
+                    if kind == 0x48:
+                        publish_view(body, self.broadcast)
+                    continue
             if n == 24 and data[:8] == b"\xAA\xBB\xCC\xDD\x00\x03\x00\x10":
                 publish_view(bytes(data[8:24]), self.broadcast)
                 continue
@@ -1143,6 +1369,47 @@ def api_subtitle():
     if err:
         return jsonify({"ok": False, "error": err}), 504 if mode == "eth" and "确认" in err else 400
     return jsonify({"ok": True, "length": len(value), "acknowledged": mode == "eth"})
+
+
+@app.route("/api/eth/upload-image", methods=["POST"])
+def api_eth_upload_image():
+    """Convert browser-decoded RGB and send a normal 0x21..0x33 frame to .2."""
+    if not eth_link.is_open():
+        return jsonify({"ok": False, "error": "请先连接以太网"}), 400
+    try:
+        width = int(request.form.get("width", "0"))
+        height = int(request.form.get("height", "0"))
+        pixels_file = request.files.get("pixels")
+        if pixels_file is None:
+            raise ValueError("缺少图像像素数据")
+        rgb = pixels_file.stream.read(1280 * 720 * 3 + 1)
+        if not (1 <= width <= MAX_WIDTH and 1 <= height <= MAX_HEIGHT):
+            raise ValueError("image dimensions must be within 1..1280 × 1..720")
+        if len(rgb) != width * height * 3:
+            raise ValueError("RGB data length does not match image dimensions")
+        include_audio = request.form.get("include_audio") == "1"
+        pcm = b""
+        if include_audio:
+            audio_file = request.files.get("audio")
+            if audio_file is None or not audio_file.filename:
+                raise ValueError("\u8bf7\u9009\u62e9 WAV \u6216\u542b\u97f3\u8f68\u7684 MP4\uff1b\u5173\u95ed\u97f3\u9891\u9009\u9879\u5219\u65e0\u9700\u4e0a\u4f20\u97f3\u9891")
+            if audio_file.filename.lower().endswith(".wav"):
+                wav_data = audio_file.stream.read(32 * 1024 * 1024 + 1)
+                if len(wav_data) > 32 * 1024 * 1024:
+                    raise ValueError("WAV 文件超过 32 MB")
+                pcm = load_pcm_wav(wav_data, max_samples=PC_AUDIO_MAX_SAMPLES)
+            else:
+                pcm = transcode_audio_stream(audio_file.stream, audio_file.filename)
+        result = eth_link.upload_image(rgb, width, height, pcm)
+        return jsonify({"ok": True, **result})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except TimeoutError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 504
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"以太网图像发送失败：{exc}"}), 502
 
 
 @app.route("/api/stream")

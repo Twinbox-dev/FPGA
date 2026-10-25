@@ -35,6 +35,9 @@ module eth_subsys(
     input  wire        media_packet_valid,
     input  wire [7:0]  media_packet_data,
     input  wire [15:0] media_packet_length,
+    input  wire        media_packet_to_source,
+    input  wire        media_packet_to_owner,
+    input  wire        media_source_claim,
     output wire        media_packet_ack,
     output wire        media_packet_ready,
     input wire digest_req, digest_valid,
@@ -120,8 +123,37 @@ module eth_subsys(
     wire        app_tx_data_request, app_tx_data_valid;
     wire [15:0] udp_data_length;
     wire digest_chunk_active;
-    wire [31:0] tx_dst_ip = digest_chunk_active ? MEDIA_PEER_IP : 32'hc0a88901;
-    wire [15:0] tx_dst_port = digest_chunk_active ? MEDIA_PEER_UDP_PORT : 16'd4;
+    wire [47:0] app_rx_source_mac;
+    wire [31:0] app_rx_source_ip;
+    wire [15:0] app_rx_source_port;
+    reg [47:0] owner_mac;
+    reg [31:0] owner_ip;
+    reg [15:0] owner_port;
+    reg owner_valid;
+    wire route_chunk_to_source = media_packet_to_source && (app_rx_source_ip != 0) &&
+                                 (app_rx_source_port != 0);
+    wire route_chunk_to_owner = media_packet_to_owner && owner_valid;
+    wire [31:0] tx_dst_ip = digest_chunk_active ?
+                            (route_chunk_to_owner ? owner_ip :
+                             (route_chunk_to_source ? app_rx_source_ip : MEDIA_PEER_IP)) : 32'hc0a88901;
+    wire [15:0] tx_dst_port = digest_chunk_active ?
+                              (route_chunk_to_owner ? owner_port :
+                               (route_chunk_to_source ? app_rx_source_port : MEDIA_PEER_UDP_PORT)) : 16'd4;
+    wire [47:0] tx_dst_mac = tx_dst_ip == MEDIA_PEER_IP ? MEDIA_PEER_MAC :
+                             ((route_chunk_to_owner && tx_dst_ip == owner_ip) ? owner_mac :
+                              ((app_rx_source_ip != 0 && tx_dst_ip == app_rx_source_ip) ?
+                               app_rx_source_mac : MEDIA_PEER_MAC));
+
+    always @(posedge udp_clk or posedge reset) begin
+        if (reset) begin
+            owner_mac <= 0; owner_ip <= 0; owner_port <= 0; owner_valid <= 1'b0;
+        end else if (media_source_claim && app_rx_source_ip != 0 && app_rx_source_port != 0) begin
+            owner_mac <= app_rx_source_mac;
+            owner_ip <= app_rx_source_ip;
+            owner_port <= app_rx_source_port;
+            owner_valid <= 1'b1;
+        end
+    end
 
     media_tx_mux u_tx_mux (
         .clk          (udp_clk), .rst(reset),
@@ -181,10 +213,14 @@ module eth_subsys(
         .app_tx_data_length    (udp_data_length),
         .app_tx_dst_port       (tx_dst_port),
         .ip_tx_dst_address     (tx_dst_ip),
+        .ip_tx_dst_mac         (tx_dst_mac),
         .app_rx_data_valid     (app_rx_data_valid),
         .app_rx_data           (app_rx_data),
         .app_rx_data_length    (),
         .app_rx_port_num       (),
+        .app_rx_source_mac     (app_rx_source_mac),
+        .app_rx_source_ip      (app_rx_source_ip),
+        .app_rx_source_port    (app_rx_source_port),
         .temac_rx_ready        (temac_rx_ready),
         .temac_rx_valid        (!temac_rx_valid_n),
         .temac_rx_data         (temac_rx_data),

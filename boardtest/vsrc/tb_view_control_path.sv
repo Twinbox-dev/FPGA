@@ -64,7 +64,8 @@ module tb_view_control_path;
         .audio_result_valid(1'b0),.audio_result_code(8'd0),.audio_result_frame(16'd0),
         .control_ack_valid(1'b0),.control_ack_sequence(8'd0),.control_ack_op(8'd0),
         .control_ack_status(8'd0),.control_ack_value(8'd0),.status_valid(1'b0),.status_payload(64'd0),
-        .tx_request(dreq),.tx_valid(dvalid),.tx_data(ddata),.tx_length(dlen),.tx_ready(1'b1),.tx_ack(dreq),
+        .tx_request(dreq),.tx_valid(dvalid),.tx_data(ddata),.tx_length(dlen),
+        .tx_to_source(),.tx_to_owner(),.tx_ready(1'b1),.tx_ack(dreq),
         .view_busy(dbusy),.view_prepare_valid(pa),.view_prepare_body(pbody),.view_status_valid(vs),.view_status_body(vbody));
     reg epoch_seen=0;
     integer drain_count=0,job_clock=-1,jobs=0,display_position=0,pc_snapshots=0;

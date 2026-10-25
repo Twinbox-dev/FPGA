@@ -11,7 +11,9 @@ assert(!html.includes('id="btnEthConn"') && !html.includes('id="btnEthDisc"'),
   'Ethernet connect/disconnect buttons should be removed');
 assert(!/document\.addEventListener\(["']keydown/.test(html),
   'page-wide keyboard commands should be disabled so text fields can be edited normally');
-for (const id of ['btnSnapshot', 'frameCvRb', 'frameCv', 'bmpFile', 'subtitleText'])
+for (const id of ['btnSnapshot', 'frameCvRb', 'frameCv', 'bmpFile', 'subtitleText',
+                  'pcUploadPanel', 'pcImageFile', 'pcImageAudio', 'pcAudioFile',
+                  'btnPcUpload', 'pcUploadHint'])
   assert(html.includes(`id="${id}"`), `required console control ${id} is missing`);
 assert(html.includes('sendKey("d")'), 'D snapshot button must request a board snapshot');
 const begin = html.indexOf('let lastFrameId = ');

@@ -4,12 +4,15 @@ module tb_display_udp_lite;
     localparam [47:0] LOCAL_MAC = 48'h0123456789ab;
     localparam [31:0] PEER_IP = 32'hc0a88903;
     localparam [47:0] PEER_MAC = 48'h020000000003;
+    localparam [31:0] PC_IP = 32'hc0a88901;
+    localparam [47:0] PC_MAC = 48'h021122334455;
 
     reg clk=0, reset=1;
     reg chunk_request=0, chunk_valid=0;
     reg [7:0] chunk_data=0;
     reg [15:0] chunk_length=12, app_tx_dst_port=1;
     reg [31:0] ip_tx_dst_address=PEER_IP;
+    reg [47:0] ip_tx_dst_mac=PEER_MAC;
     wire udp2app_tx_ready, udp2app_tx_ack;
     wire app_tx_request, app_tx_data_valid;
     wire [7:0] app_tx_data;
@@ -18,6 +21,9 @@ module tb_display_udp_lite;
     wire app_rx_data_valid;
     wire [7:0] app_rx_data;
     wire [15:0] app_rx_data_length, app_rx_port_num;
+    wire [47:0] app_rx_source_mac;
+    wire [31:0] app_rx_source_ip;
+    wire [15:0] app_rx_source_port;
     reg temac_rx_valid=0, temac_rx_sof=1, temac_rx_eof=1;
     reg [7:0] temac_rx_data=0;
     wire temac_rx_ready;
@@ -49,9 +55,11 @@ module tb_display_udp_lite;
         .udp2app_tx_ready(udp2app_tx_ready),.udp2app_tx_ack(udp2app_tx_ack),
         .app_tx_request(app_tx_request),.app_tx_data_valid(app_tx_data_valid),
         .app_tx_data(app_tx_data),.app_tx_data_length(app_tx_data_length),
-        .app_tx_dst_port(app_tx_dst_port),.ip_tx_dst_address(ip_tx_dst_address),
+        .app_tx_dst_port(app_tx_dst_port),.ip_tx_dst_address(ip_tx_dst_address),.ip_tx_dst_mac(ip_tx_dst_mac),
         .app_rx_data_valid(app_rx_data_valid),.app_rx_data(app_rx_data),
         .app_rx_data_length(app_rx_data_length),.app_rx_port_num(app_rx_port_num),
+        .app_rx_source_mac(app_rx_source_mac),.app_rx_source_ip(app_rx_source_ip),
+        .app_rx_source_port(app_rx_source_port),
         .temac_rx_ready(temac_rx_ready),.temac_rx_valid(temac_rx_valid),
         .temac_rx_data(temac_rx_data),.temac_rx_sof(temac_rx_sof),.temac_rx_eof(temac_rx_eof),
         .temac_tx_ready(temac_tx_ready),.temac_tx_valid(temac_tx_valid),
@@ -150,6 +158,28 @@ module tb_display_udp_lite;
         end
     endtask
 
+    task make_pc_udp_request;
+        integer k;
+        reg [15:0] sum;
+        begin
+            for(k=0;k<60;k=k+1)rx_frame[k]=0;
+            {rx_frame[0],rx_frame[1],rx_frame[2],rx_frame[3],rx_frame[4],rx_frame[5]}=LOCAL_MAC;
+            {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=PC_MAC;
+            rx_frame[12]=8'h08;rx_frame[13]=0;
+            rx_frame[14]=8'h45;rx_frame[15]=0;rx_frame[16]=0;rx_frame[17]=36;
+            rx_frame[18]=0;rx_frame[19]=0;rx_frame[20]=8'h40;rx_frame[21]=0;
+            rx_frame[22]=64;rx_frame[23]=17;
+            sum=ip_checksum(36,8'd17,PC_IP,LOCAL_IP);
+            rx_frame[24]=sum[15:8];rx_frame[25]=sum[7:0];
+            {rx_frame[26],rx_frame[27],rx_frame[28],rx_frame[29]}=PC_IP;
+            {rx_frame[30],rx_frame[31],rx_frame[32],rx_frame[33]}=LOCAL_IP;
+            rx_frame[34]=0;rx_frame[35]=2;rx_frame[36]=0;rx_frame[37]=1;
+            rx_frame[38]=0;rx_frame[39]=16;rx_frame[40]=0;rx_frame[41]=0;
+            rx_frame[42]=8'haa;rx_frame[43]=8'hbb;rx_frame[44]=8'hcc;rx_frame[45]=8'hdd;
+            rx_frame[46]=8'h00;rx_frame[47]=8'h31;rx_frame[48]=8'h01;rx_frame[49]=8'h02;
+        end
+    endtask
+
     task make_udp_large_request;
         integer k;
         reg [15:0] sum;
@@ -189,16 +219,17 @@ module tb_display_udp_lite;
             $fatal(1,"ARP reply fields invalid");
         $display("PASS: ARP request/reply, static local addressing");
 
-        // The application network is fixed to the media peer. Requests from
-        // other sender addresses are ignored instead of allocating reply
-        // state for arbitrary hosts.
+        // A PC host may resolve the display's address too; the reply must be
+        // addressed to the ARP sender instead of the fixed media peer.
         tx_count=0;make_arp_request();
-        {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=48'h021122334455;
-        {rx_frame[22],rx_frame[23],rx_frame[24],rx_frame[25],rx_frame[26],rx_frame[27]}=48'h021122334455;
-        {rx_frame[28],rx_frame[29],rx_frame[30],rx_frame[31]}=32'hc0a88901;
-        send_frame(60);repeat(4)@(negedge clk);
-        if(tx_count!=0)$fatal(1,"non-peer ARP request unexpectedly received a reply");
-        $display("PASS: fixed-peer ARP ignores non-peer requests");
+        {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=PC_MAC;
+        {rx_frame[22],rx_frame[23],rx_frame[24],rx_frame[25],rx_frame[26],rx_frame[27]}=PC_MAC;
+        {rx_frame[28],rx_frame[29],rx_frame[30],rx_frame[31]}=PC_IP;
+        send_frame(60);wait_tx(60);
+        if ({tx_frame[0],tx_frame[1],tx_frame[2],tx_frame[3],tx_frame[4],tx_frame[5]}!==PC_MAC ||
+            {tx_frame[38],tx_frame[39],tx_frame[40],tx_frame[41]}!==PC_IP)
+            $fatal(1,"PC ARP reply did not target its sender");
+        $display("PASS: ARP reply targets dynamic PC sender");
 
         // Valid IPv4/UDP frame must arrive as the original application bytes.
         app_count=0;make_udp_request();send_frame(60);
@@ -237,9 +268,17 @@ module tb_display_udp_lite;
         if(app_count!=0 || tx_count!=0)$fatal(1,"ICMP unexpectedly received a reply");
         $display("PASS: malformed IPv4/wrong UDP port rejection; ICMP omitted");
 
+        // Learn the PC's UDP tuple and verify a later application response
+        // uses its source MAC/IP/port while the media peer remains fixed.
+        app_count=0;make_pc_udp_request();send_frame(60);repeat(4)@(negedge clk);
+        if(app_count!=8 || app_rx_source_mac!==PC_MAC || app_rx_source_ip!==PC_IP ||
+           app_rx_source_port!==16'd2)
+            $fatal(1,"PC UDP sender tuple was not captured");
+        $display("PASS: PC UDP source MAC/IP/port captured");
+
         // App response is wrapped in IPv4/UDP, padded to Ethernet minimum.
-        tx_count=0;chunk_length=24;app_tx_dst_port=1;ip_tx_dst_address=PEER_IP;
-        expected_checksum=ip_checksum(52,8'd17,LOCAL_IP,PEER_IP);
+        tx_count=0;chunk_length=24;app_tx_dst_port=2;ip_tx_dst_address=PC_IP;ip_tx_dst_mac=PC_MAC;
+        expected_checksum=ip_checksum(52,8'd17,LOCAL_IP,PC_IP);
         temac_tx_ready=1;
         @(negedge clk);chunk_request=1;
         timeout_count=0;
@@ -258,13 +297,13 @@ module tb_display_udp_lite;
         if(tx_count!=0)$fatal(1,"stalled TEMAC consumed UDP frame bytes");
         temac_tx_ready=0;
         wait_tx(66);
-        if ({tx_frame[0],tx_frame[1],tx_frame[2],tx_frame[3],tx_frame[4],tx_frame[5]}!==PEER_MAC ||
+        if ({tx_frame[0],tx_frame[1],tx_frame[2],tx_frame[3],tx_frame[4],tx_frame[5]}!==PC_MAC ||
             {tx_frame[6],tx_frame[7],tx_frame[8],tx_frame[9],tx_frame[10],tx_frame[11]}!==LOCAL_MAC ||
             tx_frame[12]!==8'h08 || tx_frame[13]!==0 || tx_frame[14]!==8'h45 ||
             {tx_frame[16],tx_frame[17]}!==16'd52 || tx_frame[23]!==17 ||
             {tx_frame[26],tx_frame[27],tx_frame[28],tx_frame[29]}!==LOCAL_IP ||
-            {tx_frame[30],tx_frame[31],tx_frame[32],tx_frame[33]}!==PEER_IP ||
-            {tx_frame[34],tx_frame[35]}!==16'd1 || {tx_frame[36],tx_frame[37]}!==16'd1 ||
+             {tx_frame[30],tx_frame[31],tx_frame[32],tx_frame[33]}!==PC_IP ||
+             {tx_frame[34],tx_frame[35]}!==16'd1 || {tx_frame[36],tx_frame[37]}!==16'd2 ||
             {tx_frame[38],tx_frame[39]}!==16'd32 || tx_frame[40]!==0 || tx_frame[41]!==0)
             $fatal(1,"IPv4/UDP transmit header invalid");
         for(i=0;i<24;i=i+1)if(tx_frame[42+i] !== (8'h40+i))$fatal(1,"TX payload byte %0d mismatch",i);

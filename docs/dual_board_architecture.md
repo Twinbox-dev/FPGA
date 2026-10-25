@@ -10,15 +10,17 @@
 
 媒体板不用 SDRAM 缓存整帧；使用 BRAM 扇区/包缓存和反压。网络传 BMP 实际宽高的 RGB565，保留文件自底向上行序，显示端写入时翻转。每个 32-bit 字打包两个像素，整图奇数像素的末字高 16 位为零。
 
-两边 Ethernet RTL/IP 自包含。媒体端保留完整 PC 网络入口；显示端采用固定媒体对端的 `display_udp_lite`，不提供通用 PC ARP/ICMP 服务。媒体板 ping 和经媒体板的 S/VIEW_STATUS 是正式联机检查入口。
+两边 Ethernet RTL/IP 自包含。媒体端保留完整 PC 控制入口；显示端的普通媒体流仍使用固定媒体对端 `.3:1`，同时可通过 Ethernet 页响应 PC 对 `.2:1` 的静态图片上传。显示端不提供通用 ICMP 服务。媒体板 ping 和经媒体板的 S/VIEW_STATUS 是常规联机检查入口。
 
 ## 路由和控制
 
 | 方向 | 内容 |
 | --- | --- |
 | PC .1 → 媒体板 .3:1 | V1 `[CMD, ~CMD]`、字幕 |
+| PC .1 临时 UDP 端口 → 显示板 .2:1 | Ethernet 页直接上传静态图片及可选 WAV；复用正式媒体帧事务 |
 | 媒体板 .3 → 显示板 .2:1 | 图像/PCM、绝对设置、字幕、窗口 PREPARE/状态请求 |
 | 显示板 .2 → 媒体板 .3:1 | READY、图像/音频 RESULT、设置 ACK、窗口状态、GT911 N/P |
+| 显示板 .2 → PC 上传 socket | 返回 PC 上传事务的 READY、PREPARE、图像/音频 RESULT 和 VIEW_STATUS |
 | 媒体板 .3 → PC .1:2 | V1 ACK/A5、VIEW_STATUS、按需 D 源图快照 |
 
 媒体格式的 TYPE/LEN 为小端；V1 控制格式为大端。目的地址、长度和 owner 在整包发送期间保持，仲裁只在包边界切换。不能把一次 N/P 同时送入原始命令口和控制核脉冲口。

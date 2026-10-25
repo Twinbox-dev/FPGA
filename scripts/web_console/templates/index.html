@@ -368,6 +368,15 @@
   .compare-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; }
   .compare-row label { color:var(--dim); font-size:12px; }
   .compare-row input { max-width:230px; min-width:0; color:var(--dim); }
+  .pc-upload { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px;
+    padding:12px; border:1px solid #26384e; border-radius:9px; background:#0b121d; }
+  .pc-upload[hidden] { display:none; }
+  .pc-upload label { color:var(--dim); font-size:12px; }
+  .pc-upload input[type=file] { max-width:240px; min-width:0; color:var(--dim); }
+  .pc-upload .hint { flex-basis:100%; }
+  .pc-upload button { border:1px solid #2b4059; border-radius:8px; background:linear-gradient(120deg,#43cde9,#9daeff);
+    color:#08111c; padding:8px 14px; font-weight:700; cursor:pointer; }
+  .pc-upload button:disabled { opacity:.42; cursor:not-allowed; }
   #diffHint,#diffHintRb { color:var(--warn); }
   .top-status { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
   .status-label { color:var(--faint); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
@@ -540,6 +549,14 @@
         <input type="file" id="bmpFile" accept=".bmp">
         <span class="hint">覆盖、像素差异和黑边差异会分别统计。</span>
       </div>
+      <div class="pc-upload" id="pcUploadPanel" hidden>
+        <label for="pcImageFile">发送图片到显示板</label>
+        <input type="file" id="pcImageFile" accept="image/*">
+        <label><input type="checkbox" id="pcImageAudio"> 同时发送音频</label>
+        <input type="file" id="pcAudioFile" accept="audio/*,video/mp4,.mp4,.m4a,.wav" disabled>
+        <button type="button" id="btnPcUpload" disabled>处理并发送</button>
+        <span class="hint" id="pcUploadHint">支持浏览器可解码的常见图片格式，超过 1280×720 时按比例缩小。音频支持 WAV 或带音轨的 MP4，后端会转换为 24 kHz、8-bit、单声道，并只发送前 1 分钟；音频仅单图模式可选。多窗口下替换 HDMI 光标所在窗，保留当前布局。</span>
+      </div>
     </section>
 
   </div>
@@ -554,7 +571,7 @@ window.addEventListener("unhandledrejection", e => window.__errs.push("rej:" + S
 let mode = "serial";            // serial | eth
 let boardView = null, viewPending = false, viewSawBusy = false, viewRecovery = false, viewTimer = null;
 const IMAGE_KEYS = ["n", "p", "d", "6", "7", "8"];
-let connected = false, count = 0, pollTimer = null;
+let connected = false, count = 0, pollTimer = null, uploadBusy = false;
 let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两个数
 const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
 const CV_KEY_BY_NAME = {raw:"r", gray:"g", binary:"b", sobel:"e", sharpen:"h", snow:"w"};
@@ -572,7 +589,13 @@ RANGE["画面布局"] = "双图 / 四图需先回单图互切";
 Object.assign(ICON, {"6":"▣", "7":"◫", "8":"▦"});
 
 function updateViewControls() {
-  const busy = viewPending || !!(boardView && boardView.busy);
+  const busy = uploadBusy || viewPending || !!(boardView && boardView.busy);
+  const audioToggle = document.getElementById("pcImageAudio");
+  const audioFile = document.getElementById("pcAudioFile");
+  const singleLayout = !!boardView && boardView.layout === 0;
+  if (!singleLayout && audioToggle.checked) audioToggle.checked = false;
+  audioToggle.disabled = mode !== "eth" || !connState.eth || busy || !singleLayout;
+  audioFile.disabled = audioToggle.disabled || !audioToggle.checked;
   document.querySelectorAll("#pad button[data-k]").forEach(button => {
     const key = button.dataset.k;
     const illegal = boardView && ((boardView.layout === 1 && key === "8") ||
@@ -583,6 +606,9 @@ function updateViewControls() {
       button.classList.toggle("on", !!boardView && +key === boardView.layout + 6);
   });
   document.getElementById("btnSnapshot").disabled = !connected || busy || !boardView;
+  document.getElementById("btnPcUpload").disabled = mode !== "eth" || !connState.eth || busy ||
+    !document.getElementById("pcImageFile").files.length ||
+    (audioToggle.checked && !audioFile.files.length);
   for (const id of ["btnSubtitle", "btnSubtitleClear", "subtitleText"])
     document.getElementById(id).disabled = !connected || busy;
 }
@@ -667,6 +693,7 @@ function setMode(m, announce=true) {
   document.getElementById("mEth").className = (m === "eth") ? "on" : "";
   slide();
   document.getElementById("serialCard").style.display = (m === "eth") ? "none" : "";
+  document.getElementById("pcUploadPanel").hidden = m !== "eth";
   document.getElementById("ctlHint").innerHTML = (m === "eth")
     ? "按键即发（走以太网 UDP）；板卡每条命令都会回 <b>ACK</b>，<b>S</b> 回系统全景状态包。"
     : "按键即发；板卡每条命令都会回 <b>ACK</b>（音量/周期/亮度当前值），<b>S</b> 回系统全景状态包。";
@@ -697,6 +724,61 @@ function selectFrameView(view) {
   panes.forEach(pane => { pane.hidden = pane.id !== (view === "wr" ? "frameViewWr" : "frameViewRb"); });
   buttons.forEach(button => button.classList.toggle("on", button.dataset.frameView === view));
 }
+
+document.getElementById("pcImageAudio").addEventListener("change", () => {
+  updateViewControls();
+});
+for (const id of ["pcImageFile", "pcAudioFile"])
+  document.getElementById(id).addEventListener("change", updateViewControls);
+document.getElementById("btnPcUpload").onclick = async () => {
+  const imageFile = document.getElementById("pcImageFile").files[0];
+  const includeAudio = document.getElementById("pcImageAudio").checked &&
+    !!boardView && boardView.layout === 0;
+  const audioFile = document.getElementById("pcAudioFile").files[0];
+  if (!imageFile || (includeAudio && !audioFile)) return;
+  const hint = document.getElementById("pcUploadHint");
+  uploadBusy = true;
+  hint.textContent = "正在解码并打包图像…";
+  updateViewControls();
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(imageFile);
+    const scale = Math.min(1, 1280 / bitmap.width, 720 / bitmap.height);
+    const width = Math.max(1, Math.floor(bitmap.width * scale));
+    const height = Math.max(1, Math.floor(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d", {willReadFrequently:true});
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close(); bitmap = null;
+    const rgba = ctx.getImageData(0, 0, width, height).data;
+    const rgb = new Uint8Array(width * height * 3);
+    for (let src = 0, dst = 0; dst < rgb.length; src += 4, dst += 3) {
+      rgb[dst] = rgba[src]; rgb[dst + 1] = rgba[src + 1]; rgb[dst + 2] = rgba[src + 2];
+    }
+    const form = new FormData();
+    form.append("width", String(width)); form.append("height", String(height));
+    form.append("pixels", new Blob([rgb], {type:"application/octet-stream"}), "image.rgb");
+    form.append("include_audio", includeAudio ? "1" : "0");
+    if (includeAudio) form.append("audio", audioFile, audioFile.name);
+    hint.textContent = `正在发送 ${width}×${height} 图像并等待显示板提交…`;
+    const response = await fetch("/api/eth/upload-image", {method:"POST", body:form});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    const layoutName = ["单图", "左右双图", "四宫格"][result.layout] || "当前布局";
+    const targetName = result.layout === 0 ? "全屏" : `窗口 ${result.window + 1}`;
+    hint.textContent = `已提交帧 ${result.frame_id.toString(16).toUpperCase()}：${layoutName} / ${targetName}，${width}×${height}，音频 ${result.audio_samples} 样本`;
+    addLog("ack", "UPLOAD", `PC 图像已由显示板提交：${layoutName} / ${targetName}，${width}×${height}，${result.audio_samples} 个音频样本`);
+  } catch (err) {
+    if (bitmap) bitmap.close();
+    hint.textContent = `发送失败：${err.message}`;
+    addLog("err", "UPLOAD", err.message);
+  } finally {
+    uploadBusy = false;
+    updateViewControls();
+  }
+};
 
 /* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
 async function buildPad(){

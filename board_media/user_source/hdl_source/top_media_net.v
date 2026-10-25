@@ -53,7 +53,7 @@ module top (
     wire [31:0] frame_data;wire frame_valid,frame_ready;
     wire [9:0] production_available;
     reg [1:0] audio_pause_sync;
-    wire start_toggle;wire [4:0] source_index,committed_index;
+    wire start_toggle,source_abort_toggle;wire [4:0] source_index,committed_index;
     wire tx_busy,committed_valid;wire [7:0] tx_error;wire [3:0] tx_state;
     wire [7:0] media_status_state = (tx_error[7:4]==4'h7) ? tx_error : {tx_error[3:0],tx_state};
     wire committed_wav;reg [7:0] fat_state_s0,fat_state_s1;reg fat_error_s0,fat_error_s1;
@@ -88,6 +88,14 @@ module top (
     wire [7:0] job_result;
     wire formal_request,formal_valid,formal_ack,formal_to_pc;
     wire [7:0] formal_data;wire [15:0] formal_length;
+    // A toggle carries image-source cancellation from the 125 MHz application
+    // clock into the 50 MHz SD/FAT clock domain without losing a short pulse.
+    reg [2:0] source_abort_sync;
+    always @(posedge clk) begin
+        if(media_sd_rst)source_abort_sync<=0;
+        else source_abort_sync<={source_abort_sync[1:0],source_abort_toggle};
+    end
+    wire source_abort_pulse=source_abort_sync[2]^source_abort_sync[1];
     wire view_request,view_valid,view_ack,view_to_pc;
     wire [7:0] view_data;wire [15:0] view_length;
     wire key_next_press,key_auto_press,key_prev_press;
@@ -149,7 +157,7 @@ module top (
     wire debug_launch=control_debug_sync[1] && !tx_busy_sync[1] && !formal_start;
     wire [4:0] file_index=debug_launch ? (committed_valid_sync[1]?committed_s1:first_bmp[4:0]) : source_index_s1;
     media_image_source u_source (
-        .clk(clk),.rst(media_sd_rst),.start(formal_start),.debug_start(debug_launch),.abort(1'b0),.file_index(file_index),
+        .clk(clk),.rst(media_sd_rst),.start(formal_start),.debug_start(debug_launch),.abort(source_abort_pulse),.file_index(file_index),
         .audio_start_toggle_async(audio_start_toggle),.audio_file_index_async(audio_file_index),
         .audio_pause(audio_pause_sync[1]),
         .sd_clk(sd_clk),.sd_clk_100m(sd_clk_100m),.sd_pll_locked(sd_pll_locked),.sd_cmd(sd_cmd),.sd_dat(sd_dat),
@@ -229,6 +237,7 @@ module top (
         .audio_source_error_async(audio_source_error),
         .start_toggle(start_toggle),.source_index(source_index),
         .audio_start_toggle(audio_start_toggle),.audio_file_index(audio_file_index),
+        .source_abort_toggle(source_abort_toggle),
         .fifo_empty(production_empty),.fifo_data(production_data),.fifo_read(production_read),
         .rx_data(rx_byte),.rx_valid(rx_valid),.tx_request(formal_request),.tx_valid(formal_valid),
         .tx_data(formal_data),.tx_length(formal_length),.tx_ack(formal_ack),

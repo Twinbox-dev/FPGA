@@ -148,7 +148,8 @@ module tb_media_display_full_frame;
         .audio_result_frame(frame_id), .control_ack_valid(1'b0), .control_ack_sequence(8'd0),
         .control_ack_op(8'd0), .control_ack_status(8'd0), .control_ack_value(8'd0),
         .status_valid(1'b0), .status_payload(64'd0), .tx_request(tx_request), .tx_valid(tx_valid),
-        .tx_data(tx_data), .tx_length(tx_length), .tx_ready(1'b1), .tx_ack(tx_ack)
+        .tx_data(tx_data), .tx_length(tx_length), .tx_to_source(), .tx_to_owner(),
+        .tx_ready(1'b1), .tx_ack(tx_ack)
     );
     assign tx_ack = tx_request;
 

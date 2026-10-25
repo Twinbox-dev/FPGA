@@ -26,7 +26,8 @@ module tb_touch_command_path;
         .control_ack_status(8'd0), .control_ack_value(8'd0),
         .status_valid(1'b0), .status_payload(64'd0),
         .tx_request(tx_request), .tx_valid(tx_valid), .tx_data(tx_data),
-        .tx_length(tx_length), .tx_ready(1'b1), .tx_ack(tx_request)
+        .tx_length(tx_length), .tx_to_source(), .tx_to_owner(),
+        .tx_ready(1'b1), .tx_ack(tx_request)
     );
 
     // Send the exact display TX bytes into the media board's production parser.

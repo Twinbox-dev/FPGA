@@ -11,6 +11,7 @@ module tb_media_sd_image_source;
     reg rst=1;
     reg pll_locked=0;
     reg start=0;
+    reg abort=0;
     reg audio_start_toggle=0;
     reg [4:0] audio_file_index=0;
     reg count_clear=0,audio_check=0;
@@ -45,7 +46,7 @@ module tb_media_sd_image_source;
     reg [31:0] visited_bmps=0;
 
     media_image_source u_source (
-        .clk(app_clk50),.rst(rst),.start(start),.debug_start(1'b0),.abort(1'b0),
+        .clk(app_clk50),.rst(rst),.start(start),.debug_start(1'b0),.abort(abort),
         .file_index(selected_bmp_index),.audio_start_toggle_async(audio_start_toggle),
         .audio_file_index_async(audio_file_index),.audio_pause(1'b0),
         .sd_clk(sd_clk),.sd_clk_100m(sd_clk100),.sd_pll_locked(pll_locked),
@@ -166,6 +167,46 @@ module tb_media_sd_image_source;
         if(audio_checked!=wav_count)$fatal(1,"paired WAV coverage %0d expected%0d",audio_checked,wav_count);
         $display("MEDIA_SD_IMAGE_SOURCE_PASS all %0d BMP files, files=%0d WAV=%0d reads=%0d",
             bmp_count,file_count,wav_count,read_count);
+
+        // Exercise the cancellation path used by media_image_tx when the
+        // production FIFO stops making progress. Abort mid-BMP, wait for the
+        // in-flight FAT sector to drain, then prove a fresh image can start.
+        selected_bmp_index=first_bmp[4:0];
+        @(negedge app_clk50);count_clear=1;
+        @(negedge app_clk50);count_clear=0;done_ref=done_toggle;
+        @(negedge app_clk50);start=1;
+        @(negedge app_clk50);start=0;
+        cycles=0;
+        while(words<256 && source_busy && cycles<100_000_000)begin
+            @(posedge app_clk50);cycles=cycles+1;
+        end
+        if(words<256 || !source_busy)$fatal(1,"abort test failed to reach active BMP stream");
+        @(negedge app_clk50);abort=1;
+        @(negedge app_clk50);abort=0;
+        cycles=0;
+        while((source_busy || done_toggle==done_ref) && cycles<2_000_000)begin
+            @(posedge app_clk50);cycles=cycles+1;
+        end
+        if(source_busy || done_toggle==done_ref || source_error || fat_error)
+            $fatal(1,"source abort did not drain cleanly busy=%0b done=%0b err=%0b fat=%0b",
+                source_busy,done_toggle!=done_ref,source_error,fat_error);
+        $display("PASS: source abort drains in-flight SD/FAT sector and returns idle");
+
+        @(negedge app_clk50);count_clear=1;
+        @(negedge app_clk50);count_clear=0;done_ref=done_toggle;
+        @(negedge app_clk50);start=1;
+        @(negedge app_clk50);start=0;
+        cycles=0;
+        while((done_toggle==done_ref || source_busy) && cycles<200_000_000)begin
+            @(posedge app_clk50);cycles=cycles+1;
+            if(source_error || fat_error)$fatal(1,"image retry after source abort failed");
+        end
+        if(done_toggle==done_ref || source_busy || image_width==0 || image_height==0)
+            $fatal(1,"image source did not recover after abort");
+        expected_words=(image_width*image_height+1)/2;
+        if(words!=expected_words)
+            $fatal(1,"image after abort got %0d words expected %0d",words,expected_words);
+        $display("PASS: full BMP read succeeds after an aborted source transaction");
         $finish;
     end
 endmodule

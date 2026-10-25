@@ -84,6 +84,7 @@ module media_control_core #(
     reg [3:0] subtitle_sum_hi;
     reg [7:0] subtitle_offset;
     reg [7:0] subtitle_read_data;
+    reg [7:0] subtitle_display_diag;
     reg subtitle_gap_to_end;
     reg [27:0] subtitle_gap_count;
     reg [1:0] subtitle_attempts;
@@ -164,7 +165,9 @@ module media_control_core #(
             ack_volume=(key==8'h54) ? subtitle_checksum : {4'd0,volume};
             ack_period=(key==8'h54) ? subtitle_length : {4'd0,auto_period_s};
             ack_index=(key==8'h54) ? subtitle_rx_count : {cv_mode,current_index};
-            ack_picture_byte=(key==8'h54) ? subtitle_calc_checksum : ack_picture;
+            ack_picture_byte=(key==8'h54) ?
+                             ((last_control_error==2) ? subtitle_display_diag : subtitle_calc_checksum) :
+                             ack_picture;
             body={{subtitle_ok,spectrum_sensitivity,spectrum_on,contrast[2:0],auto_on},ack_picture_byte,
                   ack_wav,ack_index,ack_period,
                   ack_volume,key,8'h5A};
@@ -310,7 +313,7 @@ module media_control_core #(
             subtitle_active<=0;subtitle_success<=0;subtitle_swap_ack<=0;
             subtitle_parse_state<=0;subtitle_remaining<=0;subtitle_sum_hi<=0;subtitle_length<=0;
             subtitle_checksum<=0;subtitle_calc_checksum<=0;subtitle_rx_count<=0;
-            subtitle_offset<=0;subtitle_attempts<=0;
+            subtitle_offset<=0;subtitle_attempts<=0;subtitle_display_diag<=0;
             subtitle_gap_to_end<=0;subtitle_gap_count<=0;
             tx_done_ref<=0;timeout_count<=0;request_attempts<=0;
             cmd_ack_t<=0;tx_tog<=0;tx_type<=16'h0002;tx_payload_len<=8;tx_pkt<=0;
@@ -333,6 +336,7 @@ module media_control_core #(
                             pending_value<=subtitle_commit_len;pending_op<=8;last_control_error<=6;
                             pending_sequence<=sequence_id;sequence_id<=sequence_id+1'b1;
                             subtitle_attempts<=1;subtitle_length<=subtitle_commit_len;subtitle_offset<=0;
+                            subtitle_display_diag<=0;
                             tx_type<=16'h0044;tx_payload_len<=3;
                             tx_pkt<={40'd0,subtitle_checksum,subtitle_commit_len,sequence_id};
                             tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;state<=SUB_BEGIN_WAIT_TX;timeout_count<=0;
@@ -426,6 +430,9 @@ module media_control_core #(
                 WAIT_SET_REPLY: begin
                     if(display_ack_pulse && display_ack_seq==pending_sequence && display_ack_op==pending_op) begin
                         if(pending_op==8) begin
+                            // Preserve the display's rejection status and its
+                            // diagnostic ACK value for the final PC ACK.
+                            subtitle_display_diag<={display_ack_status!=0,display_ack_value[6:0]};
                             if(display_ack_status==0 && display_ack_value==subtitle_length) begin
                                 subtitle_success<=1;last_control_error<=0;subtitle_swap_ack<=~subtitle_swap_ack;state<=PREP_ACK;
                             end else if(subtitle_attempts<3) begin

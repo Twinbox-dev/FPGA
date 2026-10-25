@@ -508,6 +508,7 @@ end else begin:g_product_cursor
     assign diagnostic_cursor_y=10'd360;
 end endgenerate
 wire digest_req, digest_valid, digest_ready, digest_ack;
+wire media_packet_to_source,media_packet_to_owner,media_source_claim;
 wire [7:0] digest_data;
 wire [15:0] digest_length;
 eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT)) u_eth_subsys(
@@ -527,6 +528,9 @@ eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT
     .media_packet_valid  (media_packet_valid),
     .media_packet_data   (media_packet_data),
     .media_packet_length (media_packet_length),
+    .media_packet_to_source(media_packet_to_source),
+    .media_packet_to_owner(media_packet_to_owner),
+    .media_source_claim(media_source_claim),
     .media_packet_ack    (media_packet_ack),
     .media_packet_ready  (media_packet_ready),
     .digest_req(digest_req), .digest_valid(digest_valid), .digest_data(digest_data),
@@ -545,6 +549,7 @@ wire [15:0] view_owned_frame_id;
 wire [63:0] view_prepare_body,view_prepare_reply;
 wire view_prepare_reply_valid,view_status_valid,view_busy;
 wire [127:0] view_status_body;
+assign media_source_claim = view_prepare_reply_valid && (view_prepare_reply[15:8] == 8'd0);
 wire [1:0] view_target_layout,view_target_window,view_active_layout,view_focus,view_write_layout,view_write_window;
 wire [15:0] view_target_generation,view_active_generation;
 wire [3:0] view_active_mask;
@@ -743,7 +748,9 @@ media_display_tx #(.VIEW_ENABLE(1)) u_media_display_tx (
     .control_ack_status (media_control_ack_status), .control_ack_value (media_control_ack_value),
     .status_valid (media_status_valid), .status_payload (media_status_payload),
     .tx_request (media_packet_request), .tx_valid (media_packet_valid),
-    .tx_data (media_packet_data), .tx_length (media_packet_length), .tx_ack (media_packet_ack)
+    .tx_data (media_packet_data), .tx_length (media_packet_length), .tx_to_source(media_packet_to_source),
+    .tx_to_owner(media_packet_to_owner),
+    .tx_ack (media_packet_ack)
 );
 
 assign media_control_ack_valid = media_control_ack_valid_rx | subtitle_ack_valid_eth;

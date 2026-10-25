@@ -173,7 +173,17 @@ module media_display_control_rx (
                                 control_ack_sequence <= payload[0];
                                 control_ack_op <= 8'd8;
                                 control_ack_status <= 8'd1;
-                                control_ack_value <= 8'd0;
+                                // Return the first failed END condition in the
+                                // existing ACK value byte for field diagnosis.
+                                if (!subtitle_active) control_ack_value <= 8'd1;
+                                else if (payload_length != 16'd3) control_ack_value <= 8'd2;
+                                else if (payload[0] != subtitle_sequence) control_ack_value <= 8'd3;
+                                else if (payload[1] != subtitle_length) control_ack_value <= 8'd4;
+                                else if (payload[2] != subtitle_checksum) control_ack_value <= 8'd5;
+                                else if (subtitle_next_offset != subtitle_length) control_ack_value <= 8'd6;
+                                else if (subtitle_sum != subtitle_checksum) control_ack_value <= 8'd7;
+                                else if (subtitle_bad) control_ack_value <= 8'd8;
+                                else control_ack_value <= 8'd15;
                                 control_ack_valid <= 1'b1;
                             end
                             subtitle_active <= 1'b0;

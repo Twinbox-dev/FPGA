@@ -33,10 +33,12 @@ module tb_media_image_tx_flags;
     wire [7:0] error_code;
     wire [3:0] state_code;
     wire media_to_pc;
+    wire source_abort_toggle;
     reg [7:0] got [0:23];
     reg [7:0] ready_bytes [0:8];
     integer i;
     reg old_start;
+    reg old_abort;
 
     media_image_tx #(.CLK_HZ(1000), .FRAME_WORDS(1)) dut (
         .job_start(1'b0),.job_snapshot(1'b0),.job_previous(1'b0),.job_index(5'd0),.job_layout(2'd0),.job_window(2'd0),.job_generation(16'd0),.job_ready(),.job_done(),.job_result(),
@@ -55,6 +57,7 @@ module tb_media_image_tx_flags;
         .audio_source_error_async(audio_source_error_async),
         .start_toggle(start_toggle), .source_index(source_index),
         .audio_start_toggle(audio_start_toggle), .audio_file_index(audio_file_index),
+        .source_abort_toggle(source_abort_toggle),
         .fifo_empty(fifo_empty), .fifo_data(fifo_data), .fifo_read(fifo_read),
         .rx_data(rx_data), .rx_valid(rx_valid),
         .tx_request(tx_request), .tx_valid(tx_valid), .tx_data(tx_data),
@@ -186,6 +189,27 @@ module tb_media_image_tx_flags;
         if(error_code!=8'h70)
             $fatal(1,"legacy audio RESULT=1 path failed: error=%02x",error_code);
         $display("PASS: generic legacy audio rejection remains retryable");
+
+        // A stalled SD/FAT read must terminate the transaction and request
+        // cancellation instead of leaving the application in LOAD_IMAGE.
+        @(negedge clk);source_error=0;fifo_empty=1;dut.read_pending=0;
+        dut.wait_count=0;dut.state=4'd2;old_abort=source_abort_toggle;
+        wait(state_code==4'd9);
+        if(error_code!=8'd2 || source_abort_toggle==old_abort)
+            $fatal(1,"stalled image source did not fail and abort: error=%0d abort=%b",
+                   error_code,source_abort_toggle);
+        $display("PASS: stalled image FIFO times out, reports error, and aborts source");
+
+        // An explicit source error while the sender is waiting for FIFO data
+        // follows the same bounded recovery path immediately.
+        @(negedge clk);source_error=0;dut.wait_count=0;dut.state=4'd2;
+        old_abort=source_abort_toggle;
+        @(negedge clk);source_error=1;
+        @(negedge clk);source_error=0;
+        if(state_code!=4'd9 || error_code!=8'd2 || source_abort_toggle==old_abort)
+            $fatal(1,"source error did not release LOAD_IMAGE: state=%0d error=%0d",
+                   state_code,error_code);
+        $display("PASS: source error releases LOAD_IMAGE and aborts source");
         $finish;
     end
 
