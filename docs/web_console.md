@@ -59,3 +59,15 @@ node render_ui_screenshots.cjs
 ```
 
 截图生成器使用本机无头 Chrome，通过本机回环 DevTools 端口验证 1600px 桌面和 390px 窄屏布局、D 按钮、字幕上传及输入文本不发板卡命令。截图保存在 `scripts/web_console/screenshots/console-desktop.png` 和 `console-mobile.png`。
+
+## 转场特效名称
+
+前端显示名称与板卡效果编号对应如下：
+
+| 编号 | 前端名称 | 行为 |
+| --- | --- | --- |
+| 0 | 直接切 | 直接提交新画面 |
+| 1 | 淡入淡出 | 新旧画面交叉淡变 |
+| 2 | 滑动转场 | 柔边沿切换方向推进 |
+
+名称只用于网页按钮、帮助说明和 ACK/状态文本；命令编号、串口/以太网包格式及 FPGA 行为保持不变。

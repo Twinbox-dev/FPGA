@@ -9,29 +9,39 @@ module transition_blender (
     input  wire [31:0] new_word,
     input  wire        effect_active,
     input  wire        row_ready,
+    input  wire        view_active,
+    input  wire [1:0]  view_layout,
+    input  wire [1:0]  view_window,
     input  wire [1:0]  effect_mode,       // 1=crossfade, 2=soft wipe
     input  wire        direction_prev,    // 0=right to left, 1=left to right
     input  wire [8:0]  fade_alpha,
-    input  wire [10:0] wipe_progress,     // 0..1280 pixels
+    input  wire [10:0] wipe_progress,     // 0..1280 full-screen, 0..640 window
     output reg  [31:0] mixed_word
 );
     reg       pop_d;
     reg [9:0] word_x;
     reg [9:0] word_x_d;
 
-    wire [10:0] x0 = {word_x_d, 1'b0};
+    wire [9:0] target_start_word=view_active && view_layout!=0 && view_window[0] ? 10'd320 : 10'd0;
+    wire [9:0] target_word_count=view_active && view_layout!=0 ? 10'd320 : 10'd640;
+    wire in_target_window=!view_active ||
+                          (word_x_d>=target_start_word && word_x_d<target_start_word+target_word_count);
+    wire [9:0] local_word=view_active ? word_x_d-target_start_word : word_x_d;
+    wire [10:0] effect_width=view_active ? 11'd640 : 11'd1280;
+    wire [10:0] x0 = {local_word, 1'b0};
     wire [10:0] x1 = x0 + 11'd1;
 
     function [8:0] wipe_alpha;
         input [10:0] x;
         input [10:0] progress;
         input        prev;
+        input [10:0] width;
         reg   [10:0] boundary;
         reg   [10:0] distance;
         begin
             if (progress == 11'd0)
                 wipe_alpha = 9'd0;
-            else if (progress >= 11'd1280)
+            else if (progress >= width)
                 wipe_alpha = 9'd256;
             else if (prev) begin
                 // New image enters from the left; 32 pixels form the soft edge.
@@ -43,7 +53,7 @@ module transition_blender (
                 end
             end else begin
                 // New image enters from the right.
-                boundary = 11'd1280 - progress;
+                boundary = width - progress;
                 if (x < boundary) wipe_alpha = 9'd0;
                 else begin
                     distance = x - boundary;
@@ -70,12 +80,14 @@ module transition_blender (
         end
     endfunction
 
-    wire [8:0] alpha0 = effect_mode == 2'd1 ? fade_alpha :
+    wire [8:0] alpha0 = !in_target_window ? 9'd0 :
+                        effect_mode == 2'd1 ? fade_alpha :
                         effect_mode == 2'd2 ? wipe_alpha(x0, wipe_progress,
-                                                          direction_prev) : 9'd0;
-    wire [8:0] alpha1 = effect_mode == 2'd1 ? fade_alpha :
+                                                          direction_prev,effect_width) : 9'd0;
+    wire [8:0] alpha1 = !in_target_window ? 9'd0 :
+                        effect_mode == 2'd1 ? fade_alpha :
                         effect_mode == 2'd2 ? wipe_alpha(x1, wipe_progress,
-                                                          direction_prev) : 9'd0;
+                                                          direction_prev,effect_width) : 9'd0;
 
     always @(posedge video_clk or posedge rst) begin
         if (rst) begin
@@ -93,7 +105,7 @@ module transition_blender (
             end
 
             if (pop_d)
-                mixed_word <= (effect_active && row_ready && effect_mode != 2'd0) ?
+                mixed_word <= (effect_active && row_ready && in_target_window && effect_mode != 2'd0) ?
                     {blend565(old_word[31:16], new_word[31:16], alpha1),
                      blend565(old_word[15:0],  new_word[15:0],  alpha0)} : old_word;
         end

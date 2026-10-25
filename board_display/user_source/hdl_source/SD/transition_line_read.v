@@ -13,6 +13,7 @@ module transition_line_read #(
     input  wire                 line_req_toggle,
     input  wire [9:0]           line_num,
     input  wire [ADDR_BITS-1:0] line_base,
+    input  wire [9:0]           row_words,
     output reg                  line_ready_toggle,
 
     input  wire                 frame_rd_en,
@@ -44,8 +45,8 @@ module transition_line_read #(
     wire req_pulse = req_s2 ^ req_s3;
 
     reg [ADDR_BITS-1:0] cmd_addr;
-    reg [9:0] total_recv;
-    reg [7:0] burst_sent, burst_recv;
+    reg [9:0] total_recv,row_words_latched;
+    reg [7:0] burst_sent, burst_recv,burst_target;
     reg [3:0] frame_quiet;
     wire owner = (state == S_ISSUE) || (state == S_DRAIN);
     wire can_grant = (state == S_WAIT) && sdr_init_done &&
@@ -62,7 +63,7 @@ module transition_line_read #(
     assign app_rd_en     = owner ? (state == S_ISSUE) : frame_rd_en;
     assign app_rd_addr   = owner ? cmd_addr : frame_rd_addr;
     assign frame_rd_valid = sdr_rd_valid && !owner;
-    assign line_wr_en    = line_data_valid && (total_recv < 10'd640);
+    assign line_wr_en    = line_data_valid && (total_recv < row_words_latched);
     assign line_wr_addr  = total_recv;
     assign line_wr_data  = sdr_rd_data;
 
@@ -94,8 +95,10 @@ module transition_line_read #(
             state             <= S_IDLE;
             cmd_addr          <= {ADDR_BITS{1'b0}};
             total_recv        <= 10'd0;
+            row_words_latched <= 10'd640;
             burst_sent        <= 8'd0;
             burst_recv        <= 8'd0;
+            burst_target      <= 8'd0;
             line_wr_bank      <= 1'b0;
             line_ready_toggle <= 1'b0;
         end else begin
@@ -106,7 +109,8 @@ module transition_line_read #(
             case (state)
                 S_IDLE: if (req_pulse && sdr_init_done) begin
                     // line_num/base remain stable until line_ready_toggle.
-                    cmd_addr     <= line_base + line_num * 21'd640;
+                    row_words_latched <= row_words;
+                    cmd_addr     <= line_base + line_num * {{(ADDR_BITS-10){1'b0}},row_words};
                     line_wr_bank <= line_num[0];
                     total_recv   <= 10'd0;
                     state        <= S_WAIT;
@@ -123,16 +127,18 @@ module transition_line_read #(
                              !sdr_busy && !sdr_refresh) begin
                     burst_sent <= 8'd0;
                     burst_recv <= 8'd0;
+                    burst_target <= (row_words_latched-total_recv >= 10'd128) ?
+                                    8'd128 : (row_words_latched-total_recv);
                     state      <= S_ISSUE;
                 end
                 S_ISSUE: begin
                     cmd_addr   <= cmd_addr + {{(ADDR_BITS-1){1'b0}}, 1'b1};
                     burst_sent <= burst_sent + 8'd1;
-                    if (burst_sent == 8'd127)
+                    if (burst_sent + 8'd1 == burst_target)
                         state <= S_DRAIN;
                 end
-                S_DRAIN: if (burst_recv + (line_data_valid ? 8'd1 : 8'd0) == 8'd128) begin
-                    if (total_recv + (line_data_valid ? 10'd1 : 10'd0) == 10'd640) begin
+                S_DRAIN: if (burst_recv + (line_data_valid ? 8'd1 : 8'd0) == burst_target) begin
+                    if (total_recv + (line_data_valid ? 10'd1 : 10'd0) == row_words_latched) begin
                         line_ready_toggle <= ~line_ready_toggle;
                         state <= S_IDLE;
                     end else begin

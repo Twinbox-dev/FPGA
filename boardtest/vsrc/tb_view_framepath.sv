@@ -11,6 +11,9 @@ module tb_view_framepath;
     reg [31:0] wr_data=0;
     reg [1:0] mode=0,window=0;
     reg [3:0] mask=1;
+    reg [3:0] window_buffers=0;
+    reg [1:0] write_bank=0;
+    integer write_phase=0,selected_extra_window=-1,selected_extra_phase=0;
     reg epoch=0;
     wire wr_ack,wr_ready,wr_finish,rd_ack,rd_finish,empty,drained;
     wire [31:0] rd_data,app_data;
@@ -20,7 +23,7 @@ module tb_view_framepath;
     reg [20:0] a0=0,a1=0,a2=0;
     reg rv=0;
     reg [31:0] rdata=0;
-    reg [31:0] memory[0:460799];
+    reg [31:0] memory[0:921599];
     wire [20:0] length=mode==0 ? 460800 : (mode==1 ? 230400 : 115200);
     reg [7:0] refresh=0;
     always @(posedge mc)refresh<=refresh+1'b1;
@@ -38,33 +41,34 @@ module tb_view_framepath;
         .App_wr_en(app_wr),.App_wr_addr(wa),.App_wr_din(app_data),.App_wr_dm(),
         .write_clk(USE_STREAM_CLOCK ? audio_clk : wc),.write_req(wr_req),.write_req_ack(wr_ack),.write_finish(wr_finish),
         .write_addr_0(21'd0),.write_addr_1(21'd460800),.write_addr_2(21'd921600),.write_addr_3(21'd1509376),
-        .write_addr_index(2'd0),.write_len(length),.vrow_off(20'd0),
+        .write_addr_index(write_bank),.write_len(length),.vrow_off(20'd0),
         .write_ready(wr_ready),.write_en(wr_en),.write_data(wr_data),
         .stream_clk(wc),
         .view_read_layout(mode),.view_write_layout(mode),.view_write_window(window),
-        .view_valid_mask(mask),.view_epoch(epoch),.view_drained_epoch(drained));
+        .view_valid_mask(mask),.view_window_buffers(window_buffers),
+        .view_epoch(epoch),.view_drained_epoch(drained));
     integer writes=0,reads=0,last_read=-1,consecutive=0,max_burst=0;
     integer check_write_index=0,expected_address,slot_size,row_words,rows;
     reg check_write=0,check_hidden=0;
-    function automatic [31:0] pattern(input integer slot,input integer y,input integer x);
-        pattern=32'h91234567 ^ (slot*32'h16273a4b) ^ (y*32'h76543) ^ (x*32'h8ab9);
+    function automatic [31:0] pattern(input integer slot,input integer y,input integer x,input integer phase);
+        pattern=32'h91234567 ^ (slot*32'h16273a4b) ^ (y*32'h76543) ^ (x*32'h8ab9) ^ (phase*32'h1f123bb5);
     endfunction
     always @(posedge mc)begin
         latency<={latency[1:0],app_rd};a0<=ra;a1<=a0;a2<=a1;
         rv<=latency[2];if(latency[2])rdata<=memory[a2];
         if(app_wr)begin
-            if(wa>=460800)$fatal(1,"out-of-bank write");
+            if(wa>=921600)$fatal(1,"out-of-image-banks write");
             memory[wa]<=app_data;writes<=writes+1;
             if(check_write)begin
-                expected_address=window*slot_size+(rows-1-check_write_index/row_words)*row_words+check_write_index%row_words;
-                if(wa!=expected_address || app_data!=pattern(window,rows-1-check_write_index/row_words,check_write_index%row_words))
+                expected_address=write_bank*460800+window*slot_size+(rows-1-check_write_index/row_words)*row_words+check_write_index%row_words;
+                if(wa!=expected_address || app_data!=pattern(window,rows-1-check_write_index/row_words,check_write_index%row_words,write_phase))
                     $fatal(1,"slot write mismatch mode=%0d win=%0d i=%0d addr=%0d expected=%0d data=%h",mode,window,check_write_index,wa,expected_address,app_data);
                 check_write_index<=check_write_index+1;
             end
         end
         if(app_rd)begin
             reads<=reads+1;consecutive<=consecutive+1;last_read<=ra;
-            if(ra>=460800)$fatal(1,"out-of-bank read");
+            if(ra>=921600)$fatal(1,"out-of-image-banks read");
             if(mode!=0 && consecutive!=0 && ra%320==0)
                 $fatal(1,"burst crossed a window row");
             if(check_hidden && ((mode==1 && ra>=230400) || (mode==2 && ra>=115200 && ra<230400)))
@@ -74,15 +78,15 @@ module tb_view_framepath;
             consecutive<=0;
         end
     end
-    task automatic write_slot(input integer s);
+    task automatic write_slot(input integer s,input integer phase);
         integer j;
         begin
-            @(negedge wc);window=s;check_write_index=0;check_write=1;
+            @(negedge wc);window=s;write_phase=phase;check_write_index=0;check_write=1;
             wr_req=1;wait(wr_ack);@(negedge wc);wr_req=0;
             repeat(16)@(negedge wc);
             for(j=0;j<slot_size;j=j+1)begin
                 while(!wr_ready)begin wr_en=0;@(negedge wc);end
-                wr_en=1;wr_data=pattern(s,rows-1-j/row_words,j%row_words);
+                wr_en=1;wr_data=pattern(s,rows-1-j/row_words,j%row_words,phase);
                 @(negedge wc);
             end
             wr_en=0;wait(wr_finish);repeat(8)@(negedge mc);
@@ -117,7 +121,8 @@ module tb_view_framepath;
                 yy=j/640;xx=j%640;
                 s=mode==0 ? 0 : (mode==1 ? xx/320 : (yy/360)*2+xx/320);
                 local_y=mode==2 ? yy%360 : yy;local_x=mode==0 ? xx : xx%320;
-                expected=mask[s] ? pattern(s,local_y,local_x) : 0;
+                expected=mask[s] ? pattern(s,local_y,local_x,
+                    (window_buffers[s] && s==selected_extra_window) ? selected_extra_phase : 0) : 0;
                 if(rd_data!==expected)$fatal(1,"scan mismatch mode=%0d hidden=%0d i=%0d got=%h expected=%h",mode,hidden,j,rd_data,expected);
                 @(negedge vc);
             end
@@ -131,11 +136,18 @@ module tb_view_framepath;
         for(m=0;m<3;m=m+1)begin
             mode=m;row_words=m==0 ? 640 : 320;rows=m==2 ? 360 : 720;
             slot_size=row_words*rows;
-            for(s=0;s<(m==0?1:(m==1?2:4));s=s+1)write_slot(s);
+            write_bank=0;window_buffers=0;selected_extra_window=-1;selected_extra_phase=0;
+            for(s=0;s<(m==0?1:(m==1?2:4));s=s+1)write_slot(s,0);
             scan_frame(0);
             if(m!=0)scan_frame(1);
         end
-        $display("PASS: multiview storage, real async FIFOs, black generation and drain barrier");$finish;
+        // Update window2 in the alternate SDRAM page. Its old contents remain
+        // readable until the page-select bitmap changes at a frame request.
+        mode=2;row_words=320;rows=360;slot_size=115200;write_bank=1;
+        write_slot(2,7);selected_extra_window=2;selected_extra_phase=7;
+        window_buffers=0;scan_frame(0);
+        window_buffers=4'b0100;scan_frame(0);
+        $display("PASS: multiview page A/B, per-window pointer, real FIFOs and drain barrier");$finish;
     end
     initial begin #250000000;$fatal(1,"view framepath timeout mode=%0d w=%0d rdstate=%0d burst=%0d limit=%0d black=%0d",mode,window,dut.frame_fifo_read_m0.state,dut.frame_fifo_read_m0.burst_cnt,dut.frame_fifo_read_m0.burst_limit,dut.frame_fifo_read_m0.burst_black);end
 endmodule

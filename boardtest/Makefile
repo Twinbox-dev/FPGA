@@ -154,14 +154,18 @@ build_transition_fetch/sim_transition_fetch: vsrc/tb_transition_fetch.v $(TSD)/t
 build_transition_framepath/sim_transition_framepath: vsrc/tb_transition_framepath.v $(TSD)/transition_line_read.v $(TSD)/frame_read_write.v $(TSD)/frame_fifo_read.v $(TSD)/frame_fifo_write.v ../board_display/user_source/hdl_source/IP/afifo_16_32_256.v ../board_display/user_source/hdl_source/IP/afifo_32_16_256.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH -Wno-UNOPTFLAT --top-module tb_transition_framepath $^ --Mdir build_transition_framepath -o sim_transition_framepath
 
+build_multiview_transition_fetch/sim_multiview_transition_fetch: vsrc/tb_multiview_transition_fetch.sv $(TSD)/transition_ctrl.v $(TSD)/transition_line_read.v $(TSD)/transition_line_buf.v
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_multiview_transition_fetch $^ --Mdir build_multiview_transition_fetch -o sim_multiview_transition_fetch
+
 .PHONY: transition-unit transitionpair
-transition-unit: build_transition_blender/sim_transition_blender build_transition_line/sim_transition_line build_transition_ctrl/sim_transition_ctrl build_transition_video/sim_transition_video build_transition_fetch/sim_transition_fetch build_transition_framepath/sim_transition_framepath
+transition-unit: build_transition_blender/sim_transition_blender build_transition_line/sim_transition_line build_transition_ctrl/sim_transition_ctrl build_transition_video/sim_transition_video build_transition_fetch/sim_transition_fetch build_transition_framepath/sim_transition_framepath build_multiview_transition_fetch/sim_multiview_transition_fetch
 	./build_transition_blender/sim_transition_blender
 	./build_transition_line/sim_transition_line
 	./build_transition_ctrl/sim_transition_ctrl
 	./build_transition_video/sim_transition_video
 	./build_transition_fetch/sim_transition_fetch
 	./build_transition_framepath/sim_transition_framepath
+	./build_multiview_transition_fetch/sim_multiview_transition_fetch
 
 transitionpair: $(SIM)
 	SIM_TRANSITION=1 SIM_PAIR=1 ./$(SIM) ../img/card_diag.img
@@ -403,6 +407,11 @@ view-scan-address:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_scan_address vsrc/tb_view_scan_address.sv ../board_display/user_source/hdl_source/ETH/view_scan_address.v --Mdir build_view_scan_address -o sim_view_scan_address
 	./build_view_scan_address/sim_view_scan_address
 
+.PHONY: view-video-config
+view-video-config:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_video_config vsrc/tb_view_video_config.sv ../board_display/user_source/hdl_source/ETH/view_video_config.v --Mdir build_view_video_config -o sim_view_video_config
+	./build_view_video_config/sim_view_video_config
+
 .PHONY: view-write-address
 view-write-address:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_write_address vsrc/tb_view_write_address.sv ../board_display/user_source/hdl_source/ETH/view_write_address.v --Mdir build_view_write_address -o sim_view_write_address
@@ -415,7 +424,7 @@ view-framepath:
 
 .PHONY: view-session
 view-session:
-	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_session_manager vsrc/tb_view_session_manager.sv ../board_display/user_source/hdl_source/ETH/view_session_manager.v --Mdir build_view_session -o sim_view_session
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_session_manager vsrc/tb_view_session_manager.sv ../board_display/user_source/hdl_source/ETH/view_session_manager.v ../board_display/user_source/hdl_source/SD/transition_ctrl.v --Mdir build_view_session -o sim_view_session
 	./build_view_session/sim_view_session
 
 .PHONY: view-control-path

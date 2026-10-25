@@ -27,7 +27,8 @@ module tb_transition_framepath;
     frame_read_write #(.FRAME_WIDTH(16), .FRAME_HEIGHT(64),
                        .BURST_SIZE(256), .WRITE_V_FLIP(0)) frame (
         .stream_clk(1'b0),
-        .view_read_layout(2'd0),.view_write_layout(2'd0),.view_write_window(2'd0),.view_valid_mask(4'd1),.view_epoch(1'b0),.view_drained_epoch(),
+        .view_read_layout(2'd0),.view_write_layout(2'd0),.view_write_window(2'd0),
+        .view_valid_mask(4'd1),.view_window_buffers(4'd0),.view_epoch(1'b0),.view_drained_epoch(),
         .rst(rst), .mem_clk(mem_clk),
         .Sdr_init_done(1'b1), .Sdr_init_ref_vld(1'b0), .Sdr_busy(1'b0),
         .App_rd_en(frame_cmd_en), .App_rd_addr(frame_cmd_addr),
@@ -56,7 +57,7 @@ module tb_transition_framepath;
         .mem_clk(mem_clk), .rst(rst), .sdr_init_done(1'b1),
         .sdr_busy(1'b0), .sdr_refresh(1'b0),
         .line_req_toggle(line_req_toggle), .line_num(10'd0),
-        .line_base(21'd1024), .line_ready_toggle(line_ready),
+        .line_base(21'd1024),.row_words(10'd640), .line_ready_toggle(line_ready),
         .frame_rd_en(frame_cmd_en), .frame_rd_addr(frame_cmd_addr),
         .frame_wr_en(frame_wr_en), .frame_rd_busy(frame_rd_busy),
         .frame_wr_busy(frame_wr_busy), .video_fifo_words(fifo_words),

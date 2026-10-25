@@ -47,6 +47,7 @@ module frame_fifo_read
 	output                           aud_ch_active,              // 当前读数据归属：1=音频 FIFO（写路由用）
     input wire [1:0] view_layout,
     input wire [3:0] view_valid_mask,
+    input wire [3:0] view_window_buffers,
     input wire view_epoch,
     output reg view_drained_epoch,
     output wire video_black_write
@@ -104,12 +105,15 @@ reg epoch_d0,epoch_d1;
 wire [20:0] view_address;
 wire [9:0] view_segment;
 wire view_black;
+wire [20:0] view_base_alt=read_addr_index_d1[0] ? read_addr_0 : read_addr_1;
 wire logical_advance = !cur_ch && (App_rd_en || video_black_write);
 wire [20:0] view_base = read_addr_index_d1[0] ? read_addr_1 : read_addr_0;
+reg [3:0] window_buffers_d0,window_buffers_d1;
 generate if(VIEW_ENABLE)begin:g_view
     view_scan_address u_map(.clk(mem_clk),.rst(rst),
         .frame_begin(state==S_ACK && !cur_ch),.advance(logical_advance),
-        .frame_base(view_base),.layout(layout_d1),.valid_mask(mask_d1),
+        .frame_base(view_base),.frame_base_alt(view_base_alt),
+        .window_buffers(window_buffers_d1),.layout(layout_d1),.valid_mask(mask_d1),
         .address(view_address),.window_index(),.black(view_black),
         .segment_words(view_segment),.active(),.done(),.error());
 end else begin:g_legacy_view
@@ -141,10 +145,12 @@ assign App_rd_en = App_rd_en_d0 && !burst_black;
 
 always @(posedge mem_clk or posedge rst)begin
     if(rst)begin layout_d0<=0;layout_d1<=0;mask_d0<=1;mask_d1<=1;
-        epoch_d0<=0;epoch_d1<=0;view_drained_epoch<=0;end
+        epoch_d0<=0;epoch_d1<=0;window_buffers_d0<=0;window_buffers_d1<=0;
+        view_drained_epoch<=0;end
     else begin
         layout_d0<=view_layout;layout_d1<=layout_d0;
         mask_d0<=view_valid_mask;mask_d1<=mask_d0;
+        window_buffers_d0<=view_window_buffers;window_buffers_d1<=window_buffers_d0;
         epoch_d0<=view_epoch;epoch_d1<=epoch_d0;
         // S_ACK is reached only after the preceding burst's return drain.
         // Its FIFO clear also discards every prefetched old video word.

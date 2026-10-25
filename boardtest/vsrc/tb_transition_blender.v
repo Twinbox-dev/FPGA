@@ -7,13 +7,16 @@ module tb_transition_blender;
     reg [31:0] old_word = 32'd0, new_word = 32'hffffffff;
     reg active = 1'b1, ready = 1'b1, prev = 1'b0;
     reg [1:0] mode = 2'd1;
+    reg view_active=0;
+    reg [1:0] view_layout=0,view_window=0;
     reg [8:0] alpha = 9'd128;
     reg [10:0] progress = 11'd640;
     wire [31:0] mixed;
     transition_blender dut (
         .video_clk(clk), .rst(rst), .line_de(line_de), .word_pop(pop),
         .old_word(old_word), .new_word(new_word),
-        .effect_active(active), .row_ready(ready), .effect_mode(mode),
+        .effect_active(active), .row_ready(ready),
+        .view_active(view_active),.view_layout(view_layout),.view_window(view_window),.effect_mode(mode),
         .direction_prev(prev), .fade_alpha(alpha),
         .wipe_progress(progress), .mixed_word(mixed)
     );
@@ -61,7 +64,52 @@ module tb_transition_blender;
         send_word();
         if (mixed !== 32'hffffffff)
             $fatal(1, "left-to-right wipe did not reveal the left edge");
-        $display("PASS transition blender: fade, missing row, both wipe directions");
+
+        // A dual-layout update affects only the selected right-hand window.
+        @(negedge clk);line_de=0;view_active=1;view_layout=1;view_window=1;
+        mode=1;alpha=9'd128;ready=1;old_word=0;new_word=32'hffffffff;
+        repeat(2)@(negedge clk);
+        for(i=0;i<320;i=i+1)begin
+            send_word();
+            if(mixed!==0)$fatal(1,"dual transition changed the untouched left window at word %0d",i);
+        end
+        send_word();
+        if(mixed!==32'h7bef7bef)
+            $fatal(1,"dual transition failed to blend the first target-window word: %h",mixed);
+
+        // In a quad layout the caller's row-ready guard limits mixing to the
+        // selected row; the blender limits it horizontally to that window.
+        @(negedge clk);line_de=0;view_layout=2;view_window=3;ready=0;
+        repeat(2)@(negedge clk);
+        for(i=0;i<321;i=i+1)send_word();
+        if(mixed!==0)$fatal(1,"quad transition changed a row before it was ready");
+        @(negedge clk);line_de=0;ready=1;repeat(2)@(negedge clk);
+        for(i=0;i<320;i=i+1)send_word();
+        send_word();
+        if(mixed!==32'h7bef7bef)
+            $fatal(1,"quad transition failed to blend selected bottom-right window: %h",mixed);
+        // Soft wipe progress is local to the selected 640-pixel window and
+        // honors both directions even when the window is on the right.
+        @(negedge clk);line_de=0;view_layout=1;view_window=1;
+        mode=2;progress=320;prev=0;ready=1;repeat(2)@(negedge clk);
+        for(i=0;i<321;i=i+1)begin
+            send_word();
+            if(i==320 && mixed!==0)
+                $fatal(1,"right-to-left multiview wipe changed the leading target edge");
+        end
+        for(i=321;i<640;i=i+1)send_word();
+        if(mixed!==32'hffffffff)
+            $fatal(1,"right-to-left multiview wipe did not reveal the trailing target edge");
+        @(negedge clk);line_de=0;prev=1;repeat(2)@(negedge clk);
+        for(i=0;i<321;i=i+1)begin
+            send_word();
+            if(i==320 && mixed!==32'hffffffff)
+                $fatal(1,"left-to-right multiview wipe did not reveal the leading target edge");
+        end
+        for(i=321;i<640;i=i+1)send_word();
+        if(mixed!==0)
+            $fatal(1,"left-to-right multiview wipe changed the trailing target edge");
+        $display("PASS transition blender: full-screen effects and target-only dual/quad window blends");
         $finish;
     end
 endmodule

@@ -47,17 +47,14 @@ $tdRoot = "C:\Program Files\Anlogic\TD_6.2.1_Engineer_6.2.168.116"
 $tdCli = Join-Path $tdRoot "bin\td_commands_prompt.exe"
 $runRoot = "C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs"
 
-Push-Location (Join-Path $runRoot "syn_1")
-cmd.exe /c run.bat
-$synExitCode = $LASTEXITCODE
-Pop-Location
-if ($synExitCode -ne 0) { throw "TD synthesis failed: $synExitCode" }
-
-Push-Location (Join-Path $runRoot "phy_1")
-cmd.exe /c run.bat
-$phyExitCode = $LASTEXITCODE
-Pop-Location
-if ($phyExitCode -ne 0) { throw "TD place/route or bitgen failed: $phyExitCode" }
+$tdFlow = 'C:/Program Files/Anlogic/TD_6.2.1_Engineer_6.2.168.116/doc/scripts/DefaultFlow.tcl'
+foreach ($taskStage in @('syn_1', 'phy_1')) {
+    Push-Location (Join-Path $runRoot $taskStage)
+    @("source {$tdFlow}", 'exit') | & $tdCli
+    $taskExitCode = $LASTEXITCODE
+    Pop-Location
+    if ($taskExitCode -ne 0) { throw "TD stage $taskStage failed: $taskExitCode" }
+}
 ```
 
 这是主仓库 TD 工程实际调用的 CLI 与 flow。工程生成的 `run.bat` 会向 CLI 输入
@@ -262,3 +259,55 @@ SHA、对应源清单、报告和自动验收 JSON；临时诊断工程和原始
 先下载显示板 cable0，再下载媒体板 cable1。用户仅重新综合并下载显示板后无图，继续重新综合/下载媒体板后恢复；同轮核对表明 GUI 和 CLI 都使用正式 `top_tf_hdmi_audio.v`，其源码未变，显示资源/WNS 也一致。现象支持两端应用状态需重新同步：显示板重配置会清空 SDRAM/布局，媒体板可能仍保留旧图已提交状态。独立重配置自动恢复尚未专项验收；本次实证恢复动作是重新下载媒体板，不必因此改下载命令。
 
 只需要重配时可复用已验证且配套的媒体 bit；“恢复动作涉及重下载”不意味着每次必须重新综合。待用户授权时再改复位/重连接机制。
+
+## 2026-10-25 多窗口转场候选：CLI 构建与双板 SRAM 下载
+
+本次以当前工作区源码执行显示板综合、布局布线、bitgen，并将显示板与现有媒体板 bit 分别写入 SRAM。整个流程使用 TD 6.2.1 Engineer 6.2.168.116。以下是已实测的命令和结果，便于复现本轮构建。
+
+### TD CLI 构建调用
+
+工程生成的 `syn_1/run.bat` / `phy_1/run.bat` 在本机实测失败：脚本未给 `C:/Program Files/.../td_commands_prompt.exe` 路径加引号，`cmd.exe /c run.bat` 报 `'C:/Program' is not recognized`，没有启动综合。应在每个阶段目录作为当前目录，向 TD CLI 的标准输入传入 Tcl `source` 和 `exit`：
+
+```powershell
+$tdRoot = 'C:\Program Files\Anlogic\TD_6.2.1_Engineer_6.2.168.116'
+$tdCli = Join-Path $tdRoot 'bin\td_commands_prompt.exe'
+$tdFlow = 'C:/Program Files/Anlogic/TD_6.2.1_Engineer_6.2.168.116/doc/scripts/DefaultFlow.tcl'
+$runRoot = 'C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs'
+
+Push-Location (Join-Path $runRoot 'syn_1')
+@("source {$tdFlow}", 'exit') | & $tdCli
+Pop-Location
+
+Push-Location (Join-Path $runRoot 'phy_1')
+@("source {$tdFlow}", 'exit') | & $tdCli
+Pop-Location
+```
+
+`settings.cfg` 决定各阶段：`syn_1` 从 `read_design` 到 `opt_gate`；`phy_1` 从 `opt_place` 到 `bitgen`，并从 `../syn_1` 导入门级数据库。确认成功时检查 `syn_1/.opt_gate.end.f`、`syn_1/flow.status`、`phy_1/.bitgen.end.f`、`phy_1/route.qor` 和最新 `.bit` 时间戳；不要仅依据进程退出码。
+
+### 本轮显示板构建结果
+
+- 工程：`board_display/td_project/lab_ex5_i2s_v1.0_Runs`
+- `syn_1`：约 1 分 27 秒；门级数据库成功生成。
+- `phy_1`：约 4 分 12 秒；place、route、bitgen 均完成，bit 时间为 2026-10-25 18:19:51（本地时间）。
+- 最终资源：LUT 14,753/19,600（75.27%）；寄存器 9,693/19,600；slice 8,393/9,800（85.64%）；BRAM9K 35/64；BRAM32K 11/16；DSP 18/29；PLL 4/4。
+- `route.qor` 最终 setup WNS −5.969 ns、TNS −3.206862 ms、2,366 条 setup 违例；hold WNS −3.188 ns、TNS −78.524 μs、52 条 hold 违例。bitgen 成功不代表这些时序违例消失；板级功能仍需实际验收。
+- 显示 bit：`board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`，SHA-256 `7B5914B5F26D59EC70D0357BED5A088FE5EB5F7FCDB93BE8ACC799A2A1F91E52`。
+
+### 双板 SRAM 下载
+
+从仓库根目录分别执行：
+
+```powershell
+.\scripts\program_sram.ps1 -Board display
+.\scripts\program_sram.ps1 -Board media
+```
+
+`display` 固定使用 cable 0，`media` 固定使用 cable 1；脚本使用 TD CLI 的 `download -mode jtag -bit <绝对路径> -cable N`，通过 `PRG-2014 : Chip validation success`、内部 `program -cable N -mode svf -spd 8 -p` 完成及 `finish command "download ..."` 判定成功。两者均为 SRAM 下载，没有写入 Flash，也没有 UAC 提示。
+
+本轮首次在受限执行环境运行显示板脚本时，Windows 能枚举到两个 `Anlogic usb cable v0.1`（VID `0547`、PID `1002`），但 TD 报 `USB device open error` / `Chip validation failed`，该次判为失败。随后在可访问 USB JTAG 的非沙箱执行环境中，以同一普通用户、同一脚本和同一命令重试成功。TD 仍打印 `create logfile ... failed`（安装目录不可写），但工作区捕获日志正常写入，且下载完整成功；该提示本轮未阻止烧录。
+
+- 显示板 cable 0 成功日志：`boardtest/captures/sram_download/program_display_20261025_182129.log`。bit SHA-256：`7B5914B5F26D59EC70D0357BED5A088FE5EB5F7FCDB93BE8ACC799A2A1F91E52`。
+- 媒体板 cable 1 成功日志：`boardtest/captures/sram_download/program_media_20261025_182403.log`。本轮使用仓库已有媒体 bit，SHA-256：`4323E011C0E3941D43D7B77E7631E03DC100853324D8AD716ACC9E976BAC9663`；媒体板 RTL 未在本轮修改。
+
+本记录证明两次 CLI SRAM 下载完成；尚未记录 HDMI 或音频的板级功能验收结果。

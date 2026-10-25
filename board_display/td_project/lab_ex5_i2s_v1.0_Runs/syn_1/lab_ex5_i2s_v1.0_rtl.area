@@ -12,24 +12,24 @@ IO Statistics
   #inout                    0
 
 Gate Statistics
-#Basic gates            16740
-  #and                   2363
+#Basic gates            16950
+  #and                   2383
   #nand                     0
-  #or                    1415
+  #or                    1431
   #nor                      0
-  #xor                    210
+  #xor                    221
   #xnor                     0
   #buf                      0
-  #not                   1088
+  #not                   1095
   #bufif1                  35
-  #MX21                  2042
+  #MX21                  2156
   #FADD                     0
-  #DFF                   9587
+  #DFF                   9629
   #LATCH                    0
-#MACRO_ADD                673
-#MACRO_EQ                 369
+#MACRO_ADD                692
+#MACRO_EQ                 374
 #MACRO_MULT                19
-#MACRO_MUX               5043
+#MACRO_MUX               5023
 #MACRO_OTHERS              43
 
 LUT Statistics
@@ -44,19 +44,19 @@ Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                  |Module                                            |gates  |seq    |macros |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                       |top                                               |7153   |9587   |1104   |
+|top                                       |top                                               |7321   |9629   |1128   |
 |  U3                                      |sdram                                             |104    |534    |9      |
 |    u2_ram                                |sdr_as_ram                                        |104    |534    |9      |
 |      u1_init_ref                         |sdr_init_ref                                      |24     |96     |4      |
 |      u2_wrrd                             |sdr_wrrd                                          |80     |438    |5      |
 |  ctrl_core_m0                            |ctrl_core                                         |24     |21     |21     |
-|  frame_read_write_m0                     |frame_read_write                                  |422    |745    |77     |
+|  frame_read_write_m0                     |frame_read_write                                  |403    |714    |82     |
 |    aud_read_buf                          |rfifo_32_32_512                                   |38     |94     |7      |
 |      ram_inst                            |ram_infer_rfifo_32_32_512                         |0      |0      |1      |
 |      rd_to_wr_cross_inst                 |fifo_cross_domain_addr_process_al_rfifo_32_32_512 |16     |36     |0      |
 |      wr_to_rd_cross_inst                 |fifo_cross_domain_addr_process_al_rfifo_32_32_512 |16     |36     |0      |
-|    frame_fifo_read_m0                    |frame_fifo_read                                   |168    |268    |27     |
-|      g_view$u_map                        |view_scan_address                                 |54     |68     |15     |
+|    frame_fifo_read_m0                    |frame_fifo_read                                   |149    |237    |32     |
+|      g_view$u_map                        |view_scan_address                                 |35     |31     |20     |
 |    frame_fifo_write_m0                   |frame_fifo_write                                  |128    |192    |28     |
 |      g_view$u_map                        |view_write_address                                |39     |47     |15     |
 |    read_buf                              |rfifo_32_32_512                                   |38     |94     |7      |
@@ -69,17 +69,17 @@ Report Hierarchy Area:
 |      wr_to_rd_cross_inst                 |fifo_cross_domain_addr_process_al_wfifo_32_32_512 |16     |36     |0      |
 |  seg_scan_m0                             |seg_scan                                          |15     |33     |9      |
 |  sys_pll_m0                              |sys_pll                                           |0      |0      |1      |
-|  transition_blender_m0                   |transition_blender                                |87     |53     |37     |
-|  transition_ctrl_m0                      |transition_ctrl                                   |64     |94     |10     |
+|  transition_blender_m0                   |transition_blender                                |79     |53     |39     |
+|  transition_ctrl_m0                      |transition_ctrl                                   |104    |138    |24     |
 |  transition_line_buf_m0                  |transition_line_buf                               |0      |0      |1      |
-|  transition_line_read_m0                 |transition_line_read                              |89     |62     |13     |
+|  transition_line_read_m0                 |transition_line_read                              |103    |72     |15     |
 |  u_cv_pixel_effects                      |cv_pixel_effects_runtime                          |148    |299    |103    |
 |    u_convolution                         |cv_pixel_effects                                  |39     |231    |54     |
 |    u_point_effects                       |cv_pixel_effects                                  |80     |36     |45     |
 |      g_point_runtime$u_snow_field        |cv_snow_field                                     |73     |10     |43     |
 |    u_point_line_delay                    |cv_point_line_delay                               |16     |2      |1      |
 |  u_display_levels                        |display_levels_rgb                                |19     |0      |21     |
-|  u_eth_subsys                            |eth_subsys                                        |525    |1568   |126    |
+|  u_eth_subsys                            |eth_subsys                                        |526    |1568   |125    |
 |    u_clk_gen                             |clk_gen_rst_gen                                   |1      |0      |1      |
 |      u_pll_0                             |pll_gen                                           |0      |0      |1      |
 |    u_rx_fifo                             |rx_client_fifo                                    |66     |161    |13     |
@@ -104,7 +104,7 @@ Report Hierarchy Area:
 |      ramgen_l                            |RAMB16_S9_S9                                      |0      |0      |1      |
 |      ramgen_u                            |RAMB16_S9_S9                                      |0      |0      |1      |
 |    u_tx_mux                              |media_tx_mux                                      |28     |13     |2      |
-|    u_udp_stack                           |display_udp_lite                                  |324    |537    |77     |
+|    u_udp_stack                           |display_udp_lite                                  |325    |537    |76     |
 |  u_gt911_cursor                          |gt911_cursor_overlay                              |13     |122    |10     |
 |  u_gt911_trackpad                        |gt911_trackpad                                    |809    |271    |51     |
 |    u_i2c                                 |gt911_i2c_byte                                    |615    |68     |4      |
@@ -134,14 +134,14 @@ Report Hierarchy Area:
 |      u_video_axi_stream_receiver         |video_axi_stream_receiver                         |8      |2      |1      |
 |        u_w24_d1024_fifo                  |w24_d1024_fifo                                    |0      |0      |1      |
 |  u_media_audio_playback                  |media_audio_playback                              |141    |174    |14     |
-|  u_media_display_control_rx              |media_display_control_rx                          |167    |195    |38     |
-|  u_media_display_tx                      |media_display_tx                                  |465    |365    |6      |
-|  u_media_frame_pad                       |view_image_pipeline                               |670    |826    |83     |
-|    u_pad                                 |media_frame_pad                                   |83     |157    |21     |
+|  u_media_display_control_rx              |media_display_control_rx                          |171    |195    |38     |
+|  u_media_display_tx                      |media_display_tx                                  |464    |363    |6      |
+|  u_media_frame_pad                       |view_image_pipeline                               |669    |826    |83     |
+|    u_pad                                 |media_frame_pad                                   |82     |157    |21     |
 |    u_shrink                              |view_bilinear_shrink                              |582    |669    |62     |
 |      u_geometry                          |view_scale_geometry                               |356    |256    |17     |
-|  u_media_protocol_rx                     |media_protocol_rx                                 |627    |557    |70     |
-|  u_media_transaction_writer              |media_transaction_writer                          |192    |570    |21     |
+|  u_media_protocol_rx                     |media_protocol_rx                                 |632    |557    |70     |
+|  u_media_transaction_writer              |media_transaction_writer                          |194    |570    |21     |
 |  u_osd_composite                         |osd_composite                                     |7      |52     |0      |
 |  u_osd_panel                             |osd_panel_levels                                  |207    |46     |73     |
 |  u_osd_visibility                        |osd_visibility                                    |25     |118    |10     |
@@ -156,8 +156,8 @@ Report Hierarchy Area:
 |  u_video_rgb_to_axis_640x480             |video_rgb_to_axis_640x480                         |5      |28     |0      |
 |  u_view_black_mask                       |view_black_mask                                   |2      |10     |3      |
 |  u_view_protocol                         |view_protocol_rx                                  |45     |77     |16     |
-|  u_view_session                          |view_session_manager                              |342    |357    |33     |
-|  u_view_video                            |view_video_config                                 |4      |26     |0      |
+|  u_view_session                          |view_session_manager                              |466    |369    |35     |
+|  u_view_video                            |view_video_config                                 |4      |35     |0      |
 |  video_delay_m0                          |video_delay                                       |18     |59     |0      |
 |  video_pll_m0                            |video_pll                                         |0      |0      |1      |
 |  video_timing_data_m0                    |video_timing_data                                 |10     |33     |9      |

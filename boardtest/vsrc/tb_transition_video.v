@@ -13,7 +13,8 @@ module tb_transition_video;
     transition_blender blend (
         .video_clk(clk), .rst(rst), .line_de(de_word), .word_pop(pop),
         .old_word(old_word), .new_word(new_word),
-        .effect_active(1'b1), .row_ready(1'b1), .effect_mode(2'd1),
+        .effect_active(1'b1), .row_ready(1'b1),
+        .view_active(1'b0),.view_layout(2'd0),.view_window(2'd0),.effect_mode(2'd1),
         .direction_prev(1'b0), .fade_alpha(9'd256),
         .wipe_progress(11'd0), .mixed_word(mixed_word)
     );

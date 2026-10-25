@@ -132,13 +132,17 @@ wire [1:0]  transition_mode_cfg;
 wire        transition_start_toggle, transition_target_buf;
 wire [1:0]  transition_mode_latched;
 wire        transition_prev_latched, transition_done_toggle;
+wire        frame_commit_pulse;
 wire        effect_active, effect_row_ready, effect_prev;
 wire [1:0]  effect_active_mode;
 wire [8:0]  effect_fade_alpha;
 wire [10:0] effect_wipe_progress;
 wire        line_req_toggle, line_ready_toggle;
 wire [9:0]  line_num, line_rd_addr, line_wr_addr;
+wire [9:0]  transition_row_words;
 wire [20:0] line_base;
+wire        effect_view_active;
+wire [1:0]  effect_view_layout,effect_view_window;
 wire        line_rd_bank, line_wr_bank, line_wr_en;
 wire [31:0] line_rd_data, line_wr_data;
 
@@ -549,6 +553,14 @@ wire [11:0] view_focus_width,view_focus_height;
 wire view_target_buffer,view_config_epoch,view_config_buffer,view_video_epoch,view_video_buffer,view_drained_epoch;
 wire [1:0] view_config_layout,view_video_layout;
 wire [3:0] view_config_mask,view_video_mask;
+wire [3:0] view_config_window_buffers,view_video_window_buffers;
+wire view_transition_start_toggle,view_transition_release_toggle,view_transition_active;
+wire [1:0] view_transition_mode;
+wire view_transition_direction_prev;
+wire transition_start_effective=transition_start_toggle ^ view_transition_start_toggle;
+wire transition_target_effective=view_transition_active ? view_target_buffer : transition_target_buf;
+wire [1:0] transition_mode_effective=view_transition_active ? view_transition_mode : transition_mode_latched;
+wire transition_direction_effective=view_transition_active ? view_transition_direction_prev : transition_prev_latched;
 wire writer_image_result_valid;
 wire [7:0] writer_image_result_code;
 wire [15:0] view_result_frame;
@@ -579,6 +591,7 @@ view_session_manager u_view_session(.clk(eth_app_clk),.rst(rst_all),
     .frame_window(media_image_window[1:0]),.frame_index(media_source_index),
     .frame_width(media_image_width),.frame_height(media_image_height),
     .writer_result_valid(writer_image_result_valid),.writer_result(writer_image_result_code),
+    .transition_mode_cfg(transition_mode_cfg),.transition_done_toggle(transition_done_toggle),
     .single_display_buffer(disp_buf_idx[0]),.cfg_drained_epoch(view_drained_epoch),
     .accepted_begin(view_accepted_begin),.image_owned(view_image_owned),.owned_frame_id(view_owned_frame_id),
     .abort_image(view_abort_image),.target_buffer(view_target_buffer),
@@ -590,11 +603,19 @@ view_session_manager u_view_session(.clk(eth_app_clk),.rst(rst_all),
     .view_status_valid(view_status_valid),.view_status_body(view_status_body),
     .image_result_valid(media_image_result_valid),.image_result(media_image_result_code),
     .image_result_frame(view_result_frame),.config_epoch(view_config_epoch),
-    .config_buffer(view_config_buffer),.config_layout(view_config_layout),.config_mask(view_config_mask));
+    .config_buffer(view_config_buffer),.config_layout(view_config_layout),.config_mask(view_config_mask),
+    .config_window_buffers(view_config_window_buffers),
+    .view_transition_start_toggle(view_transition_start_toggle),
+    .view_transition_mode(view_transition_mode),
+    .view_transition_direction_prev(view_transition_direction_prev),
+    .view_transition_release_toggle(view_transition_release_toggle),
+    .view_transition_active(view_transition_active));
 view_video_config u_view_video(.clk(video_clk),.rst(rst_all),.vs(vs_0),
     .raw_epoch(view_config_epoch),.raw_buffer(view_config_buffer),
     .raw_layout(view_config_layout),.raw_mask(view_config_mask),
-    .epoch(view_video_epoch),.buffer_index(view_video_buffer),.layout(view_video_layout),.valid_mask(view_video_mask));
+    .raw_window_buffers(view_config_window_buffers),
+    .epoch(view_video_epoch),.buffer_index(view_video_buffer),.layout(view_video_layout),
+    .valid_mask(view_video_mask),.window_buffers(view_video_window_buffers));
 assign aud_pair_on=aud_pair_raw && view_active_layout==0;
 
 media_protocol_rx #(.MULTIVIEW(1)) u_media_protocol_rx (
@@ -939,18 +960,24 @@ transition_ctrl #(
     .BUF1_ADDR (BUF1_ADDR[20:0])
 ) transition_ctrl_m0 (
     .video_clk (video_clk), .rst (rst_all),
-    .start_toggle_raw (transition_start_toggle),
-    .target_buf_raw (transition_target_buf),
-    .mode_raw (transition_mode_latched),
-    .direction_prev_raw (transition_prev_latched),
+    .start_toggle_raw (transition_start_effective),
+    .target_buf_raw (transition_target_effective),
+    .mode_raw (transition_mode_effective),
+    .direction_prev_raw (transition_direction_effective),
+    .view_transition_raw (view_transition_active),
+    .view_layout_raw (view_target_layout),.view_window_raw (view_target_window),
+    .release_toggle_raw (view_transition_release_toggle),
     .done_toggle (transition_done_toggle),
     .de_word (de_word), .vs_word (vs_word),
     .line_req_toggle (line_req_toggle), .line_num (line_num),
-    .line_base (line_base), .line_ready_toggle_raw (line_ready_toggle),
+    .line_base (line_base),.row_words(transition_row_words),
+    .line_ready_toggle_raw (line_ready_toggle),
     .line_rd_bank (line_rd_bank), .line_rd_addr (line_rd_addr),
     .row_ready (effect_row_ready), .effect_active (effect_active),
     .active_mode (effect_active_mode), .direction_prev (effect_prev),
-    .fade_alpha (effect_fade_alpha), .wipe_progress (effect_wipe_progress)
+    .fade_alpha (effect_fade_alpha), .wipe_progress (effect_wipe_progress),
+    .view_active(effect_view_active),.active_view_layout(effect_view_layout),
+    .active_view_window(effect_view_window)
 );
 
 transition_line_buf transition_line_buf_m0 (
@@ -966,6 +993,8 @@ transition_blender transition_blender_m0 (
     .line_de (de_word), .word_pop (video_read_en),
     .old_word (video_read_data), .new_word (line_rd_data),
     .effect_active (effect_active), .row_ready (effect_row_ready),
+    .view_active(effect_view_active),.view_layout(effect_view_layout),
+    .view_window(effect_view_window),
     .effect_mode (effect_active_mode), .direction_prev (effect_prev),
     .fade_alpha (effect_fade_alpha),
     .wipe_progress (effect_wipe_progress), .mixed_word (transition_word)
@@ -1209,7 +1238,8 @@ frame_read_write #(
     .read_addr_3       (BUF3_ADDR),
     .read_addr_index   (view_video_layout==0 ? disp_buf_idx : {1'b0,view_video_buffer}),
     .stream_clk(eth_app_clk),
-    .view_read_layout(view_video_layout),.view_valid_mask(view_video_mask),.view_epoch(view_video_epoch),
+    .view_read_layout(view_video_layout),.view_valid_mask(view_video_mask),
+    .view_window_buffers(view_video_window_buffers),.view_epoch(view_video_epoch),
     .view_drained_epoch(view_drained_epoch),.view_write_layout(view_write_layout),.view_write_window(view_write_window),
     .read_len          (FRAME_WORDS),
     .read_en           (video_read_en),
@@ -1278,7 +1308,8 @@ transition_line_read transition_line_read_m0 (
     .sdr_init_done (Sdr_init_done), .sdr_busy (Sdr_busy),
     .sdr_refresh (Sdr_init_ref_vld),
     .line_req_toggle (line_req_toggle), .line_num (line_num),
-    .line_base (line_base), .line_ready_toggle (line_ready_toggle),
+    .line_base (line_base),.row_words(transition_row_words),
+    .line_ready_toggle (line_ready_toggle),
     .frame_rd_en (App_rd_en), .frame_rd_addr (App_rd_addr),
     .frame_wr_en (App_wr_en), .frame_rd_busy (frame_rd_busy),
     .frame_wr_busy (frame_wr_busy), .video_fifo_words (vid_fifo_words),

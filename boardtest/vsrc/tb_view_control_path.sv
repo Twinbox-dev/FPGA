@@ -48,13 +48,16 @@ module tb_view_control_path;
         .prepare_valid(pv),.prepare_body(pb),.status_request(sq),.cursor_x(cx),.cursor_y(cy),.local_step(local_step),
         .frame_begin(fb),.frame_id(fid),.frame_generation(jg),.frame_layout(jl),.frame_window(jw),.frame_index(ji),
         .frame_width(12'd571),.frame_height(12'd720),.writer_result_valid(wvalid),.writer_result(wresult),
+        .transition_mode_cfg(2'd0),.transition_done_toggle(1'b0),
         .single_display_buffer(targetbuf),.cfg_drained_epoch(drain),.accepted_begin(accepted),.image_owned(owned),
         .owned_frame_id(ownedid),.abort_image(abort_image),.target_buffer(targetbuf),.target_layout(tl),
         .target_window(tw),.target_generation(tg),.busy(dbusy),.active_layout(al),.active_mask(am),
         .active_generation(ag),.focus_window(focus),.focus_index(),.focus_width(),.focus_height(),
         .prepare_reply_valid(pa),.prepare_reply_body(pbody),.view_status_valid(vs),.view_status_body(vbody),
         .image_result_valid(rv),.image_result(result),.image_result_frame(rf),
-        .config_epoch(epoch),.config_buffer(cb),.config_layout(cl),.config_mask(cm));
+        .config_epoch(epoch),.config_buffer(cb),.config_layout(cl),.config_mask(cm),
+        .config_window_buffers(),.view_transition_start_toggle(),.view_transition_mode(),
+        .view_transition_direction_prev(),.view_transition_release_toggle(),.view_transition_active());
     media_display_tx #(.VIEW_ENABLE(1),.TX_GAP_CYCLES(4)) reply(.clk(clk),.rst(rst),
         .local_cmd_toggle_async(1'b0),.local_cmd_async(8'd0),.ready_valid(1'b0),
         .image_result_valid(rv),.image_result_code(result),.image_result_frame(rf),

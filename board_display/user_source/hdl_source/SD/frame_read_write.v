@@ -92,6 +92,7 @@ module frame_read_write
     input wire stream_clk, // optional network producer clock; audio retains write_clk
     input wire [1:0] view_read_layout,view_write_layout,view_write_window,
     input wire [3:0] view_valid_mask,
+    input wire [3:0] view_window_buffers,
     input wire view_epoch,
     output wire view_drained_epoch
 
@@ -269,6 +270,7 @@ frame_fifo_read_m0
     .aud_wrusedw                (aud_wrusedw              ),
     .aud_ch_active              (aud_ch_active            ),
     .view_layout(view_read_layout),.view_valid_mask(view_valid_mask),
+    .view_window_buffers(view_window_buffers),
     .view_epoch(view_epoch),.view_drained_epoch(view_drained_epoch),
     .video_black_write(video_black_write)
 );

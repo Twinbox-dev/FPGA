@@ -7,10 +7,13 @@ module tb_transition_fetch;
     reg sdr_busy = 1'b0;
     wire done, req, ready, rd_bank, row_ready, active, prev;
     wire [9:0] line_num, rd_addr, wr_addr;
+    wire [9:0] row_words;
     wire [20:0] line_base, app_addr;
     wire [31:0] rd_data, wr_data;
     wire wr_en, wr_bank, line_hold, app_en, frame_valid;
     wire [1:0] mode;
+    wire view_active;
+    wire [1:0] active_view_layout,active_view_window;
     wire [8:0] alpha;
     wire [10:0] progress;
     reg [3:0] valid_pipe = 4'd0;
@@ -22,19 +25,22 @@ module tb_transition_fetch;
     transition_ctrl ctrl (
         .video_clk(video_clk), .rst(rst), .start_toggle_raw(start),
         .target_buf_raw(1'b1), .mode_raw(2'd1),
-        .direction_prev_raw(1'b0), .done_toggle(done),
+        .direction_prev_raw(1'b0),.view_transition_raw(1'b0),
+        .view_layout_raw(2'd0),.view_window_raw(2'd0),.release_toggle_raw(1'b0),
+        .done_toggle(done),
         .de_word(de), .vs_word(vs),
-        .line_req_toggle(req), .line_num(line_num), .line_base(line_base),
+        .line_req_toggle(req), .line_num(line_num), .line_base(line_base),.row_words(row_words),
         .line_ready_toggle_raw(ready),
         .line_rd_bank(rd_bank), .line_rd_addr(rd_addr),
         .row_ready(row_ready), .effect_active(active),
         .active_mode(mode), .direction_prev(prev),
-        .fade_alpha(alpha), .wipe_progress(progress)
+        .fade_alpha(alpha), .wipe_progress(progress),.view_active(view_active),
+        .active_view_layout(active_view_layout),.active_view_window(active_view_window)
     );
     transition_line_read fetch (
         .mem_clk(mem_clk), .rst(rst), .sdr_init_done(1'b1),
         .sdr_busy(sdr_busy), .sdr_refresh(1'b0),
-        .line_req_toggle(req), .line_num(line_num), .line_base(line_base),
+        .line_req_toggle(req), .line_num(line_num), .line_base(line_base),.row_words(row_words),
         .line_ready_toggle(ready),
         .frame_rd_en(1'b0), .frame_rd_addr(21'd0), .frame_wr_en(1'b0),
         .frame_rd_busy(1'b0), .frame_wr_busy(1'b0),
