@@ -31,6 +31,7 @@ module tb_media_transaction_writer;
     reg [3:0] audio_end_reason = 0;
     reg [15:0] audio_end_id = 0;
     reg [1:0] effect_mode = 0;
+    reg audio_commit_enable = 1;
     reg transition_done_toggle = 0;
     wire display_valid;
     wire [4:0] image_index_out;
@@ -79,7 +80,8 @@ module tb_media_transaction_writer;
         .audio_end_valid(audio_end_valid), .audio_end_ok(audio_end_ok),
         .audio_end_reason(audio_end_reason), .audio_end_id(audio_end_id),
         .write_clk(write_clk), .write_rst(write_rst), .frame_finish_toggle(finish_toggle),
-        .effect_mode(effect_mode), .transition_done_toggle(transition_done_toggle),
+        .effect_mode(effect_mode), .audio_commit_enable(audio_commit_enable),
+        .transition_done_toggle(transition_done_toggle),
         .display_valid(display_valid), .image_index_out(image_index_out),
         .image_width_out(image_width_out),.image_height_out(image_height_out),
         .image_has_wav(image_has_wav), .auto_play_status(auto_play_status),
@@ -114,10 +116,17 @@ module tb_media_transaction_writer;
     end
 
     reg got_image_accept = 0, got_audio_accept = 0, got_image_commit = 0;
+    integer image_accept_count=0,audio_accept_count=0,image_commit_count=0;
     always @(posedge udp_clk) begin
-        if (image_result_valid && image_result_code == 8'd0) got_image_accept <= 1;
-        if (audio_result_valid && audio_result_code == 8'd0) got_audio_accept <= 1;
-        if (image_result_valid && image_result_code == 8'd2) got_image_commit <= 1;
+        if (image_result_valid && image_result_code == 8'd0) begin
+            got_image_accept <= 1;image_accept_count<=image_accept_count+1;
+        end
+        if (audio_result_valid && audio_result_code == 8'd0) begin
+            got_audio_accept <= 1;audio_accept_count<=audio_accept_count+1;
+        end
+        if (image_result_valid && image_result_code == 8'd2) begin
+            got_image_commit <= 1;image_commit_count<=image_commit_count+1;
+        end
     end
 
     task automatic send_word(input [31:0] value, input is_audio);
@@ -129,6 +138,31 @@ module tb_media_transaction_writer;
             while (!stream_word_ready) @(negedge udp_clk);
             @(negedge udp_clk);
             stream_word_valid = 0;
+        end
+    endtask
+
+    task automatic commit_silent_image(input [15:0] id,input [4:0] index_value);
+        integer old_accept,old_audio,old_commit;
+        begin
+            old_accept=image_accept_count;old_audio=audio_accept_count;old_commit=image_commit_count;
+            @(negedge udp_clk);
+            frame_id=id;image_index=index_value;image_flags=0;frame_begin_valid=1;
+            @(negedge udp_clk);frame_begin_valid=0;
+            send_word(32'h01020304,1'b0);
+            send_word(32'h05060708,1'b0);
+            send_word(32'h090a0b0c,1'b0);
+            repeat(5)@(negedge udp_clk);
+            frame_end_id=id;frame_end_ok=1;frame_end_valid=1;
+            @(negedge udp_clk);frame_end_valid=0;
+            wait(image_accept_count>old_accept);
+
+            @(negedge udp_clk);audio_frame_id=id;audio_sample_count=0;audio_begin_valid=1;
+            @(negedge udp_clk);audio_begin_valid=0;
+            repeat(5)@(negedge udp_clk);
+            audio_end_id=id;audio_end_ok=1;audio_end_valid=1;
+            @(negedge udp_clk);audio_end_valid=0;
+            wait(audio_accept_count>old_audio);
+            wait(image_commit_count>old_commit);
         end
     endtask
 
@@ -163,7 +197,27 @@ module tb_media_transaction_writer;
             second_audio_word != 32'h8080807f || request_buffer != 2'd2 ||
             request_len != 21'd256)
             $fatal(1, "SDRAM write stream mismatch");
-        $display("PASS: image and aligned PCM writes complete before display commit");
+
+        // Layout changes must keep the currently playing source and sample
+        // position metadata. A later single-layout image without a WAV silences it.
+        begin : audio_layout_policy
+            reg held_toggle;
+            reg [1:0] held_playback_buffer;
+            held_toggle=audio_source_toggle;held_playback_buffer=dut.committed_audio_buffer;
+            audio_commit_enable=0;
+            commit_silent_image(16'h1235,5'd4);
+            if(!audio_pair_on || !image_has_wav || audio_source_toggle!=held_toggle ||
+               dut.committed_audio_buffer!=held_playback_buffer || !dut.committed_audio_pair ||
+               dut.audio_target_index!=3)
+                $fatal(1,"layout-only image commit disturbed the active audio source");
+
+            audio_commit_enable=1;
+            commit_silent_image(16'h1236,5'd5);
+            if(audio_pair_on || image_has_wav || audio_sample_count_out!=0 ||
+               audio_buffer_length!=0 || audio_source_toggle==held_toggle)
+                $fatal(1,"single-layout image without WAV did not commit silence");
+        end
+        $display("PASS: image/PCM commit and layout-only audio-source retention");
         $finish;
     end
 

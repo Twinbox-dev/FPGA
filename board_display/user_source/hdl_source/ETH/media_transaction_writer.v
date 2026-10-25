@@ -4,7 +4,8 @@
 // streams through small async BRAM FIFOs, and writes the V1 four-region SDRAM
 // layout. Image and audio writes are serialized on frame_read_write's single
 // write port. A new image is committed only after image and optional audio
-// END checks pass and the new audio buffer has been written.
+// END checks pass. Audio metadata changes only when audio_commit_enable is set,
+// allowing layout changes to preserve the current playback source.
 module media_transaction_writer #(
     parameter [20:0] FRAME_WORDS = 21'd460800,
     parameter [20:0] AUDIO_REGION_WORDS = 21'd587776,
@@ -43,6 +44,7 @@ module media_transaction_writer #(
     input  wire        write_rst,
     input  wire        frame_finish_toggle,
     input  wire [1:0]  effect_mode,
+    input  wire        audio_commit_enable,
     input  wire        transition_done_toggle,
     output reg         display_valid,
     output reg  [4:0]  image_index_out,
@@ -142,6 +144,8 @@ module media_transaction_writer #(
     reg [1:0] transition_image_buffer_w, transition_audio_buffer_w;
     reg [20:0] transition_audio_length_w;
     reg [31:0] transition_audio_samples_w;
+    reg [1:0] committed_audio_buffer;
+    reg committed_audio_pair;
 
     wire frame_fifo_full, frame_fifo_empty;
     wire [31:0] frame_fifo_data;
@@ -168,7 +172,7 @@ module media_transaction_writer #(
     assign write_layout=pending_layout_w;
     assign write_window=pending_window_w;
     assign write_row_offset = 20'd0;
-    assign audio_pair_on = display_valid && image_has_wav && audio_buffer_length != 0;
+    assign audio_pair_on = display_valid && committed_audio_pair;
 
     generate if(DIRECT_STREAM)begin:g_direct_stream
         // The consumer is the existing frame_read_write async FIFO. Retain
@@ -316,6 +320,7 @@ module media_transaction_writer #(
             image_has_wav <= 1'b0; auto_play_status <= 1'b0;
             display_buffer_index <= 2'd0; audio_buffer_index <= 2'd2;
             audio_buffer_length <= 21'd0;
+            committed_audio_buffer<=2'd2;committed_audio_pair<=1'b0;
             audio_sample_count_out <= 32'd0; audio_source_toggle <= 1'b0;
             transition_start_toggle <= 1'b0; transition_target_buf <= 1'b0;
             transition_mode_latched <= 2'd0; transition_prev_latched <= 1'b0;
@@ -397,8 +402,8 @@ module media_transaction_writer #(
                 audio_data_words <= audio_data_word_count(audio_samples_udp);
                 audio_target_length <= aligned_audio_words(audio_samples_udp);
                 if (!audio_retry_pending_w)
-                    audio_target_index <= display_valid && image_has_wav ?
-                        (audio_buffer_index == 2'd2 ? 2'd3 : 2'd2) : 2'd2;
+                    audio_target_index <= display_valid && committed_audio_pair ?
+                        (committed_audio_buffer == 2'd2 ? 2'd3 : 2'd2) : 2'd2;
                 if (audio_samples_udp == 0) begin
                     audio_no_data_w <= 1'b1;
                     pending_audio_buffer_w <= audio_target_index;
@@ -471,13 +476,17 @@ module media_transaction_writer #(
                     image_index_out <= pending_image_index_w;
                     image_width_out <= pending_image_width_w;
                     image_height_out <= pending_image_height_w;
-                    image_has_wav <= pending_wav_w && pending_audio_samples_w != 0;
                     auto_play_status <= pending_auto_w;
                     display_valid <= 1'b1;
                     audio_buffer_index <= pending_audio_buffer_w;
                     audio_buffer_length <= pending_audio_length_w;
                     audio_sample_count_out <= pending_audio_samples_w;
-                    audio_source_toggle <= ~audio_source_toggle;
+                    if (audio_commit_enable) begin
+                        image_has_wav <= pending_wav_w && pending_audio_samples_w != 0;
+                        committed_audio_buffer<=pending_audio_buffer_w;
+                        committed_audio_pair<=pending_wav_w && pending_audio_samples_w != 0;
+                        audio_source_toggle <= ~audio_source_toggle;
+                    end
                     frame_commit_pulse <= 1'b1;
                     image_result_code_w <= 8'd2;
                     image_result_toggle_w <= ~image_result_toggle_w;
@@ -509,13 +518,17 @@ module media_transaction_writer #(
                 image_index_out <= transition_image_index_w;
                 image_width_out <= transition_image_width_w;
                 image_height_out <= transition_image_height_w;
-                image_has_wav <= transition_image_wav_w;
                 auto_play_status <= transition_image_auto_w;
                 display_valid <= 1'b1;
                 audio_buffer_index <= transition_audio_buffer_w;
                 audio_buffer_length <= transition_audio_length_w;
                 audio_sample_count_out <= transition_audio_samples_w;
-                audio_source_toggle <= ~audio_source_toggle;
+                if (audio_commit_enable) begin
+                    image_has_wav <= transition_image_wav_w;
+                    committed_audio_buffer<=transition_audio_buffer_w;
+                    committed_audio_pair<=transition_image_wav_w;
+                    audio_source_toggle <= ~audio_source_toggle;
+                end
                 frame_commit_pulse <= 1'b1;
                 image_result_code_w <= 8'd2;
                 image_result_toggle_w <= ~image_result_toggle_w;

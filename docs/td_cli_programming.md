@@ -311,3 +311,9 @@ Pop-Location
 - 媒体板 cable 1 成功日志：`boardtest/captures/sram_download/program_media_20261025_182403.log`。本轮使用仓库已有媒体 bit，SHA-256：`4323E011C0E3941D43D7B77E7631E03DC100853324D8AD716ACC9E976BAC9663`；媒体板 RTL 未在本轮修改。
 
 本记录证明两次 CLI SRAM 下载完成；尚未记录 HDMI 或音频的板级功能验收结果。
+
+## 2026-10-25 音频跨布局保持显示板 bit
+
+在多窗口音频保持阶段，显示板完成综合、布局布线和 bitgen。最后一次显示板资源为 14,810 LUT、8,450 slices、35 BRAM9K、11 BRAM32K、18 DSP、4 PLL；最终 setup/hold WNS 分别为 −5.858 ns / −3.188 ns。 bitgen 成功生成 `board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`，SHA-256 为 `4E9B4AFDB457983581EAB04DF07FE95D5C644785668F842C048539BDE7EF38C9`。
+
+按 `scripts/program_sram.ps1 -Board display` 下载至 cable 0 成功，日志：`boardtest/captures/sram_download/program_display_20261025_191914.log`。日志包含 `PRG-2014 : Chip validation success: EG4S20BG256`、`program -cable 0 -mode svf -spd 8 -p` 成功结束和完整 `download` 完成。此下载只写 SRAM。随后按用户要求同步重烧媒体板现有 bit 到 cable 1，日志：`boardtest/captures/sram_download/program_media_20261025_192034.log`，同样有 `PRG-2014`、内部 `program -cable 1 -mode svf -spd 8 -p` 和完整 `download` 成功记录。媒体板源码和 bit 内容未变。用户已确认 HDMI/听感符合音频跨布局保持预期。

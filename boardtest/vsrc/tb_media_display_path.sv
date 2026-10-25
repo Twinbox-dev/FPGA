@@ -102,7 +102,7 @@ module tb_media_display_path;
         .audio_sample_count(audio_sample_count),.audio_end_valid(audio_end_valid),
         .audio_end_ok(audio_end_ok),.audio_end_reason(audio_end_reason),.audio_end_id(audio_end_id),
         .write_clk(write_clk),.write_rst(rst),.frame_finish_toggle(finish_toggle),
-        .effect_mode(2'd0),.transition_done_toggle(transition_done_toggle[0]),
+        .effect_mode(2'd0),.audio_commit_enable(1'b1),.transition_done_toggle(transition_done_toggle[0]),
         .display_valid(display_valid),.image_index_out(image_index_out),
         .image_width_out(image_width_out),.image_height_out(image_height_out),
         .image_has_wav(image_has_wav),.auto_play_status(auto_play_status),

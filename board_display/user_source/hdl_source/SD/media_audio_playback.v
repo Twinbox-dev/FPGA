@@ -85,9 +85,8 @@ module media_audio_playback (
                 samples_remaining <= source_samples;
                 have_cur <= 1'b0; have_next <= 1'b0;
                 read_pending <= 1'b0; read_capture_pending <= 1'b0; read_ready <= 1'b0;
-                // Returning from a multiview page commits the new WAV metadata
-                // before its video/drain ACK unmutes pair_on. Retain the start
-                // request while muted, then launch when the layout enables it.
+                // Audio source changes only with a committed single-layout image.
+                // Layout changes leave source_toggle unchanged, so playback runs on.
                 request_waiting <= 1'b0; restart_pending <= source_samples != 0;
                 request_delay <= 2'd3;
                 byte_pos <= 2'd0; duplicate_phase <= 1'b0;

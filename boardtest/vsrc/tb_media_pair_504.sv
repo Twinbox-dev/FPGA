@@ -262,7 +262,7 @@ module tb_media_pair_504 #(
         .audio_sample_count(received_audio_count), .audio_end_valid(audio_end_valid),
         .audio_end_ok(audio_end_ok), .audio_end_reason(audio_end_reason), .audio_end_id(audio_end_id),
         .write_clk(write_clk), .write_rst(rst), .frame_finish_toggle(finish_toggle),
-        .effect_mode(2'd0), .transition_done_toggle(1'b0),
+        .effect_mode(2'd0), .audio_commit_enable(1'b1), .transition_done_toggle(1'b0),
         .display_valid(display_valid), .image_index_out(displayed_index),
         .image_width_out(displayed_width), .image_height_out(displayed_height),
         .image_has_wav(image_has_wav), .auto_play_status(auto_play_status),

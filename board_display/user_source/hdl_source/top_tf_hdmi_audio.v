@@ -566,6 +566,7 @@ wire [7:0] writer_image_result_code;
 wire [15:0] view_result_frame;
 wire view_pipeline_ready;
 wire aud_pair_raw;
+wire view_audio_commit_enable=(view_active_layout==0 && view_target_layout==0);
 reg [2:0] view_local_sync;
 reg view_local_seen;
 reg [10:0] view_cursor_x0,view_cursor_x1;
@@ -616,7 +617,7 @@ view_video_config u_view_video(.clk(video_clk),.rst(rst_all),.vs(vs_0),
     .raw_window_buffers(view_config_window_buffers),
     .epoch(view_video_epoch),.buffer_index(view_video_buffer),.layout(view_video_layout),
     .valid_mask(view_video_mask),.window_buffers(view_video_window_buffers));
-assign aud_pair_on=aud_pair_raw && view_active_layout==0;
+assign aud_pair_on=aud_pair_raw;
 
 media_protocol_rx #(.MULTIVIEW(1)) u_media_protocol_rx (
     .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
@@ -700,6 +701,7 @@ media_transaction_writer #(.VIEW_ENABLE(1),.DIRECT_STREAM(1)) u_media_transactio
     .write_clk (eth_app_clk), .write_rst (rst_all),
     .frame_finish_toggle (frame_write_toggle_mem),
     .effect_mode ((view_active_layout!=0 || view_target_layout!=0) ? 2'd0 : transition_mode_cfg),
+    .audio_commit_enable(view_audio_commit_enable),
     .transition_done_toggle (transition_done_toggle),
     .display_valid (display_valid), .image_index_out (img_idx_w),
     .image_width_out (displayed_image_width), .image_height_out (displayed_image_height),
