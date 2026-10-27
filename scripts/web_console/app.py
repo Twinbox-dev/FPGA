@@ -24,20 +24,123 @@ web_console/app.py — 板卡控制 Web 控制台（串口 / 以太网双控）
 注意: 串口独占——打开本控制台前请关掉其他占用串口的程序。
 依赖: pip install flask pyserial
 """
+import atexit
 import json
 import os
 import queue
+import shutil
+import signal
 import struct
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 from media_upload import (AUDIO_PACKET_SAMPLES, IMAGE_PACKET_WORDS, MAX_HEIGHT, MAX_WIDTH,
                           PC_AUDIO_MAX_SAMPLES, control_packet, image_packet, load_pcm_wav,
-                          rgb24_to_native_words, transcode_audio_stream, unpack_display_packet)
+                          resolve_ffmpeg, rgb24_to_native_words, transcode_audio_stream, unpack_display_packet)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
+VIDEO_LOCK = threading.Lock()
+VIDEO_PROCESS = None
+VIDEO_PATH = None
+VIDEO_NAME = ""
+VIDEO_LAST_EXIT = None
+VIDEO_STATUS_PATH = None
+VIDEO_LOG_PATH = None
+VIDEO_USER_STOPPED = False
+VIDEO_IMAGE_REQUEST_ACTIVE = False
+VIDEO_CAPTURE_DIR = Path(__file__).resolve().parents[2] / "boardtest" / "captures" / "video"
+VIDEO_SCRIPT = Path(__file__).resolve().parents[1] / "direct_video_sender.py"
+PRODUCT_PROFILE = json.loads(VIDEO_SCRIPT.with_name("direct_video_profile.json").read_text(encoding="utf-8"))
+PRODUCT_CAPABILITIES = {"cv": PRODUCT_PROFILE.get("cv_enabled", True),
+                        "spectrum": PRODUCT_PROFILE.get("spectrum_enabled", True)}
+UNAVAILABLE_KEYS = set()
+if not PRODUCT_CAPABILITIES["cv"]:
+    UNAVAILABLE_KEYS.update(("g", "b", "e", "h", "w"))
+if not PRODUCT_CAPABILITIES["spectrum"]:
+    UNAVAILABLE_KEYS.update(("q", ";", "'"))
+
+
+def _video_status_locked():
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT
+    progress = {}
+    if VIDEO_STATUS_PATH:
+        try:
+            progress = json.loads(Path(VIDEO_STATUS_PATH).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    if VIDEO_PROCESS is not None:
+        exit_code = VIDEO_PROCESS.poll()
+        if exit_code is None:
+            return {**progress, "active": True, "name": VIDEO_NAME,
+                    "state": progress.get("state", "starting"), "pid": VIDEO_PROCESS.pid}
+        VIDEO_LAST_EXIT = exit_code
+        VIDEO_PROCESS = None
+        if VIDEO_PATH:
+            try:
+                Path(VIDEO_PATH).unlink(missing_ok=True)
+            except OSError:
+                pass
+        VIDEO_PATH = None
+        VIDEO_NAME = ""
+    state = "idle" if VIDEO_LAST_EXIT is None else (
+        "stopped" if VIDEO_USER_STOPPED or VIDEO_LAST_EXIT == 0 else "error")
+    result = {**progress, "active": False, "name": "", "state": state,
+              "exit_code": VIDEO_LAST_EXIT}
+    if state == "error" and VIDEO_LOG_PATH:
+        try:
+            with open(VIDEO_LOG_PATH, "rb") as log:
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0, log.tell() - 4096))
+                result["details"] = log.read().decode("utf-8", errors="replace").strip()
+        except OSError:
+            pass
+        if "error" not in result:
+            sender_error = next((line.split("direct_video_sender:", 1)[1].strip()
+                                 for line in reversed(result.get("details", "").splitlines())
+                                 if "direct_video_sender:" in line), None)
+            result["error"] = sender_error or "Video sender exited before completing playback"
+    return result
+
+
+def stop_video_sender():
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT, VIDEO_USER_STOPPED
+    with VIDEO_LOCK:
+        process = VIDEO_PROCESS
+        if process is not None:
+            VIDEO_USER_STOPPED = True
+        if process is not None and process.poll() is None:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False)
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            try:
+                process.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+            VIDEO_LAST_EXIT = process.returncode
+        VIDEO_PROCESS = None
+        if VIDEO_PATH:
+            try:
+                Path(VIDEO_PATH).unlink(missing_ok=True)
+            except OSError:
+                pass
+        VIDEO_PATH = None
+        VIDEO_NAME = ""
+
+
+atexit.register(stop_video_sender)
 sys.setswitchinterval(0.0005)   # GIL 快速切换：流帧突发期读线程不容许毫秒级停顿（默认 5ms > 64KB 内核缓冲的 1.7ms 吸收窗）
 
 DEFAULT_BAUD = int(os.environ.get("WEB_BAUD", "1000000"))   # 默认波特率
@@ -1251,17 +1354,21 @@ ETH_FRAME_LOCK = threading.Lock()
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", capabilities=PRODUCT_CAPABILITIES,
+                           unavailable_keys=sorted(UNAVAILABLE_KEYS))
 
 
 @app.route("/api/status")
 def api_status():
+    with VIDEO_LOCK:
+        video_status = _video_status_locked()
     return jsonify({"serial_open": link.is_open(),
                     "serial_port": getattr(link, "port", ""),
                     "eth_available": True,
                     "eth_open": eth_link.is_open(),
                     "eth_board": eth_link.board,
                     "eth_local_port": EthTransport.LOCAL_PORT,
+                    "video": video_status,
                     "loopback": isinstance(link, LoopbackLink),
                     "auto_connect": AUTO_CONNECT,
                     "baud": DEFAULT_BAUD, "view": VIEW_STATE})
@@ -1299,7 +1406,8 @@ def api_keys():
               ("调试", ["i", "l"])]
     groups.insert(2, ("\u56fe\u50cf\u6548\u679c", ["r", "g", "b", "e", "h", "w"]))
     groups.insert(1, ("画面布局", ["6", "7", "8"]))
-    return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
+    return jsonify({"keys": [{"key": k, "label": HELP[k], "available": k not in UNAVAILABLE_KEYS} for k in order],
+                    "capabilities": PRODUCT_CAPABILITIES,
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 
 
@@ -1330,6 +1438,7 @@ def api_eth_connect():
 
 @app.route("/api/eth/disconnect", methods=["POST"])
 def api_eth_disconnect():
+    stop_video_sender()
     eth_link.close()
     return jsonify({"ok": True})
 
@@ -1340,6 +1449,11 @@ def api_cmd():
     d = request.get_json(force=True, silent=True) or {}
     mode = d.get("mode", "serial")
     key = d.get("key", "")
+    if key in UNAVAILABLE_KEYS:
+        return jsonify({"ok": False, "error": "首轮视频基线暂不支持 CV 与频谱；后续恢复"}), 409
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"] and key not in ("s", "+", "-"):
+            return jsonify({"ok": False, "error": "视频播放期间仅支持状态和音量；请先停止视频"}), 409
     with VIEW_LOCK:
         state = VIEW_STATE
         if key == "s":
@@ -1358,6 +1472,9 @@ def api_cmd():
 
 @app.route("/api/subtitle", methods=["POST"])
 def api_subtitle():
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "首轮视频播放期间不更新字幕；请先停止视频"}), 409
     d = request.get_json(force=True, silent=True) or {}
     mode = d.get("mode", "serial")
     try:
@@ -1373,6 +1490,22 @@ def api_subtitle():
 
 @app.route("/api/eth/upload-image", methods=["POST"])
 def api_eth_upload_image():
+    global VIDEO_IMAGE_REQUEST_ACTIVE
+    with VIDEO_LOCK:
+        if VIDEO_IMAGE_REQUEST_ACTIVE or _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "Another image/video transaction is active"}), 409
+        VIDEO_IMAGE_REQUEST_ACTIVE = True
+    try:
+        return _upload_image_request()
+    finally:
+        with VIDEO_LOCK:
+            VIDEO_IMAGE_REQUEST_ACTIVE = False
+
+
+def _upload_image_request():
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "video is active; stop video before sending a still image"}), 409
     """Convert browser-decoded RGB and send a normal 0x21..0x33 frame to .2."""
     if not eth_link.is_open():
         return jsonify({"ok": False, "error": "请先连接以太网"}), 400
@@ -1410,6 +1543,97 @@ def api_eth_upload_image():
         return jsonify({"ok": False, "error": str(exc)}), 409
     except OSError as exc:
         return jsonify({"ok": False, "error": f"以太网图像发送失败：{exc}"}), 502
+
+
+@app.route("/api/eth/video/status")
+def api_eth_video_status():
+    with VIDEO_LOCK:
+        return jsonify(_video_status_locked())
+
+
+@app.route("/api/eth/video/start", methods=["POST"])
+def api_eth_video_start():
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT
+    global VIDEO_STATUS_PATH, VIDEO_LOG_PATH, VIDEO_USER_STOPPED
+    if not eth_link.is_open():
+        return jsonify({"ok": False, "error": "Ethernet is not connected"}), 400
+    if eth_link.image_upload_active:
+        return jsonify({"ok": False, "error": "An image upload is still active"}), 409
+    video_file = request.files.get("video")
+    if video_file is None or not video_file.filename:
+        return jsonify({"ok": False, "error": "Choose a video file first"}), 400
+    safe_name = os.path.basename(video_file.filename.replace("\\", "/"))
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in {".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv"}:
+        return jsonify({"ok": False, "error": "Supported: MP4, MOV, MKV, AVI, WebM, WMV"}), 400
+    try:
+        video_width=int(os.environ.get("VIDEO_WIDTH", "720"))
+        video_height=int(os.environ.get("VIDEO_HEIGHT", "360"))
+        video_window=int(os.environ.get("VIDEO_WINDOW", "512"))
+        video_prefetch=int(os.environ.get("VIDEO_PREFETCH", "16"))
+        if not (2<=video_width<=720 and video_width%2==0 and 1<=video_height<=360 and video_window in (32,64,128,256,512) and video_window>=video_height and 0<=video_prefetch<=16):
+            raise ValueError("invalid video profile")
+    except ValueError:
+        return jsonify({"ok":False,"error":"Invalid VIDEO_WIDTH/VIDEO_HEIGHT/VIDEO_WINDOW; must match display bit"}),400
+    ffmpeg_setting = os.environ.get("VIDEO_FFMPEG")
+    try:
+        ffmpeg = ((shutil.which(ffmpeg_setting) or
+                   (ffmpeg_setting if Path(ffmpeg_setting).is_file() else None))
+                  if ffmpeg_setting else resolve_ffmpeg())
+        if not ffmpeg:
+            raise ValueError(f"ffmpeg not found: {ffmpeg_setting}")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not VIDEO_SCRIPT.is_file():
+        return jsonify({"ok": False, "error": "scripts/direct_video_sender.py is missing"}), 500
+
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"] or VIDEO_IMAGE_REQUEST_ACTIVE or eth_link.image_upload_active:
+            return jsonify({"ok": False, "error": "An image/video transaction is already active"}), 409
+        VIDEO_CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix="video_", suffix=suffix, dir=VIDEO_CAPTURE_DIR)
+        os.close(fd)
+        try:
+            video_file.save(temp_name)
+            VIDEO_STATUS_PATH = temp_name + ".status.json"
+            VIDEO_LOG_PATH = temp_name + ".log"
+            VIDEO_USER_STOPPED = False
+            # Decode ahead off the time-critical UDP send loop. At the maximum
+            # 720x360 RGB565 profile, 16 queued frames use about 8 MiB of PC RAM.
+            command = [sys.executable, str(VIDEO_SCRIPT), "--input", temp_name,
+                       "--frames", "0", "--quiet", "--ffmpeg", ffmpeg,
+                       "--prefetch", str(video_prefetch),
+                       "--status-file", VIDEO_STATUS_PATH,
+                       "--width", str(video_width), "--height", str(video_height),"--window",str(video_window),"--require-ready"]
+            if request.form.get("audio", "1").lower() not in ("0","false","off"):
+                command.append("--audio")
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            with open(VIDEO_LOG_PATH, "wb") as log:
+                VIDEO_PROCESS = subprocess.Popen(command, cwd=VIDEO_SCRIPT.parents[1],
+                                                 stdin=subprocess.DEVNULL,
+                                                 stdout=log, stderr=subprocess.STDOUT,
+                                                 creationflags=creationflags,
+                                                 start_new_session=(os.name != "nt"))
+            VIDEO_PATH = temp_name
+            VIDEO_NAME = safe_name
+            VIDEO_LAST_EXIT = None
+        except Exception as exc:
+            try:
+                Path(temp_name).unlink(missing_ok=True)
+            except OSError:
+                pass
+            VIDEO_PROCESS = None
+            VIDEO_PATH = None
+            VIDEO_NAME = ""
+            return jsonify({"ok": False, "error": f"Could not start video sender: {exc}"}), 502
+        return jsonify({"ok": True, "active": True, "state": "starting", "name": VIDEO_NAME,
+                        "target": "192.168.137.2:1", "format": f"{video_width}x{video_height} RGB565 (target 2000/33 fps)"})
+
+
+@app.route("/api/eth/video/stop", methods=["POST"])
+def api_eth_video_stop():
+    stop_video_sender()
+    return jsonify({"ok": True, "active": False})
 
 
 @app.route("/api/stream")

@@ -44,7 +44,7 @@ module tb_view_control_path;
     wire [63:0] pbody;
     wire [127:0] vbody;
     wire [7:0] result;
-    view_session_manager #(.CLK_HZ(10000)) display(.clk(clk),.rst(rst),
+    view_session_manager #(.CLK_HZ(10000)) display(.clk(clk),.rst(rst),.external_busy(1'b0),.transaction_busy(),
         .prepare_valid(pv),.prepare_body(pb),.status_request(sq),.cursor_x(cx),.cursor_y(cy),.local_step(local_step),
         .frame_begin(fb),.frame_id(fid),.frame_generation(jg),.frame_layout(jl),.frame_window(jw),.frame_index(ji),
         .frame_width(12'd571),.frame_height(12'd720),.writer_result_valid(wvalid),.writer_result(wresult),

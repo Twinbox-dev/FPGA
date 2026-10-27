@@ -3,9 +3,10 @@
 // Plays the V1 24 kHz, unsigned 8-bit mono PCM representation stored in
 // SDRAM BUF2/BUF3. Samples are converted to signed 24-bit and duplicated at
 // the 48 kHz HDMI audio tick, matching the single-board playback behavior.
-module media_audio_playback (
+module media_audio_playback #(parameter PAUSE_ENABLED=0)(
     input  wire        clk,
     input  wire        rst,
+    input wire pause,
     input  wire        source_toggle,
     input  wire        pair_on,
     input  wire [1:0]  source_buffer,
@@ -90,7 +91,7 @@ module media_audio_playback (
                 request_waiting <= 1'b0; restart_pending <= source_samples != 0;
                 request_delay <= 2'd3;
                 byte_pos <= 2'd0; duplicate_phase <= 1'b0;
-            end else begin
+            end else if(!PAUSE_ENABLED||!pause)begin
                 if (restart_pending && pair_on && active_samples != 0) begin
                     if (request_delay != 0)
                         request_delay <= request_delay - 2'd1;

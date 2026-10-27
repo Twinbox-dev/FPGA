@@ -29,6 +29,10 @@ module eth_subsys(
     output wire        app_clk_out,
     output wire [7:0]  app_rx_data_out,
     output wire        app_rx_data_valid_out,
+    output wire [15:0] app_rx_data_length_out,
+    output wire        app_rx_packet_start_out,
+    output wire        app_rx_packet_end_out,
+    output wire [5:0]  link_trace,
 
     // 正式媒体应用层收发
     input  wire        media_packet_request,
@@ -118,6 +122,9 @@ module eth_subsys(
     // ================= 应用层（媒体协议，udp_clk 域）=================
     wire [7:0]  app_rx_data;
     wire        app_rx_data_valid;
+    wire        ip_rx_error;
+    wire [15:0] app_rx_data_length;
+    wire        app_rx_packet_start, app_rx_packet_end;
     wire        udp_tx_ready, app_tx_ack;
     wire [7:0]  app_tx_data;
     wire        app_tx_data_request, app_tx_data_valid;
@@ -171,6 +178,9 @@ module eth_subsys(
 
     assign app_rx_data_out = app_rx_data;
     assign app_rx_data_valid_out = app_rx_data_valid;
+    assign app_rx_data_length_out = app_rx_data_length;
+    assign app_rx_packet_start_out = app_rx_packet_start;
+    assign app_rx_packet_end_out = app_rx_packet_end;
 
     // ================= TEMAC MAC + RGMII 的连线声明 =================
     // 必须在协议层例化之前声明：否则例化端口上的名字会被
@@ -182,6 +192,22 @@ module eth_subsys(
     wire [7:0]  temac_rx_data;
     wire        tx_collision, tx_retransmit, tx_rdy_w;
     wire        tx_clk_int, rx_clk_int;
+    wire        rx_valid, tx_valid, rx_correct_frame, rx_error_frame;
+    wire [28:0] tx_status_vector;
+    wire tx_status_vld;
+    // Optional top-level link diagnostics. Unused trace logic is removed when
+    // VIDEO_LINK_DIAGNOSTICS=0; it never feeds the networking state machines.
+    reg trace_bad_frame,trace_ip_error,trace_tx_status;
+    always @(posedge rx_clk_int or posedge reset)
+        if(reset)trace_bad_frame<=1'b0;
+        else if(rx_error_frame)trace_bad_frame<=1'b1;
+    always @(posedge udp_clk or posedge reset)
+        if(reset)trace_ip_error<=1'b0;
+        else if(ip_rx_error)trace_ip_error<=1'b1;
+    always @(posedge clk_125_out or posedge reset)
+        if(reset)trace_tx_status<=1'b0;
+        else if(tx_status_vld)trace_tx_status<=1'b1;
+    assign link_trace={trace_tx_status,trace_ip_error,reset,trace_bad_frame,!temac_tx_valid,!temac_rx_valid_n};
     wire [7:0]  tx_ifg_val = 8'h00;
     wire        pause_req  = 1'b0;
     wire [15:0] pause_val  = 16'h0;
@@ -191,7 +217,6 @@ module eth_subsys(
         LOCAL_MAC[31:24], LOCAL_MAC[39:32], LOCAL_MAC[47:40]};
     wire [19:0] mac_cfg_vector = {1'b0, 2'b00, TRI_SPEED, 8'b00000010, 7'b0000010};
     wire [7:0]  rx_data, tx_data;
-    wire        rx_valid, tx_valid, rx_correct_frame, rx_error_frame;
     wire        rx_clk_en_int_w, tx_clk_en_int_w;
 
     // The display side only exchanges IPv4/UDP with the fixed media peer.
@@ -201,7 +226,8 @@ module eth_subsys(
         .LOCAL_MAC (LOCAL_MAC),
         .PEER_IP   (MEDIA_PEER_IP),
         .PEER_MAC  (MEDIA_PEER_MAC),
-        .LOCAL_PORT(LOCAL_UDP_PORT)
+        .LOCAL_PORT(LOCAL_UDP_PORT),
+        .ISOLATE_VIDEO_PEER(1)
     ) u_udp_stack (
         .clk                    (udp_clk),
         .reset                  (reset),
@@ -216,7 +242,9 @@ module eth_subsys(
         .ip_tx_dst_mac         (tx_dst_mac),
         .app_rx_data_valid     (app_rx_data_valid),
         .app_rx_data           (app_rx_data),
-        .app_rx_data_length    (),
+        .app_rx_data_length    (app_rx_data_length),
+        .app_rx_packet_start   (app_rx_packet_start),
+        .app_rx_packet_end     (app_rx_packet_end),
         .app_rx_port_num       (),
         .app_rx_source_mac     (app_rx_source_mac),
         .app_rx_source_ip      (app_rx_source_ip),
@@ -231,7 +259,7 @@ module eth_subsys(
         .temac_tx_data         (temac_tx_data),
         .temac_tx_sof          (temac_tx_sof),
         .temac_tx_eof          (temac_tx_eof),
-        .ip_rx_error           (),
+        .ip_rx_error           (ip_rx_error),
         .arp_request_no_reply_error ()
     );
 
@@ -337,8 +365,8 @@ module eth_subsys(
         .tx_collision         (tx_collision),
         .tx_retransmit        (tx_retransmit),
         .tx_ifg_val           (tx_ifg_val),
-        .tx_status_vector     (),
-        .tx_status_vld        (),
+        .tx_status_vector     (tx_status_vector),
+        .tx_status_vld        (tx_status_vld),
         .pause_req            (pause_req),
         .pause_val            (pause_val),
         .pause_source_addr    (pause_source_addr),

@@ -534,3 +534,114 @@ build_snow_field/sim_snow_field: vsrc/tb_snow_field.sv $(TSD)/cv_pixel_effects.v
 	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --unroll-count 1 --top-module tb_snow_field $^ --Mdir build_snow_field -o sim_snow_field
 snow-unit: build_snow_field/sim_snow_field
 	./build_snow_field/sim_snow_field
+
+# Video integration: drain-before-switch ownership and original WAV pause.
+.PHONY: video-memory-lease media-audio-pause
+video-memory-lease:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_memory_lease vsrc/tb_video_memory_lease.sv ../board_display/user_source/hdl_source/ETH/video_memory_lease.v --Mdir build_video_memory_lease -o sim_video_memory_lease
+	./build_video_memory_lease/sim_video_memory_lease
+
+media-audio-pause:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_audio_pause vsrc/tb_media_audio_pause.sv ../board_display/user_source/hdl_source/SD/media_audio_playback.v --Mdir build_media_audio_pause -o sim_media_audio_pause
+	./build_media_audio_pause/sim_media_audio_pause
+
+.PHONY: audio-demux
+audio-demux:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_audio_demux vsrc/tb_audio_demux.sv ../board_display/user_source/hdl_source/ETH/direct_video_packet_demux.v --Mdir build_audio_demux -o sim_audio_demux
+	./build_audio_demux/sim_audio_demux
+
+
+.PHONY: video-hybrid-integration
+video-hybrid-integration:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GW=720 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_hybrid_integration -o sim_video_hybrid_integration
+	./build_video_hybrid_integration/sim_video_hybrid_integration
+
+
+.PHONY: video-hybrid-integration-crc
+video-hybrid-integration-crc:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GINJECT_CRC=1 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_hybrid_integration_crc -o sim_video_hybrid_integration_crc
+	./build_video_hybrid_integration_crc/sim_video_hybrid_integration_crc
+
+
+.PHONY: video-hybrid-integration-tag
+video-hybrid-integration-tag:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GINJECT_TAG=1 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_hybrid_integration_tag -o sim_video_hybrid_integration_tag
+	./build_video_hybrid_integration_tag/sim_video_hybrid_integration_tag
+
+
+.PHONY: video-audio-integration
+video-audio-integration:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_direct_video_audio -GN=396 -GHALF=1562 -GDELAY=15 vsrc/tb_direct_video_audio.sv ../board_display/user_source/hdl_source/ETH/direct_video_audio.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_audio_integration -o sim_video_audio_integration
+	./build_video_audio_integration/sim_video_audio_integration
+
+
+.PHONY: video-health-feedback
+video-health-feedback:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_health_feedback vsrc/tb_video_health_feedback.sv ../board_display/user_source/hdl_source/ETH/direct_video_feedback_tx.v --Mdir build_video_health_feedback -o sim_video_health_feedback
+	./build_video_health_feedback/sim_video_health_feedback
+
+.PHONY: direct-video-parser
+direct-video-parser:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_direct_video_row_parser vsrc/tb_direct_video_row_parser.sv ../board_display/user_source/hdl_source/ETH/direct_video_row_parser.v --Mdir build_direct_video_parser -o sim_direct_video_parser
+	./build_direct_video_parser/sim_direct_video_parser
+
+
+.PHONY: direct-video-demux
+direct-video-demux:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_direct_video_packet_demux vsrc/tb_direct_video_packet_demux.sv ../board_display/user_source/hdl_source/ETH/direct_video_packet_demux.v --Mdir build_direct_video_demux -o sim_direct_video_demux
+	./build_direct_video_demux/sim_direct_video_demux
+
+
+.PHONY: direct-video-region
+direct-video-region:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal --top-module tb_direct_video_region_mux vsrc/tb_direct_video_region_mux.sv ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v --Mdir build_direct_video_region -o sim_direct_video_region
+	./build_direct_video_region/sim_direct_video_region
+
+
+.PHONY: direct-video-feedback
+direct-video-feedback:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_direct_video_feedback_tx vsrc/tb_direct_video_feedback_tx.sv ../board_display/user_source/hdl_source/ETH/direct_video_feedback_tx.v --Mdir build_direct_video_feedback -o sim_direct_video_feedback
+	./build_direct_video_feedback/sim_direct_video_feedback
+
+
+.PHONY: video-hybrid-raster video-integration-unit
+video-hybrid-raster:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_raster -GW=720 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_raster.sv ../board_display/user_source/hdl_source/SD/video_delay.v ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_product_raster -o sim_video_product_raster
+	./build_video_product_raster/sim_video_product_raster
+
+video-integration-unit: video-memory-lease media-audio-pause media-audio-playback view-session view-control-path audio-demux video-audio-integration video-health-feedback
+
+.PHONY: video-ready-delay hdmi-symbols
+video-ready-delay:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GW=720 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GWAIT_READY=1 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_ready_product -o sim_video_ready_product
+	./build_video_ready_product/sim_video_ready_product
+
+hdmi-symbols:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_hdmi_phy_symbols vsrc/tb_hdmi_phy_symbols.sv ../board_display/user_source/hdl_source/hdmi_phy_warpper.v ../board_display/user_source/hdl_source/lane_lvds_10_1.v --Mdir build_hdmi_symbols -o sim_hdmi_symbols
+	./build_hdmi_symbols/sim_hdmi_symbols
+
+.PHONY: video-product-chain
+video-product-chain:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_raster -GW=720 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GPRODUCT_CHAIN=1 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_raster.sv ../board_display/user_source/hdl_source/SD/cv_pixel_effects.v ../board_display/user_source/hdl_source/SD/video_delay.v ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_product_chain -o sim_video_product_chain
+	./build_video_product_chain/sim_video_product_chain
+
+.PHONY: video-port-address
+video-port-address:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_sdram_port -GWALK=1 -GBASE=921600 -GALT=1 vsrc/tb_video_sdram_port.sv vsrc/video_sdram_bist.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v --Mdir build_video_port_address2 -o sim_video_port_address
+	./build_video_port_address2/sim_video_port_address
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_sdram_port -GWALK=1 -GBASE=1509376 -GALT=1 vsrc/tb_video_sdram_port.sv vsrc/video_sdram_bist.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v --Mdir build_video_port_address3 -o sim_video_port_address
+	./build_video_port_address3/sim_video_port_address
+
+.PHONY: video-network-bridge video-ipv4-sum
+video-network-bridge:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_legacy_bridge vsrc/tb_video_legacy_bridge.sv ../board_display/user_source/hdl_source/ETH/display_udp_lite.v ../board_display/user_source/hdl_source/ETH/direct_video_packet_demux.v ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/direct_video_feedback_tx.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v --Mdir build_video_legacy_bridge -o sim_video_legacy_bridge
+	./build_video_legacy_bridge/sim_video_legacy_bridge
+
+video-ipv4-sum:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_ipv4_sum vsrc/tb_video_ipv4_sum.sv ../board_display/user_source/hdl_source/ETH/display_udp_lite.v --Mdir build_video_ipv4_sum -o sim_video_ipv4_sum
+	./build_video_ipv4_sum/sim_video_ipv4_sum
+
+.PHONY: video-stage1-controls
+video-stage1-controls:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_stage1_controls vsrc/tb_video_stage1_controls.sv ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_video_stage1_controls -o sim_video_stage1_controls
+	./build_video_stage1_controls/sim_video_stage1_controls

@@ -2,7 +2,10 @@
 
 // Receives the display-side 0x0040/0x0042 control packets and the
 // 0x0044/0x0045/0x0046 subtitle transaction forwarded by the media board.
-module media_display_control_rx (
+module media_display_control_rx #(
+    parameter CV_ENABLED=1,
+    parameter SPECTRUM_ENABLED=1
+)(
     input  wire        clk,
     input  wire        rst,
     input  wire [7:0]  rx_data,
@@ -47,9 +50,9 @@ module media_display_control_rx (
                 8'd1, 8'd2: set_value_valid = (value <= 8'd8);
                 8'd3:       set_value_valid = (value <= 8'd6);
                 8'd4, 8'd5: set_value_valid = (value <= 8'd2);
-                8'd6:       set_value_valid = (value <= 8'd1);
+                8'd6:       set_value_valid = (value <= 8'd1) && (SPECTRUM_ENABLED || value==0);
                 8'd7:       set_value_valid = (value <= 8'd3);
-                8'd9:       set_value_valid = (value <= 8'd5);
+                8'd9:       set_value_valid = (value <= 8'd5) && (CV_ENABLED || value==0);
                 default:    set_value_valid = 1'b0;
             endcase
         end

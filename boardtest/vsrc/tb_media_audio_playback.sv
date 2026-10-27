@@ -18,7 +18,7 @@ module tb_media_audio_playback;
     reg [23:0] samples[0:3];
 
     media_audio_playback dut (
-        .clk(clk),.rst(rst),.source_toggle(source_toggle),.pair_on(pair_on),
+        .clk(clk),.rst(rst),.pause(1'b0),.source_toggle(source_toggle),.pair_on(pair_on),
         .source_buffer(source_buffer),.source_length(source_length),.source_samples(source_samples),
         .read_req(read_req),.read_req_ack_async(read_req),.read_index(read_index),
         .read_length(read_length),.read_en(read_en),.read_data(read_data),

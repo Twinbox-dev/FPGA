@@ -197,6 +197,28 @@ bit SHA-256：`0D058538C7531A1CE608821F9E756CE81AF3ED6D62A43F498A50F3CE9C1073DC`
 
 ## 后续自动化
 
+### 2026-10-27：系统未枚举下载器的失败记录
+
+本次仍使用正常用户的非沙箱进程执行 `scripts/program_sram.ps1 -Board display`，
+没有请求 UAC，也没有修改下载命令。日志 `program_display_20261027_184322.log`
+显示 `PRG-9505 USB device open error` 和 `PRG-9525 Chip validation failed`，
+没有芯片校验成功或内部 program 成功结束，因此新候选没有写入 FPGA。
+
+进一步检查发现：`Get-PnpDevice -PresentOnly` 中没有 VID `0547`、PID `1002`；
+不带 `-PresentOnly` 只能看到状态为 `Unknown` 的历史 `Anlogic usb cable v0.1`。
+这与“下载器在线但程序打不开”的情况不同，不能仅靠修改 Tcl 参数恢复。
+先恢复实际 USB 连接和板卡供电，再使用原脚本重试；不要改驱动、全局权限或编程模式。
+
+```powershell
+Get-PnpDevice -PresentOnly |
+    Where-Object { $_.InstanceId -match 'VID_0547.*PID_1002' } |
+    Select-Object Status, FriendlyName, InstanceId
+```
+
+当时系统内的 `jtagserver.exe` 经服务路径核实为
+`D:\App\IntelFPGA\SoCEDS\qprogrammer\bin64\jtagserver.exe`，属于 Altera JTAG Server，
+没有将它误当作 Anlogic 下载服务结束。检查占用时必须核对进程归属。
+
 本仓库两侧工程的综合和布局布线都由 TD `DefaultFlow.tcl` 的项目设置驱动；
 SRAM 下载也已找到可执行的 CLI 命令。下一步可将上述流程封装成脚本：每阶段检查
 返回码、报告时间和新 bit 时间，随后启动对应的板级/PC 验证入口。JTAG 连接和板卡

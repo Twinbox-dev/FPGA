@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_display_udp_lite;
+module tb_display_udp_lite #(parameter ISOLATE=1);
     localparam [31:0] LOCAL_IP = 32'hc0a88902;
     localparam [47:0] LOCAL_MAC = 48'h0123456789ab;
     localparam [31:0] PEER_IP = 32'hc0a88903;
@@ -21,6 +21,7 @@ module tb_display_udp_lite;
     wire app_rx_data_valid;
     wire [7:0] app_rx_data;
     wire [15:0] app_rx_data_length, app_rx_port_num;
+    wire app_rx_packet_start, app_rx_packet_end;
     wire [47:0] app_rx_source_mac;
     wire [31:0] app_rx_source_ip;
     wire [15:0] app_rx_source_port;
@@ -31,12 +32,14 @@ module tb_display_udp_lite;
     wire temac_tx_valid, temac_tx_sof, temac_tx_eof;
     wire [7:0] temac_tx_data;
     wire ip_rx_error, arp_request_no_reply_error;
+    reg ip_rx_error_seen=0;
+    always @(posedge clk)if(reset)ip_rx_error_seen<=0;else if(ip_rx_error)ip_rx_error_seen<=1;
 
     reg [7:0] rx_frame[0:1535];
     reg [7:0] tx_frame[0:127];
-    reg [7:0] app_bytes[0:1023];
+    reg [7:0] app_bytes[0:1535];
     reg [15:0] expected_checksum;
-    integer tx_count=0, app_count=0;
+    integer tx_count=0, app_count=0, app_packet_starts=0, app_packet_ends=0;
     integer i, timeout_count;
 
     always #4 clk=~clk;
@@ -50,14 +53,15 @@ module tb_display_udp_lite;
         .stack_data(app_tx_data),.stack_length(app_tx_data_length),.chunk_active(),.chunk_owner());
 
     display_udp_lite #(.LOCAL_IP(LOCAL_IP),.LOCAL_MAC(LOCAL_MAC),
-        .PEER_IP(PEER_IP),.PEER_MAC(PEER_MAC),.LOCAL_PORT(16'd1)) dut (
+        .PEER_IP(PEER_IP),.PEER_MAC(PEER_MAC),.LOCAL_PORT(16'd1),.ISOLATE_VIDEO_PEER(ISOLATE)) dut (
         .clk(clk),.reset(reset),
         .udp2app_tx_ready(udp2app_tx_ready),.udp2app_tx_ack(udp2app_tx_ack),
         .app_tx_request(app_tx_request),.app_tx_data_valid(app_tx_data_valid),
         .app_tx_data(app_tx_data),.app_tx_data_length(app_tx_data_length),
         .app_tx_dst_port(app_tx_dst_port),.ip_tx_dst_address(ip_tx_dst_address),.ip_tx_dst_mac(ip_tx_dst_mac),
         .app_rx_data_valid(app_rx_data_valid),.app_rx_data(app_rx_data),
-        .app_rx_data_length(app_rx_data_length),.app_rx_port_num(app_rx_port_num),
+        .app_rx_data_length(app_rx_data_length),.app_rx_packet_start(app_rx_packet_start),
+        .app_rx_packet_end(app_rx_packet_end),.app_rx_port_num(app_rx_port_num),
         .app_rx_source_mac(app_rx_source_mac),.app_rx_source_ip(app_rx_source_ip),
         .app_rx_source_port(app_rx_source_port),
         .temac_rx_ready(temac_rx_ready),.temac_rx_valid(temac_rx_valid),
@@ -72,8 +76,10 @@ module tb_display_udp_lite;
             tx_count = tx_count + 1;
         end
         if (!reset && app_rx_data_valid) begin
-            if (app_count < 1024) app_bytes[app_count] = app_rx_data;
+            if (app_count < 1536) app_bytes[app_count] = app_rx_data;
             app_count = app_count + 1;
+            if (app_rx_packet_start) app_packet_starts = app_packet_starts + 1;
+            if (app_rx_packet_end) app_packet_ends = app_packet_ends + 1;
         end
     end
 
@@ -232,9 +238,10 @@ module tb_display_udp_lite;
         $display("PASS: ARP reply targets dynamic PC sender");
 
         // Valid IPv4/UDP frame must arrive as the original application bytes.
-        app_count=0;make_udp_request();send_frame(60);
+        app_count=0;app_packet_starts=0;app_packet_ends=0;make_udp_request();send_frame(60);
         repeat(4)@(negedge clk);
         if (app_count!=8 || app_rx_data_length!=8 || app_rx_port_num!=1 ||
+            app_packet_starts!=1 || app_packet_ends!=1 ||
             app_bytes[0]!==8'haa || app_bytes[1]!==8'hbb || app_bytes[2]!==8'hcc ||
             app_bytes[3]!==8'hdd || app_bytes[4]!==0 || app_bytes[5]!==8'h31 ||
             app_bytes[6]!==1 || app_bytes[7]!==2)
@@ -246,18 +253,35 @@ module tb_display_udp_lite;
             end
         $display("PASS: IPv4 checksum and UDP length/port filtering, payload stream exact");
 
-        app_count=0;make_udp_large_request();send_frame(1062);repeat(4)@(negedge clk);
-        if(app_count!=1020 || app_rx_data_length!=1020 || app_rx_port_num!=1)
+        app_count=0;app_packet_starts=0;app_packet_ends=0;make_udp_large_request();send_frame(1062);repeat(4)@(negedge clk);
+        if(app_count!=1020 || app_rx_data_length!=1020 || app_rx_port_num!=1 ||
+           app_packet_starts!=1 || app_packet_ends!=1)
             $fatal(1,"maximum media datagram receive failed count=%0d len=%0d",app_count,app_rx_data_length);
         for(i=0;i<1020;i=i+1)if(app_bytes[i] !== i[7:0])
             $fatal(1,"large UDP payload mismatch byte=%0d got=%h",i,app_bytes[i]);
         $display("PASS: maximum 1020-byte media UDP payload streamed byte exact");
+
+        // Direct video uses a larger (but still MTU-safe) 1454-byte UDP body.
+        app_count=0;app_packet_starts=0;app_packet_ends=0;make_udp_large_request();
+        {rx_frame[6],rx_frame[7],rx_frame[8],rx_frame[9],rx_frame[10],rx_frame[11]}=PC_MAC;
+        {rx_frame[26],rx_frame[27],rx_frame[28],rx_frame[29]}=PC_IP;
+        {rx_frame[16],rx_frame[17]}=16'd1482;
+        {rx_frame[38],rx_frame[39]}=16'd1462;rx_frame[35]=4;
+        expected_checksum=ip_checksum(1482,8'd17,PC_IP,LOCAL_IP);
+        {rx_frame[24],rx_frame[25]}=expected_checksum;
+        for(i=0;i<1454;i=i+1)rx_frame[42+i]=i[7:0];
+        send_frame(1496);repeat(4)@(negedge clk);
+        if(app_count!=1454 || app_rx_data_length!=1454 || app_packet_starts!=1 || app_packet_ends!=1)
+            $fatal(1,"video UDP body was truncated count=%0d length=%0d",app_count,app_rx_data_length);
+        for(i=0;i<1454;i=i+1)if(app_bytes[i]!==i[7:0])$fatal(1,"video UDP byte %0d changed",i);
+        $display("PASS: 1454-byte PC video datagram streamed byte exact");
 
         // Invalid checksums, wrong ports, and ICMP must not reach the app or
         // trigger an outgoing response. ICMP is the one permitted feature cut.
         app_count=0;tx_count=0;make_udp_request();rx_frame[25]=rx_frame[25]^8'h01;
         send_frame(60);repeat(4)@(negedge clk);
         if(app_count!=0 || tx_count!=0)$fatal(1,"bad IPv4 checksum was accepted");
+        if(!ip_rx_error_seen)$fatal(1,"bad IPv4 checksum diagnostic pulse was missing");
         app_count=0;tx_count=0;make_udp_request();rx_frame[37]=8'd2;
         send_frame(60);repeat(4)@(negedge clk);
         if(app_count!=0 || tx_count!=0)$fatal(1,"wrong UDP destination port was accepted");
@@ -276,8 +300,22 @@ module tb_display_udp_lite;
             $fatal(1,"PC UDP sender tuple was not captured");
         $display("PASS: PC UDP source MAC/IP/port captured");
 
-        // App response is wrapped in IPv4/UDP, padded to Ethernet minimum.
-        tx_count=0;chunk_length=24;app_tx_dst_port=2;ip_tx_dst_address=PC_IP;ip_tx_dst_mac=PC_MAC;
+        // Media control may interleave with PC rows before a video CREDIT is
+        // emitted. The latest packet's media MAC must not replace the PC MAC.
+        make_udp_request();send_frame(60);repeat(4)@(negedge clk);
+        if(app_rx_source_ip!==PEER_IP)$fatal(1,"interleaved media packet was not received");
+        // High-rate video and PCM must not redirect the outstanding media ACK.
+        make_pc_udp_request();rx_frame[35]=4;rx_frame[42]=8'h56;rx_frame[43]=8'h44;
+        send_frame(60);repeat(4)@(negedge clk);
+        if(app_rx_source_ip!==PEER_IP || app_rx_source_mac!==PEER_MAC)
+            $fatal(1,"VD packet replaced the control response peer");
+        make_pc_udp_request();rx_frame[35]=4;rx_frame[42]=8'h41;rx_frame[43]=8'h44;
+        send_frame(60);repeat(4)@(negedge clk);
+        if(app_rx_source_ip!==PEER_IP || app_rx_source_mac!==PEER_MAC)
+            $fatal(1,"AD packet replaced the control response peer");
+        $display("PASS: media control peer survives interleaved VD and AD packets");
+        // eth_subsys's fallback MAC is the fixed media peer in this case.
+        tx_count=0;chunk_length=24;app_tx_dst_port=2;ip_tx_dst_address=PC_IP;ip_tx_dst_mac=PEER_MAC;
         expected_checksum=ip_checksum(52,8'd17,LOCAL_IP,PC_IP);
         temac_tx_ready=1;
         @(negedge clk);chunk_request=1;

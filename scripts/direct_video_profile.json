@@ -1,0 +1,11 @@
+{
+  "width": 720,
+  "height": 360,
+  "window": 512,
+  "pipeline": "hybrid_row_queue",
+  "format": "RGB565",
+  "head_rows": 4,
+  "ingress_pages": 4,
+  "cv_enabled": false,
+  "spectrum_enabled": false
+}
