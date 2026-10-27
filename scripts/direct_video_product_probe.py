@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+VIDEO_PROFILE = json.loads((ROOT / "scripts" / "direct_video_profile.json").read_text(encoding="utf-8"))
 sys.path.insert(0, str(ROOT / "scripts" / "web_console"))
 import app as console
 from media_upload import control_packet, image_packet, rgb24_to_native_words, resolve_ffmpeg
@@ -168,7 +169,7 @@ def main():
         # status snapshot as a functional failure.
         during = wait_for_view(link, lambda state: state[4] == 1, 3.0, "video busy")
         result["during"] = during
-        print("Video READY: HDMI should now show the selected 720x360 video", flush=True)
+        print(f"Video READY: HDMI should now show the selected {VIDEO_PROFILE['width']}x{VIDEO_PROFILE['height']} video", flush=True)
         generation = struct.unpack_from("<H", bytes(during), 1)[0]
         sequence = link._next_display_sequence()
         prepare = struct.pack("<BBBBHH", sequence, 0, during[3], 0xFF, generation, 0)

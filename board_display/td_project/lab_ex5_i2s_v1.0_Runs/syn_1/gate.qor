@@ -2,18 +2,18 @@
 | QoR metrics               |         value               |
 -----------------------------------------------------------
 | Timing                    |                             |
-|     Setup WNS             |        -8458                |
-|     Setup TNS             |     -5475997                |
-|     Num of violated S-EP  |         3701                |
+|     Setup WNS             |        -7705                |
+|     Setup TNS             |     -5817994                |
+|     Num of violated S-EP  |         3911                |
 |     Hold WNS              |          471                |
 |     Hold TNS              |            0                |
 |     Num of violated H-EP  |            0                |
 -----------------------------------------------------------
 | Utilization               |                             |
 |     #registers            |        11461                |
-|     #luts                 |        12212                |
-|     #lut1                 |          109                |
-|     #lut1(~A)             |          106                |
+|     #luts                 |        12238                |
+|     #lut1                 |          108                |
+|     #lut1(~A)             |          105                |
 |     #slices               |         1566                |
 |     slices percentage     |       15.98%                |
 |     #RAMs                 |           54                |
@@ -30,15 +30,15 @@
 |     #max_fanout_keep      |            0                |
 |     #async_reg            |            0                |
 -----------------------------------------------------------
-| Top 10% datanet fanout#   |        36.64                |
-| dff(single fanout)->dff   |         2152                |
+| Top 10% datanet fanout#   |        36.47                |
+| dff(single fanout)->dff   |         2155                |
 | dff(single fanout)->dram  |            0                |
 -----------------------------------------------------------
 | Over-quota path num*      |                             |
 |     sd_card_clk           |          117                |
-|     ext_mem_clk           |           10                |
-|     u_eth_su...           |          268                |
-|     Total                 |          395                |
+|     ext_mem_clk           |            9                |
+|     u_eth_su...           |          242                |
+|     Total                 |          368                |
 -----------------------------------------------------------
 | Rent**                    |                             |
 -----------------------------------------------------------
@@ -52,55 +52,55 @@ Over-quota Path Details
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
                        Clock                       |  Index  |  Budget(Period)  |  Level(Quota)  |                                           Cell Type List                                           |        Reason        |  Slack  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                    sd_card_clk                    |    1    |   1854(10000)    |      4(3)      |                                    SEQ,LUT4,LUT5,LUT5,LUT5,SEQ                                     |  large launch delay  |  -3666  
-                                                   |    2    |   1854(10000)    |      4(3)      |                                    SEQ,LUT4,LUT5,LUT5,LUT5,SEQ                                     |  large launch delay  |  -3666  
-                                                   |    3    |   1854(10000)    |      4(3)      |                                    SEQ,LUT4,LUT5,LUT5,LUT5,SEQ                                     |  large launch delay  |  -3577  
-                                                   |    4    |   1854(10000)    |      4(3)      |                                    SEQ,LUT4,LUT5,LUT4,LUT5,SEQ                                     |  large launch delay  |  -3561  
-                                                   |    5    |   1854(10000)    |      4(3)      |                                    SEQ,LUT5,LUT5,LUT5,LUT5,SEQ                                     |  large launch delay  |  -3261  
+                    sd_card_clk                    |    1    |   1854(10000)    |      5(3)      |                                  SEQ,LUT3,LUT4,LUT5,LUT5,LUT4,SEQ                                  |  large launch delay  |  -4370  
+                                                   |    2    |   1854(10000)    |      4(3)      |                                    SEQ,LUT3,LUT4,LUT5,LUT4,SEQ                                     |  large launch delay  |  -4428  
+                                                   |    3    |   1854(10000)    |      4(3)      |                                    SEQ,LUT3,LUT4,LUT5,LUT4,SEQ                                     |  large launch delay  |  -4428  
+                                                   |    4    |   1854(10000)    |      4(3)      |                                    SEQ,LUT3,LUT4,LUT5,LUT4,SEQ                                     |  large launch delay  |  -4428  
+                                                   |    5    |   1854(10000)    |      4(3)      |                                    SEQ,LUT3,LUT4,LUT5,LUT4,SEQ                                     |  large launch delay  |  -4428  
                     ext_mem_clk                    |    1    |   3188(10000)    |      4(4)      |                               SEQ,MULT18,ADDER,ADDER,ADDER,LUT4,SEQ                                |  large launch delay  |  -4588  
                                                    |    2    |   3188(10000)    |      4(4)      |                                  SEQ,MULT18,ADDER,ADDER,LUT4,SEQ                                   |  large launch delay  |  -4522  
                                                    |    3    |   3188(10000)    |      4(4)      |                                  SEQ,MULT18,ADDER,ADDER,LUT4,SEQ                                   |  large launch delay  |  -4522  
                                                    |    4    |   3188(10000)    |      4(4)      |                               SEQ,MULT18,ADDER,ADDER,ADDER,LUT4,SEQ                                |  large launch delay  |  -4465  
                                                    |    5    |   3188(10000)    |      4(4)      |                                  SEQ,MULT18,ADDER,ADDER,LUT4,SEQ                                   |  large launch delay  |  -4456  
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |    1    |    7854(8000)    |     15(10)     |       SEQ,ADDER,ADDER,LUT5,LUT4,LUT5,ADDER,ADDER,LUT4,LUT5,LUT4,LUT3,LUT5,LUT5,LUT5,LUT5,SEQ       |        normal        |  -7650  
-                                                   |    2    |    7854(8000)    |     12(10)     |               SEQ,ADDER,ADDER,LUT4,LUT3,LUT5,ADDER,ADDER,LUT2,LUT5,LUT5,LUT4,EMB32K                |        normal        |  -4508  
-                                                   |    3    |    7854(8000)    |     12(10)     |               SEQ,ADDER,ADDER,LUT4,LUT3,LUT5,ADDER,ADDER,LUT2,LUT5,LUT5,LUT4,EMB32K                |        normal        |  -4508  
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |    1    |    7854(8000)    |     14(10)     |      SEQ,ADDER,ADDER,ADDER,LUT2,LUT5,LUT5,ADDER,ADDER,LUT5,LUT5,LUT5,LUT4,LUT5,LUT5,LUT5,SEQ       |        normal        |  -6631  
+                                                   |    2    |    7854(8000)    |     12(10)     |         SEQ,ADDER,ADDER,LUT4,LUT3,LUT5,ADDER,ADDER,ADDER,ADDER,LUT4,LUT5,LUT5,LUT5,EMB32K          |        normal        |  -4887  
+                                                   |    3    |    7854(8000)    |     12(10)     |         SEQ,ADDER,ADDER,LUT4,LUT3,LUT5,ADDER,ADDER,ADDER,ADDER,LUT4,LUT5,LUT5,LUT5,EMB32K          |        normal        |  -4887  
                                                    |    4    |    7854(8000)    |     11(10)     |  SEQ,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,LUT1,SEQ  |        normal        |  -2939  
                                                    |    5    |    7854(8000)    |     11(10)     |  SEQ,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,ADDER,LUT1,SEQ  |        normal        |  -2873  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Note: Table only show top 5 paths for each clock group in default
 
 Logic Level Distribution
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  Clock                                            |  Period             |  0     |  1      |  2     |  3     |  4     |  5     |  6     |  7    |  8    |  9   |  10  |  11  |  12  |  13  |  15
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  clk                                              |  20.000ns (50MHz)   |  0     |  28     |  31    |  20    |  1     |  18    |  2     |  0    |  0    |  0   |  48  |  54  |  0   |  0   |  0
-  ext_mem_clk                                      |  10.000ns (100MHz)  |  843   |  2163   |  367   |  499   |  404   |  437   |  296   |  277  |  196  |  8   |  4   |  5   |  0   |  0   |  0
-  hdmi_5x_clk                                      |  2.666ns (375MHz)   |  15    |  71     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  sd_card_clk                                      |  10.000ns (100MHz)  |  366   |  895    |  63    |  239   |  113   |  69    |  69    |  57   |  24   |  2   |  0   |  0   |  0   |  0   |  0
-  sys_pll_m0/pll_inst.clkc[2]                      |  10.000ns (100MHz)  |  16    |  32     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/g_gig$u_rx_pll.clkc[0]              |  8.000ns (125MHz)   |  0     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/g_gig$u_rx_pll.clkc[1]              |  8.000ns (125MHz)   |  715   |  155    |  179   |  83    |  1     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/g_gig$u_rx_pll.refclk               |  8.000ns (125MHz)   |  0     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[0]  |  8.000ns (125MHz)   |  0     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  8.000ns (125MHz)   |  3360  |  5064   |  2012  |  1373  |  758   |  1652  |  859   |  295  |  219  |  9   |  13  |  13  |  2   |  0   |  1
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[3]  |  40.000ns (25MHz)   |  5     |  1      |  12    |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  8.000ns (125MHz)   |  2     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0   |  0   |  0   |  0   |  0   |  0
-  video_clk                                        |  13.333ns (75MHz)   |  1931  |  1766   |  378   |  366   |  250   |  209   |  18    |  30   |  6    |  0   |  0   |  1   |  2   |  30  |  0
-  Total                                            |  NA                 |  7253  |  10175  |  3042  |  2580  |  1527  |  2385  |  1244  |  659  |  445  |  19  |  65  |  73  |  4   |  30  |  1
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Clock                                            |  Period             |  0     |  1      |  2     |  3     |  4     |  5     |  6     |  7    |  8    |  9    |  10  |  11  |  12  |  13  |  14
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  clk                                              |  20.000ns (50MHz)   |  0     |  28     |  31    |  20    |  1     |  18    |  2     |  0    |  0    |  3    |  54  |  45  |  0   |  0   |  0
+  ext_mem_clk                                      |  10.000ns (100MHz)  |  843   |  2112   |  416   |  505   |  469   |  391   |  248   |  231  |  273  |  2    |  4   |  5   |  0   |  0   |  0
+  hdmi_5x_clk                                      |  2.666ns (375MHz)   |  15    |  71     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  sd_card_clk                                      |  10.000ns (100MHz)  |  366   |  895    |  60    |  132   |  223   |  68    |  70    |  33   |  48   |  2    |  0   |  0   |  0   |  0   |  0
+  sys_pll_m0/pll_inst.clkc[2]                      |  10.000ns (100MHz)  |  16    |  32     |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/g_gig$u_rx_pll.clkc[0]              |  8.000ns (125MHz)   |  0     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/g_gig$u_rx_pll.clkc[1]              |  8.000ns (125MHz)   |  715   |  155    |  179   |  83    |  1     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/g_gig$u_rx_pll.refclk               |  8.000ns (125MHz)   |  0     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[0]  |  8.000ns (125MHz)   |  0     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  8.000ns (125MHz)   |  3360  |  5074   |  2064  |  1278  |  786   |  1458  |  922   |  451  |  90   |  110  |  21  |  13  |  2   |  0   |  1
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[3]  |  40.000ns (25MHz)   |  5     |  1      |  12    |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  u_eth_subsys/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  8.000ns (125MHz)   |  2     |  0      |  0     |  0     |  0     |  0     |  0     |  0    |  0    |  0    |  0   |  0   |  0   |  0   |  0
+  video_clk                                        |  13.333ns (75MHz)   |  1931  |  1768   |  375   |  293   |  314   |  217   |  21    |  33   |  2    |  0    |  0   |  1   |  2   |  30  |  0
+  Total                                            |  NA                 |  7253  |  10136  |  3137  |  2311  |  1794  |  2152  |  1263  |  748  |  413  |  117  |  79  |  64  |  4   |  30  |  1
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Hierarchical Rent Exponent Report
 +---------------------------------------------------------------------------------------------------------------------+
 |Inst                                   |Model                                 |Rent     |Cell     |Pin     |Term     |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                    |top                                   |0.15     |26057    |110336  |19       |
-|  u_media_transaction_writer           |media_transaction_writer_28           |0.69     |1073     |4398    |503      |
-|  frame_read_write_m0                  |frame_read_write_3                    |0.60     |1997     |7521    |356      |
-|  u_media_protocol_rx                  |media_protocol_rx_27                  |0.60     |1415     |6367    |343      |
-|  u_direct_video_pipeline              |video_hybrid_pipeline_13              |0.54     |3512     |16828   |405      |
-|  u_hdmi_1_4b_transmitter_core_wrapper |hdmi_1_4b_transmitter_core_wrapper_22 |0.54     |2232     |8004    |227      |
-|  u_media_frame_pad                    |view_image_pipeline_26                |0.53     |2019     |9328    |270      |
-|  u_eth_subsys                         |eth_subsys_18                         |0.48     |4683     |20348   |243      |
+|top                                    |top                                   |0.15     |26083    |110416  |19       |
+|  u_media_transaction_writer           |media_transaction_writer_28           |0.69     |1075     |4400    |503      |
+|  frame_read_write_m0                  |frame_read_write_3                    |0.60     |2005     |7539    |355      |
+|  u_media_protocol_rx                  |media_protocol_rx_27                  |0.59     |1513     |6897    |332      |
+|  u_direct_video_pipeline              |video_hybrid_pipeline_13              |0.54     |3513     |16860   |407      |
+|  u_hdmi_1_4b_transmitter_core_wrapper |hdmi_1_4b_transmitter_core_wrapper_22 |0.54     |2232     |7998    |228      |
+|  u_media_frame_pad                    |view_image_pipeline_26                |0.53     |2040     |9390    |252      |
+|  u_eth_subsys                         |eth_subsys_18                         |0.48     |4629     |20105   |242      |
 +---------------------------------------------------------------------------------------------------------------------+
 Note: Cell represents total number of cells inside module; Pin represents total number of pins
       which have net connection inside module; Term represents total number of PIs and POs of module.

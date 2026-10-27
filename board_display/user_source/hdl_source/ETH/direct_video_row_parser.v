@@ -1,5 +1,5 @@
 module direct_video_row_parser #(
-    parameter integer PIXELS_PER_ROW=720,
+    parameter integer PIXELS_PER_ROW=640,
     parameter integer ACTIVE_LINES=360
 )(
     input              clk,

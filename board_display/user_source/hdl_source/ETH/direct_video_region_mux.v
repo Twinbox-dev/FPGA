@@ -1,7 +1,7 @@
 module direct_video_region_mux #(
     parameter integer H_ACTIVE=1280,
     parameter integer V_ACTIVE=720,
-    parameter integer VIDEO_WIDTH=720,
+    parameter integer VIDEO_WIDTH=640,
     parameter integer VIDEO_HEIGHT=360
 )(
     input wire clk,

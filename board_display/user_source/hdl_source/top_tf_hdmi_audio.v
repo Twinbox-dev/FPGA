@@ -53,7 +53,7 @@ parameter CV_EFFECT_MODE = 0;
 parameter DISPLAY_DIAGNOSTICS = 0;
 // First product video profile; these values must match the PC sender.
 // HDMI raster remains 1280x720. Video temporarily owns the display.
-parameter DIRECT_VIDEO_WIDTH = 720;
+parameter DIRECT_VIDEO_WIDTH = 640;
 parameter DIRECT_VIDEO_HEIGHT = 360;
 // Video acceptance counters/readback CRC are optional diagnostics. Product
 // CREDIT/READY/NACK and normal media-board S/ACK control remain enabled.

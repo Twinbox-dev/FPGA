@@ -2,7 +2,7 @@
 // Small deterministic BRAM scanout queue. Only completed rows become visible.
 // Paired native 16-bit RAMs accept one 32-bit SDRAM return each memory clock.
 module video_head_cache #(
- parameter WIDTH=720,HEIGHT=360,DEPTH=8,LGDEPTH=$clog2(DEPTH),B32_GROUPS=1,READ_CRC_ENABLE=0,
+ parameter WIDTH=640,HEIGHT=360,DEPTH=8,LGDEPTH=$clog2(DEPTH),B32_GROUPS=1,READ_CRC_ENABLE=0,
  parameter [15:0] MISSING_RGB565=16'hf800
 )(
  input wire mem_clk,mem_rst,session_start,stream_enable,primed,

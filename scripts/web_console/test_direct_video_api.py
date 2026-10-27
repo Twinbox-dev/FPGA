@@ -199,10 +199,11 @@ class DirectVideoApiTests(unittest.TestCase):
                 while not stop.is_set():
                     try:
                         packet, address = receiver.recvfrom(2048)
-                        self.assertEqual(len(packet), 1454)
+                        video_width = int(web.PRODUCT_PROFILE["width"])
+                        self.assertEqual(len(packet), 14 + 2 * video_width)
                         self.assertEqual(packet[:3], b"VD\x01")
                         seq = struct.unpack_from("<H", packet, 8)[0]
-                        self.assertEqual(struct.unpack_from("<H", packet, 1452)[0],
+                        self.assertEqual(struct.unpack_from("<H", packet, len(packet)-2)[0],
                                          binascii.crc_hqx(packet[:-2], 65535))
                         received.append(seq)
                         if packet[3]&1:

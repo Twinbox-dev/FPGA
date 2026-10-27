@@ -839,7 +839,7 @@
                 <PlaceProperty>
                     <effort>high</effort>
                     <pr_strategy>2</pr_strategy>
-                    <seed>2</seed>
+                    <seed>3</seed>
                 </PlaceProperty>
             </Strategy>
             <UserParams>

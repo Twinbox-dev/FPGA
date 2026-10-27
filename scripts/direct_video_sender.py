@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream 720x360 RGB565 rows to the display board's direct HDMI video path."""
+"""Stream configured RGB565 video rows to the display board's direct HDMI path."""
 
 from __future__ import annotations
 

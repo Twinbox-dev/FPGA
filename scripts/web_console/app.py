@@ -1567,9 +1567,9 @@ def api_eth_video_start():
     if suffix not in {".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv"}:
         return jsonify({"ok": False, "error": "Supported: MP4, MOV, MKV, AVI, WebM, WMV"}), 400
     try:
-        video_width=int(os.environ.get("VIDEO_WIDTH", "720"))
-        video_height=int(os.environ.get("VIDEO_HEIGHT", "360"))
-        video_window=int(os.environ.get("VIDEO_WINDOW", "512"))
+        video_width=int(os.environ.get("VIDEO_WIDTH", str(PRODUCT_PROFILE.get("width", 640))))
+        video_height=int(os.environ.get("VIDEO_HEIGHT", str(PRODUCT_PROFILE.get("height", 360))))
+        video_window=int(os.environ.get("VIDEO_WINDOW", str(PRODUCT_PROFILE.get("window", 512))))
         video_prefetch=int(os.environ.get("VIDEO_PREFETCH", "16"))
         if not (2<=video_width<=720 and video_width%2==0 and 1<=video_height<=360 and video_window in (32,64,128,256,512) and video_window>=video_height and 0<=video_prefetch<=16):
             raise ValueError("invalid video profile")
@@ -1598,8 +1598,8 @@ def api_eth_video_start():
             VIDEO_STATUS_PATH = temp_name + ".status.json"
             VIDEO_LOG_PATH = temp_name + ".log"
             VIDEO_USER_STOPPED = False
-            # Decode ahead off the time-critical UDP send loop. At the maximum
-            # 720x360 RGB565 profile, 16 queued frames use about 8 MiB of PC RAM.
+            # Decode ahead off the time-critical UDP send loop. At 640x360
+            # RGB565, 16 queued frames use about 7 MiB of PC RAM.
             command = [sys.executable, str(VIDEO_SCRIPT), "--input", temp_name,
                        "--frames", "0", "--quiet", "--ffmpeg", ffmpeg,
                        "--prefetch", str(video_prefetch),

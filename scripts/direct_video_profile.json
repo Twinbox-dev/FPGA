@@ -1,5 +1,5 @@
 {
-  "width": 720,
+  "width": 640,
   "height": 360,
   "window": 512,
   "pipeline": "hybrid_row_queue",

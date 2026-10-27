@@ -2,7 +2,7 @@
 // RGB565 row-stream pipeline: bounded ingress -> optional SDRAM spill ->
 // small BRAM head -> HDMI. There is no per-frame SDRAM commit/scan engine.
 module video_hybrid_pipeline #(
- parameter WIDTH=720,HEIGHT=360,WINDOW=512,LW=$clog2(WINDOW),HEAD_ROWS=8,
+ parameter WIDTH=640,HEIGHT=360,WINDOW=512,LW=$clog2(WINDOW),HEAD_ROWS=8,
  parameter PRIME_ROWS=HEIGHT,INGRESS_PAGES=4,IDLE_TIMEOUT=100000000
 )(
  input wire app_clk,mem_clk,pixel_clk,rst,memory_enable,

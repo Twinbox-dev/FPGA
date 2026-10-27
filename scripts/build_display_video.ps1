@@ -26,7 +26,7 @@ foreach ($taskStage in @('syn_1', 'phy_1')) {
     $taskText = [regex]::Replace($taskText, '(?s)\r?\n# BEGIN VIDEO AREA OVERRIDES.*?# END VIDEO AREA OVERRIDES\r?\n?', '')
     $taskBlock = "`n# BEGIN VIDEO AREA OVERRIDES`nif {![info exists $taskName]} {set $taskName {}}`nlappend $taskName gate opt_area high gate pack_effort high gate map_mode area_prior`n# END VIDEO AREA OVERRIDES`n"
     if ($taskStage -eq 'phy_1') {
-        $taskBlock = $taskBlock.Replace('# END VIDEO AREA OVERRIDES', "lappend $taskName place pr_strategy 2 place effort high place seed 2`n# END VIDEO AREA OVERRIDES")
+        $taskBlock = $taskBlock.Replace('# END VIDEO AREA OVERRIDES', "lappend $taskName place pr_strategy 2 place effort high place seed 3`n# END VIDEO AREA OVERRIDES")
     }
     if ($Strategy -eq 'baseline') { $taskBlock = '' }
     [IO.File]::WriteAllText($taskCfg, $taskText + $taskBlock, [Text.UTF8Encoding]::new($false))
@@ -43,8 +43,15 @@ $taskProfilePath = Join-Path $taskRoot 'scripts\direct_video_profile.json'
 $taskFiles += Get-Item $taskProfilePath
 $taskPcProfile = Get-Content -LiteralPath $taskProfilePath -Raw | ConvertFrom-Json
 $taskTopText = Get-Content (Join-Path $taskRoot 'board_display\user_source\hdl_source\top_tf_hdmi_audio.v') -Raw
+$taskWidthMatch = [regex]::Match($taskTopText, 'parameter DIRECT_VIDEO_WIDTH = (\d+)')
+$taskHeightMatch = [regex]::Match($taskTopText, 'parameter DIRECT_VIDEO_HEIGHT = (\d+)')
 $taskCvEnabled = [int]([regex]::Match($taskTopText, 'parameter PRODUCT_CV_ENABLED = ([01])').Groups[1].Value)
 $taskSpectrumEnabled = [int]([regex]::Match($taskTopText, 'parameter PRODUCT_SPECTRUM_ENABLED = ([01])').Groups[1].Value)
+if (-not $taskWidthMatch.Success -or -not $taskHeightMatch.Success -or
+    [int]$taskPcProfile.width -ne [int]$taskWidthMatch.Groups[1].Value -or
+    [int]$taskPcProfile.height -ne [int]$taskHeightMatch.Groups[1].Value) {
+    throw 'PC video dimensions differ from display RTL; update both before building'
+}
 if ([bool]$taskPcProfile.cv_enabled -ne [bool]$taskCvEnabled -or [bool]$taskPcProfile.spectrum_enabled -ne [bool]$taskSpectrumEnabled) {
     throw 'PC capability profile differs from display RTL; update both before building'
 }
@@ -91,9 +98,9 @@ $taskManifest = [PSCustomObject]@{
     strategy = $Strategy
     bit = 'board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit'
     bit_sha256 = (Get-FileHash -LiteralPath $taskBit).Hash
-    profile = @{ width=720; height=360; window=512; head_rows=4; audio='24k_u8_mono'; statistics=0; link_diagnostics=[int]$taskDiagMatch.Groups[1].Value; cv_enabled=[bool]$taskCvEnabled; spectrum_enabled=[bool]$taskSpectrumEnabled }
+    profile = @{ width=[int]$taskPcProfile.width; height=[int]$taskPcProfile.height; window=[int]$taskPcProfile.window; head_rows=[int]$taskPcProfile.head_rows; audio='24k_u8_mono'; statistics=0; link_diagnostics=[int]$taskDiagMatch.Groups[1].Value; cv_enabled=[bool]$taskCvEnabled; spectrum_enabled=[bool]$taskSpectrumEnabled }
     gate_overrides = @(if ($Strategy -eq 'area') { 'opt_area=high'; 'pack_effort=high'; 'map_mode=area_prior' })
-    place_overrides = @(if ($Strategy -eq 'area') { 'pr_strategy=2'; 'effort=high'; 'seed=2' })
+    place_overrides = @(if ($Strategy -eq 'area') { 'pr_strategy=2'; 'effort=high'; 'seed=3' })
     sdk_flow_sha256 = (Get-FileHash -LiteralPath $taskFlow).Hash
     sources = $taskSources
 }
