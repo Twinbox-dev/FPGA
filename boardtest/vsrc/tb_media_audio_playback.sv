@@ -55,6 +55,17 @@ module tb_media_audio_playback;
         samples[2]=24'h7f0000;
         samples[3]=24'ha00000;
         repeat(5) @(negedge clk);rst=0;
+        // Exercise the protocol's maximum count and reject out-of-range input
+        // without spending minutes clocking every sample through the player.
+        source_samples=32'd2351104;source_toggle=1;
+        repeat(6) @(negedge clk);
+        if(dut.active_samples!==22'd2351104 || dut.samples_remaining!==22'd2351104)
+            $fatal(1,"maximum valid audio length was not preserved");
+        source_samples=32'd2351105;source_toggle=0;
+        repeat(6) @(negedge clk);
+        if(dut.active_samples!==0 || dut.samples_remaining!==0 || dut.restart_pending)
+            $fatal(1,"out-of-range audio length was not rejected");
+        rst=1;repeat(5) @(negedge clk);source_samples=4;rst=0;
         @(negedge clk);source_toggle=1;
         repeat(100)@(negedge clk);
         if(read_req || rd_ptr!=0)$fatal(1,"muted source read before layout commit");

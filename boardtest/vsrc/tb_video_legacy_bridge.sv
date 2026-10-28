@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_video_legacy_bridge;
+module tb_video_legacy_bridge #(parameter TX_MAILBOX=0);
     localparam ISOLATE=1;
     localparam [31:0] LOCAL_IP = 32'hc0a88902;
     localparam [47:0] LOCAL_MAC = 48'h0123456789ab;
@@ -31,10 +31,24 @@ module tb_video_legacy_bridge;
     reg temac_rx_valid=0, temac_rx_sof=1, temac_rx_eof=1;
     reg [7:0] temac_rx_data=0;
     wire temac_rx_ready;
-    reg temac_tx_ready=0; // Active low: always ready.
+    wire temac_tx_ready;
     wire temac_tx_valid, temac_tx_sof, temac_tx_eof;
     wire [7:0] temac_tx_data;
     wire ip_rx_error, arp_request_no_reply_error;
+    wire observed_valid;wire [7:0] observed_data;
+    generate if(TX_MAILBOX)begin:g_mailbox
+        wire mac_valid,mac_ack;wire [7:0] mac_data;reg mac_active=0;
+        assign mac_ack=mac_valid&&!mac_active;
+        always @(posedge clk)if(reset)mac_active<=0;else mac_active<=mac_valid;
+        display_tx_packet_fifo u_mailbox(.rd_clk(clk),.rd_sreset(reset),.rd_enable(1'b1),
+            .tx_data(mac_data),.tx_data_valid(mac_valid),.tx_ack(mac_ack),.tx_collision(1'b0),.tx_retransmit(1'b0),.overflow(),
+            .wr_clk(clk),.wr_sreset(reset),.wr_data(temac_tx_data),.wr_sof_n(temac_tx_sof),.wr_eof_n(temac_tx_eof),
+            .wr_src_rdy_n(temac_tx_valid),.wr_dst_rdy_n(temac_tx_ready),.wr_fifo_status());
+        assign observed_valid=mac_valid;assign observed_data=mac_data;
+    end else begin:g_direct
+        assign temac_tx_ready=0;
+        assign observed_valid=!temac_tx_valid&&!temac_tx_ready;assign observed_data=temac_tx_data;
+    end endgenerate
 
     reg [7:0] rx_frame[0:1535];
     reg [7:0] tx_frame[0:127];
@@ -72,8 +86,8 @@ module tb_video_legacy_bridge;
         .ip_rx_error(ip_rx_error),.arp_request_no_reply_error(arp_request_no_reply_error));
 
     always @(negedge clk) begin
-        if (!reset && !temac_tx_valid && !temac_tx_ready) begin
-            if (tx_count < 128) tx_frame[tx_count] = temac_tx_data;
+        if (!reset && observed_valid) begin
+            if (tx_count < 128) tx_frame[tx_count] = observed_data;
             tx_count = tx_count + 1;
         end
         if (!reset && app_rx_data_valid) begin

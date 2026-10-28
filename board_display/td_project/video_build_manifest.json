@@ -1,20 +1,21 @@
 {
-  "built_at": "2026-10-28T02:56:47.7752248+08:00",
+  "built_at": "2026-10-28T18:13:44.5472829+08:00",
   "product_baseline": "dual-V3-beta",
   "cleanroom_reference": "ba1f949",
   "strategy": "area",
   "bit": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit",
-  "bit_sha256": "4575DD1C324ECEC87BCBF4770FECAB6382CA3BD479703A60D8FF093EB743BAAD",
+  "bit_sha256": "FEDB509F3306AD691C2C0606CD132E7FB6FF21E9A8189EF761276A4B72DC6824",
   "profile": {
-    "window": 512,
     "head_rows": 4,
-    "cv_enabled": false,
-    "height": 360,
-    "link_diagnostics": 0,
     "width": 640,
-    "spectrum_enabled": false,
+    "audio": "24k_u8_mono",
+    "cv_enabled": true,
+    "cv_neighborhood_enabled": false,
+    "link_diagnostics": 0,
+    "height": 360,
+    "spectrum_enabled": true,
     "statistics": 0,
-    "audio": "24k_u8_mono"
+    "window": 512
   },
   "gate_overrides": [
     "opt_area=high",
@@ -24,17 +25,21 @@
   "place_overrides": [
     "pr_strategy=2",
     "effort=high",
-    "seed=3"
+    "seed=7"
   ],
   "sdk_flow_sha256": "D1A5D4291706DAC224CC33008D8945E79ED2EB1ADF8CE86CCA46BE564975BADE",
   "sources": [
+    {
+      "path": "board_display/td_project/lab_ex5_i2s_v1.0.al",
+      "sha256": "592AAF63EC8DA994FF2AEE5DBD70FDAB41F940B222E8E5396E2C92FBFD03C88D"
+    },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.prj",
       "sha256": "6718B35D9B2C62F3718F1A7034C0DC0D3A28455ED919197253B9D5256659B269"
     },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/settings.cfg",
-      "sha256": "5822AACFA9E6914344A176D0EFDE6A01C97AAF2D599CB0076AA591318AE68823"
+      "sha256": "3B36FA9740914B1247B0354A6AD1C6F5279D817CBFC6FE28C83C280D03694ADC"
     },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/syn_1/lab_ex5_i2s_v1.0.prj",
@@ -43,10 +48,6 @@
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/syn_1/settings.cfg",
       "sha256": "5C67C5833D1D4CA07364800BA3B39403A02D0AAA301D0E27DA2AA3B5E39295E6"
-    },
-    {
-      "path": "board_display/td_project/lab_ex5_i2s_v1.0.al",
-      "sha256": "E950AAA8D6B709296172ADAEAE614140CE7FDB3B62E474F94B3B6CC46D8A506D"
     },
     {
       "path": "board_display/user_source/assets/gt911_ganyu_cursor.png",
@@ -78,7 +79,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/direct_video_audio.v",
-      "sha256": "11EFB29591D90FEC71C4AD8790DE316D5B7C6C632ED7A3E2CD3DB4A9BE315941"
+      "sha256": "50A257CB44BAD21C98492AD39620F091C2B74EB5FBB3AF344A6B109505150FAE"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v",
@@ -106,7 +107,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/display_udp_lite.v",
-      "sha256": "988CD4003414DD370BF611CEC077EE50E22A8F923CE2F7166327C0594CC66BD8"
+      "sha256": "7D6C209FFBC9B928E21FD106B4537635E251778BF81A436D2ED54A1E29E40393"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/div_clk_gen.v",
@@ -118,7 +119,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/eth_subsys.v",
-      "sha256": "3C800DED6943887C8FA6DD8E46512BB2A27C61631659E88E4DEB4F481F2FA637"
+      "sha256": "3EE65898A6DEAB7F79F1CE5C901566D1B0A14EFD46613CBF38D58B1B675A16D9"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/IDDR.v",
@@ -126,7 +127,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/media_display_control_rx.v",
-      "sha256": "43117E0AC4A07D74FE65F28C60372B13224874B34370D1B66DFA21D5CEA78FC2"
+      "sha256": "3F4C3AB5838A798FF1B1A9A300E5189BD05E6CC5048919AF67114D6CA0594A77"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/media_display_tx.v",
@@ -138,7 +139,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/media_protocol_rx.v",
-      "sha256": "4B6A210836AF875A9BBD8BAC250A47C459C773541B994167ABD1F82127E02D3A"
+      "sha256": "FCAD147BB7CD4EABCB78055D595473934E030DB4D9322B5CDBAF3EEC3EFEE2A4"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/media_transaction_writer.v",
@@ -177,12 +178,12 @@
       "sha256": "B1B3474B1A97CC96A73297BE56C4D3FC8322891CD3D6F83B3560D2FE95C126D3"
     },
     {
-      "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE_gate.v",
-      "sha256": "710ECF1910800788C3E1315A9F624C712AB481BDD9FFA90A585822D06B0BF1B9"
-    },
-    {
       "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE.ipc",
       "sha256": "01938DBFCEE94C85A96A4A5FB68192138DA4C87F843C980DC75969B966BD3CA8"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE_gate.v",
+      "sha256": "710ECF1910800788C3E1315A9F624C712AB481BDD9FFA90A585822D06B0BF1B9"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/tx_client_fifo.v",
@@ -222,7 +223,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_bilinear_shrink.v",
-      "sha256": "5BC5A82C132370023EDE4CB3B729759F8D8AB29957003BAD478DEBD3173CED3B"
+      "sha256": "07A56D2907E804878D1A5D300278647EE6326336CC13ADF45694FDF5916628D7"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_black_mask.v",
@@ -281,10 +282,6 @@
       "sha256": "C7D7FE07D75F66AA88D9F986B3006319C995162434F104F9990664B374CDFDD2"
     },
     {
-      "path": "board_display/user_source/hdl_source/IP/afifo_16_256_sim.v",
-      "sha256": "55B81AB3AA699902B6F11FE766658B852E0740844879A942DCA81CD57B40F729"
-    },
-    {
       "path": "board_display/user_source/hdl_source/IP/afifo_16_256.tcl",
       "sha256": "5807155B00F2F749328339E01A85B4BB836F91598286DD167513836B60AF33DB"
     },
@@ -295,6 +292,10 @@
     {
       "path": "board_display/user_source/hdl_source/IP/afifo_16_256.vhd",
       "sha256": "50D6D10017B63E1CE5A77BAD4A80E9A3DE81402909D30CA0818674A1887EB46D"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/IP/afifo_16_256_sim.v",
+      "sha256": "55B81AB3AA699902B6F11FE766658B852E0740844879A942DCA81CD57B40F729"
     },
     {
       "path": "board_display/user_source/hdl_source/IP/afifo_16_32_256.ipc",
@@ -382,19 +383,19 @@
     },
     {
       "path": "board_display/user_source/hdl_source/SD/cv_pixel_effects.v",
-      "sha256": "5195E74D1D67D35008EA9394282FEB9ADD240FDA10C092A90A14A0DC69F1C5B7"
+      "sha256": "9B6736EA8C17A9642260ACF3152CED9D3C46C374B11C85951EC3AEDD05078483"
     },
     {
       "path": "board_display/user_source/hdl_source/SD/display_levels_rgb.v",
       "sha256": "9352EA162CD269EC91E995C61DEDD61E66D5E5E2B85E1C2E3137F44F0ADDD86B"
     },
     {
-      "path": "board_display/user_source/hdl_source/SD/font_rom.v",
-      "sha256": "E2368B023CFE2B2C00AFAF1F8AF29754B8ED1E1745BB06702EBE83437D170E76"
-    },
-    {
       "path": "board_display/user_source/hdl_source/SD/font.mem",
       "sha256": "66C385E60F02AE997B5E9B9B974DB17CB5CA1BAC8EA3F248B8E3E6C9EFD60F4B"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/SD/font_rom.v",
+      "sha256": "E2368B023CFE2B2C00AFAF1F8AF29754B8ED1E1745BB06702EBE83437D170E76"
     },
     {
       "path": "board_display/user_source/hdl_source/SD/frame_fifo_read.v",
@@ -426,7 +427,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/SD/media_audio_playback.v",
-      "sha256": "90176D9E0209A373333A5E46CEBA9BBB6B0FD17308C427F15292A8B87F3AD606"
+      "sha256": "E92067AC77E247FE2C7BA76F1D0C234ECDA5CA8D947E1D89402CB0CFBA107850"
     },
     {
       "path": "board_display/user_source/hdl_source/SD/osd_composite.v",
@@ -526,7 +527,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/top_tf_hdmi_audio.v",
-      "sha256": "B247E7072195CA5D62B6B96E0EEEC5446E373101318094CAFD8E2B31B7C1B8A4"
+      "sha256": "35F759D216EF897A89251F7E2B13335B5C1E7875C97F32D604C86C640DAF007A"
     },
     {
       "path": "board_display/user_source/hdl_source/video_rgb_to_axis_640x480.v",
@@ -550,11 +551,11 @@
     },
     {
       "path": "scripts/build_display_video.ps1",
-      "sha256": "38FBB1D6D1C34E593C8426A6C6FA1774EC3F37B0E5D89CDBD0845FD0ED37DD98"
+      "sha256": "A87082FC206F75B8DC53CD055DB57936ECB52E2DDDD5BF19B6303D4AAC0876B8"
     },
     {
       "path": "scripts/direct_video_profile.json",
-      "sha256": "D0668CF3801F19DEB58963FF1AB71EE85C85DE421092098974DE009865A47B56"
+      "sha256": "DFFD7D0FFBC08224E93745EBE233B84BD21F6AB1749B0934CB1D142C3D2116BB"
     }
   ]
 }

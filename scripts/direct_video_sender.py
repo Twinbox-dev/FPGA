@@ -438,15 +438,17 @@ class Sender:
                   flush=True)
 
 
-def ffmpeg_frames(path: Path, ffmpeg: str, width: int = WIDTH, height: int = HEIGHT, prefetch: int = 0, fps: str = "60"):
+def ffmpeg_frames(path: Path, ffmpeg: str, width: int = WIDTH, height: int = HEIGHT, prefetch: int = 0, fps: str = "60", loop: bool = True):
     import queue
     import threading
     if not path.is_file():
         raise FileNotFoundError(path)
     if not 0 <= prefetch <= 16:
         raise ValueError("prefetch depth must be between 0 and 16")
-    command=[ffmpeg,"-hide_banner","-loglevel","error","-stream_loop","-1",
-        "-i",str(path),"-an","-vf",
+    command=[ffmpeg,"-hide_banner","-loglevel","error"]
+    if loop:
+        command.extend(["-stream_loop", "-1"])
+    command += ["-i",str(path),"-an","-vf",
         (f"fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease:"
          f"flags=neighbor,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"),
         "-pix_fmt","rgb565le","-f","rawvideo","pipe:1"]
@@ -510,15 +512,24 @@ def ffmpeg_frames(path: Path, ffmpeg: str, width: int = WIDTH, height: int = HEI
         process.stdout.close()
 
 
-def ffmpeg_audio_frames(path:Path,ffmpeg:str):
-    command=[ffmpeg,'-hide_banner','-loglevel','error','-stream_loop','-1','-i',str(path),
-             '-map','0:a:0','-vn','-af','aresample=24000:async=1:first_pts=0','-ac','1','-ar','24000','-f','u8','pipe:1']
+def ffmpeg_audio_frames(path:Path,ffmpeg:str,loop:bool=True):
+    command=[ffmpeg,'-hide_banner','-loglevel','error']
+    if loop:
+        command.extend(['-stream_loop','-1'])
+    command += ['-i',str(path),'-map','0:a:0','-vn',
+                '-af','aresample=24000:async=1:first_pts=0','-ac','1','-ar','24000','-f','u8','pipe:1']
     process=subprocess.Popen(command,stdout=subprocess.PIPE)
     try:
         while True:
             block=read_exact(process.stdout,AUDIO_SAMPLES)
             if block is None or len(block)!=AUDIO_SAMPLES:
-                raise RuntimeError('PCM decoder ended; check that the input has an audio track')
+                if loop or process.wait() != 0:
+                    raise RuntimeError('PCM decoder ended; check that the input has an audio track or disable audio')
+                # An audio track may end before video. Fill its final partial
+                # block and remaining frames with unsigned PCM silence.
+                yield (block or b'').ljust(AUDIO_SAMPLES, b'\x80')
+                while True:
+                    yield bytes([0x80])*AUDIO_SAMPLES
             yield block
     finally:
         if process.poll() is None:process.terminate()
@@ -567,6 +578,7 @@ def parse_args():
     parser.add_argument("--prefetch", type=int, choices=range(17), default=0, help="bounded decoded PC frames; 0 disables for A/B")
     parser.add_argument("--frames", type=int, default=120,
                         help="number of frames to send; use 0 for unlimited")
+    parser.add_argument("--once", action="store_true", help="stop at end of input rather than loop it")
     parser.add_argument("--session-id", type=lambda s: int(s, 0), default=None,
                         help="playback session seed; defaults to a random value")
     parser.add_argument("--quiet", action="store_true")
@@ -651,8 +663,8 @@ def main():
             ffmpeg = shutil.which(args.ffmpeg) if not Path(args.ffmpeg).is_file() else args.ffmpeg
             if not ffmpeg:
                 raise FileNotFoundError(f"ffmpeg not found: {args.ffmpeg}")
-            source = ffmpeg_frames(args.input, ffmpeg,args.width,args.height,prefetch=args.prefetch,fps="2000/33" if args.audio else "60")
-            if args.audio:audio_source=ffmpeg_audio_frames(args.input,ffmpeg)
+            source = ffmpeg_frames(args.input, ffmpeg,args.width,args.height,prefetch=args.prefetch,fps="2000/33" if args.audio else "60",loop=not args.once)
+            if args.audio:audio_source=ffmpeg_audio_frames(args.input,ffmpeg,loop=not args.once)
             for frame in source:
                 if args.frames and frame_no >= args.frames:
                     break

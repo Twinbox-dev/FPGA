@@ -64,8 +64,9 @@ parameter DIRECT_VIDEO_ROWS = 512;
 parameter VIDEO_LINK_DIAGNOSTICS = 0;
 // First integration stage approved by the user. Source and regressions stay
 // available; restore these independently after the video baseline is verified.
-parameter PRODUCT_CV_ENABLED = 0;
-parameter PRODUCT_SPECTRUM_ENABLED = 0;
+parameter PRODUCT_CV_ENABLED = 1;
+parameter PRODUCT_CV_NEIGHBORHOOD_ENABLED = 0;
+parameter PRODUCT_SPECTRUM_ENABLED = 1;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -769,7 +770,7 @@ view_image_pipeline u_media_frame_pad (
 );
 assign media_raw_stream_ready=view_image_owned ? view_pipeline_ready : 1'b1;
 
-media_display_control_rx #(.CV_ENABLED(PRODUCT_CV_ENABLED),.SPECTRUM_ENABLED(PRODUCT_SPECTRUM_ENABLED)) u_media_display_control_rx (
+media_display_control_rx #(.CV_ENABLED(PRODUCT_CV_ENABLED),.CV_NEIGHBORHOOD_ENABLED(PRODUCT_CV_NEIGHBORHOOD_ENABLED),.SPECTRUM_ENABLED(PRODUCT_SPECTRUM_ENABLED)) u_media_display_control_rx (
     .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
     .set_toggle (media_set_toggle_eth), .set_op (media_set_op_eth),
     .set_value (media_set_value_eth),
@@ -1291,7 +1292,8 @@ cv_pixel_effects_runtime #(
     .H_ACTIVE   (1280),
     .H_TOTAL    (1650),
     .V_ACTIVE   (720),
-    .MODE_DEFAULT (CV_EFFECT_MODE)
+    .MODE_DEFAULT (CV_EFFECT_MODE),
+    .NEIGHBORHOOD_ENABLED(PRODUCT_CV_NEIGHBORHOOD_ENABLED)
 ) u_cv_pixel_effects (
     .clk (video_clk), .rst (rst_all),
     .rgb_in (vout_data_raw), .de_in (de), .vs_in (vs),

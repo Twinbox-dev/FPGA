@@ -306,6 +306,10 @@ media-writer:
 media-control:
 	$(VERILATOR) --binary --timing --top-module tb_media_display_control_rx vsrc/tb_media_display_control_rx.sv ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_media_control -o sim_media_display_control_rx
 	./build_media_control/sim_media_display_control_rx
+.PHONY: media-cv-capability
+media-cv-capability:
+	$(VERILATOR) --binary --timing --top-module tb_media_cv_mode_capability vsrc/tb_media_cv_mode_capability.sv ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_media_cv_capability -o sim_media_cv_capability
+	./build_media_cv_capability/sim_media_cv_capability
 media-tx:
 	$(VERILATOR) --binary --timing --top-module tb_media_display_tx vsrc/tb_media_display_tx.sv ../board_display/user_source/hdl_source/ETH/media_display_tx.v --Mdir build_media_tx -o sim_media_display_tx
 	./build_media_tx/sim_media_display_tx
@@ -624,6 +628,21 @@ hdmi-symbols:
 video-product-chain:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_raster -GW=720 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GPRODUCT_CHAIN=1 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_raster.sv ../board_display/user_source/hdl_source/SD/cv_pixel_effects.v ../board_display/user_source/hdl_source/SD/video_delay.v ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_product_chain -o sim_video_product_chain
 	./build_video_product_chain/sim_video_product_chain
+
+.PHONY: video-product-chain-640
+video-product-chain-640:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_raster -GW=640 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GPRODUCT_CHAIN=1 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_raster.sv ../board_display/user_source/hdl_source/SD/cv_pixel_effects.v ../board_display/user_source/hdl_source/SD/video_delay.v ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_product_chain_640 -o sim_video_product_chain_640
+	./build_video_product_chain_640/sim_video_product_chain_640
+
+.PHONY: display-tx-mailbox
+display-tx-mailbox:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_display_tx_packet_fifo vsrc/tb_display_tx_packet_fifo.sv vsrc/display_tx_packet_fifo_candidate.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_display_tx_mailbox -o sim_display_tx_mailbox
+	./build_display_tx_mailbox/sim_display_tx_mailbox
+
+.PHONY: display-tx-stack
+display-tx-stack:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_legacy_bridge -GTX_MAILBOX=1 vsrc/tb_video_legacy_bridge.sv ../board_display/user_source/hdl_source/ETH/display_udp_lite.v ../board_display/user_source/hdl_source/ETH/direct_video_packet_demux.v ../board_display/user_source/hdl_source/ETH/media_protocol_rx.v ../board_display/user_source/hdl_source/ETH/media_display_tx.v ../board_display/user_source/hdl_source/ETH/direct_video_feedback_tx.v ../board_display/user_source/hdl_source/ETH/media_tx_mux.v vsrc/display_tx_packet_fifo_candidate.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_display_tx_stack -o sim_display_tx_stack
+	./build_display_tx_stack/sim_display_tx_stack
 
 .PHONY: video-port-address
 video-port-address:

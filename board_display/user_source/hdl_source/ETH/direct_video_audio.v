@@ -11,7 +11,7 @@ module direct_video_audio #(
  output reg missing_seen,output reg audio_valid,output reg [23:0] audio_data,
  output reg [95:0] audio_stats
 );
- localparam WORDS=SAMPLES/2,LENGTH=8+SAMPLES+2;
+ localparam LENGTH=8+SAMPLES+2;
  reg session_known,session_toggle;reg [15:0] base_frame;
  reg [3:0] valid_bits;reg [15:0] tags[0:3],seeds[0:3],expected[0:3];
  reg [9:0] count;wire [9:0] idx=packet_start?0:count;
@@ -62,7 +62,9 @@ module direct_video_audio #(
      default:begin
       if(idx>=8&&idx<8+SAMPLES&&admitted)begin
        if(!idx[0])low_sample<=rx_data;
-       else begin write_q<=1;write_addr<=write_slot*WORDS+((idx-8)>>1);write_data<={rx_data,low_sample};end
+       // Four 256-word slots fit exactly in the two 512-word BRAMs.  Align
+       // each slot so address generation is wiring instead of slot*198.
+       else begin write_q<=1;write_addr<={write_slot, (idx[8:1]-8'd4)};write_data<={rx_data,low_sample};end
       end
       if(idx==8+SAMPLES)wire_crc_low<=rx_data;
       if(idx==9+SAMPLES&&identified)begin
@@ -84,7 +86,7 @@ module direct_video_audio #(
  reg [10:0] timer;reg odd_half;
  reg [15:0] play_crc,play_expected,good_blocks,bad_blocks,missing_frames;
  wire [1:0] slot=played_frame[1:0];
- wire [9:0] read_addr=slot*WORDS+(sample_index>>1);
+ wire [9:0] read_addr={slot,sample_index[8:1]};
  wire [15:0] q0,q1;reg read_bank;
  wire [15:0] read_word=read_bank?q1:q0;
  wire [7:0] sample_byte=sample_index[0]?read_word[15:8]:read_word[7:0];

@@ -159,6 +159,10 @@ module media_view_scheduler #(
                                        touch_request ? 8'hfe : 8'hff);
                         state<=WAIT_PREP;
                     end
+                end else if(view_busy && link_ready && timer>=CLK_HZ/2)begin
+                    // VIEW_STATUS is UDP: if the release event is lost, keep
+                    // querying until the display confirms its lease is idle.
+                    send_query<=1;timer<=0;
                 end
                 WAIT_PREP:if(prepare_event && prepare_received[7:0]==prepare_body[7:0])begin
                     if(prepare_received[15:8]==0)begin

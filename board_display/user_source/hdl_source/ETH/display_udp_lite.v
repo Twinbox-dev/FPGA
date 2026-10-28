@@ -40,6 +40,8 @@ module display_udp_lite #(
     output reg  [47:0] app_rx_source_mac,
     output reg  [31:0] app_rx_source_ip,
     output reg  [15:0] app_rx_source_port,
+    output wire [47:0] pc_peer_mac_out,
+    output wire        pc_peer_valid_out,
 
     output wire        temac_rx_ready,
     input  wire        temac_rx_valid,
@@ -83,6 +85,8 @@ module display_udp_lite #(
     reg [31:0] rx_source_ip;
     reg [47:0] pc_peer_mac;
     reg pc_peer_valid;
+    assign pc_peer_mac_out=pc_peer_mac;
+    assign pc_peer_valid_out=pc_peer_valid;
     reg [7:0] rx_udp_port_hi, rx_udp_len_hi;
     reg [15:0] rx_payload_left;
     reg rx_payload_active;
@@ -418,11 +422,9 @@ module display_udp_lite #(
                         udp2app_tx_ack <= 1'b1;
                         tx_count <= 0; tx_length <= 0;
                         tx_dst_port <= app_tx_dst_port; tx_dst_ip <= ip_tx_dst_address;
-                        // Video feedback is asynchronous to RX. A media-board
-                        // control packet can be the latest RX source by now;
-                        // retain the PC's MAC independently for its CREDITs.
-                        tx_dst_mac <= (ip_tx_dst_address==PC_IP && pc_peer_valid) ?
-                                      pc_peer_mac : ip_tx_dst_mac;
+                        // The integration layer resolves the reply route from
+                        // the transaction owner/source and cached PC peer.
+                        tx_dst_mac <= ip_tx_dst_mac;
                         tx_state <= TX_COLLECT;
                     end
                 end

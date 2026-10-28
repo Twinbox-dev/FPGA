@@ -34,6 +34,9 @@ module tb_cv_pixel_effects;
     wire de0, vs0, de1, vs1, de2, vs2, de3, vs3, de4, vs4, de5, vs5;
     wire [23:0] rgb_runtime;
     wire de_runtime, vs_runtime;
+    wire [23:0] rgb_runtime_lite,rgb_runtime_point_ref;
+    wire de_runtime_lite,vs_runtime_lite,de_runtime_point_ref,vs_runtime_point_ref;
+    wire [2:0] projected_mode=(runtime_mode==3'd3||runtime_mode==3'd4)?3'd0:runtime_mode;
 
     always #5 clk = ~clk;
 
@@ -52,6 +55,12 @@ module tb_cv_pixel_effects;
     cv_pixel_effects_runtime #(.H_ACTIVE(HA), .H_TOTAL(HT), .V_ACTIVE(VA), .SYNC_DEPTH(32)) u_runtime
         (.clk(clk), .rst(rst), .rgb_in(rgb_in), .de_in(de_in), .vs_in(vs_in),
          .mode_raw(runtime_mode), .rgb_out(rgb_runtime), .de_out(de_runtime), .vs_out(vs_runtime));
+    cv_pixel_effects_runtime #(.H_ACTIVE(HA), .H_TOTAL(HT), .V_ACTIVE(VA), .SYNC_DEPTH(32), .NEIGHBORHOOD_ENABLED(0)) u_runtime_lite
+        (.clk(clk), .rst(rst), .rgb_in(rgb_in), .de_in(de_in), .vs_in(vs_in),
+         .mode_raw(runtime_mode), .rgb_out(rgb_runtime_lite), .de_out(de_runtime_lite), .vs_out(vs_runtime_lite));
+    cv_pixel_effects_runtime #(.H_ACTIVE(HA), .H_TOTAL(HT), .V_ACTIVE(VA), .SYNC_DEPTH(32)) u_runtime_point_ref
+        (.clk(clk), .rst(rst), .rgb_in(rgb_in), .de_in(de_in), .vs_in(vs_in),
+         .mode_raw(projected_mode), .rgb_out(rgb_runtime_point_ref), .de_out(de_runtime_point_ref), .vs_out(vs_runtime_point_ref));
 
     function integer src_level;
         input integer x;
@@ -163,6 +172,11 @@ module tb_cv_pixel_effects;
         reg expected_bit;
         integer cx, cy;
         begin
+            if((rgb_runtime_lite!==rgb_runtime_point_ref)||
+               (de_runtime_lite!==de_runtime_point_ref)||(vs_runtime_lite!==vs_runtime_point_ref))begin
+                $display("FAIL disabled neighborhood CV path differs from point reference, mode=%0d",runtime_mode);
+                errors=errors+1;
+            end
             if ((cycle > SYNC_DELAY) &&
                 ((de_runtime !== hist_de[cycle-SYNC_DELAY-1]) ||
                  (vs_runtime !== hist_vs[cycle-SYNC_DELAY-1]))) begin

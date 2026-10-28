@@ -375,6 +375,37 @@ class DecoderProcessTests(unittest.TestCase):
         finally:
             source.close()
 
+    def test_single_playback_reaches_eof(self):
+        source = video.ffmpeg_frames(self.path, self.ffmpeg, 180, 90, prefetch=4, loop=False)
+        try:
+            frames = list(source)
+        finally:
+            source.close()
+        self.assertEqual(len(frames), 2)
+        self.assertTrue(all(len(frame) == 180 * 90 * 2 for frame in frames))
+
+    def test_single_playback_pads_short_audio_with_silence(self):
+        audio_path = Path(self.temp.name) / "short.wav"
+        subprocess.run([self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                        "-i", "sine=frequency=1000:sample_rate=24000:duration=0.005",
+                        "-c:a", "pcm_u8", str(audio_path)], check=True, timeout=15)
+        source = video.ffmpeg_audio_frames(audio_path, self.ffmpeg, loop=False)
+        try:
+            first, second = next(source), next(source)
+        finally:
+            source.close()
+        self.assertEqual(len(first), video.AUDIO_SAMPLES)
+        self.assertNotEqual(first, b'\x80' * video.AUDIO_SAMPLES)
+        self.assertEqual(second, b'\x80' * video.AUDIO_SAMPLES)
+
+    def test_audio_option_reports_missing_track(self):
+        source = video.ffmpeg_audio_frames(self.path, self.ffmpeg, loop=False)
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'audio track or disable audio'):
+                next(source)
+        finally:
+            source.close()
+
     def test_prefetch_preserves_pixels_and_closes_child(self):
         from unittest import mock
         direct=video.ffmpeg_frames(self.path,self.ffmpeg,180,90)

@@ -46,6 +46,10 @@ module tb_direct_video_audio #(parameter N=8,HALF=4,DELAY=2);
   if(stats[15:0]!=2||stats[31:16]!=1||stats[47:32]!=2||stats[63:48]!=2||stats[79:64]!=0)$fatal(1,"audio stats wrong %h",stats);
   live=1;sf=65534;se=1;@(negedge ac);se=0;repeat(20)@(negedge pc);packet(65534,0);repeat(8)@(negedge pc);check_frame(65534,0,1);
   vr=0;repeat(20)@(negedge ac);if(stats[15:0]!=3||stats[47:32]!=3||stats[79:64]!=0)$fatal(1,"restart integrity failed");
+  // Exercise every aligned BRAM slot with a distinct full block.
+  live=0;repeat(20)@(negedge ac);live=1;sf=8;se=1;@(negedge ac);se=0;repeat(20)@(negedge pc);
+  packet(8,0);packet(9,0);packet(10,0);packet(11,0);repeat(8)@(negedge pc);
+  check_frame(8,0,1);check_frame(9,0,0);check_frame(10,0,0);check_frame(11,0,0);
   $display("PASS audio PCM: exact samples duplicated, frame wrap, CRC bad/missing silence, restart and output CRC");$finish;
  end
  initial begin #150000000;$fatal(1,"audio test timeout");end

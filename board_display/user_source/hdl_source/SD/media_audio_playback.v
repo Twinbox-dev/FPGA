@@ -28,8 +28,10 @@ module media_audio_playback #(parameter PAUSE_ENABLED=0)(
     reg [2:0] source_sync, ack_sync;
     reg [1:0] div25;
     reg [9:0] tick_count;
-    reg [31:0] samples_remaining;
-    reg [31:0] active_samples;
+    // The receive protocol accepts at most 2,351,104 samples, so 22 bits
+    // cover every valid source. Reject an out-of-range source defensively.
+    reg [21:0] samples_remaining;
+    reg [21:0] active_samples;
     reg [31:0] cur_word, next_word;
     reg have_cur, have_next;
     reg read_pending, read_capture_pending, read_target_cur;
@@ -43,7 +45,7 @@ module media_audio_playback #(parameter PAUSE_ENABLED=0)(
     wire [7:0] sample_byte = byte_pos == 2'd0 ? cur_word[7:0] :
                              byte_pos == 2'd1 ? cur_word[15:8] :
                              byte_pos == 2'd2 ? cur_word[23:16] : cur_word[31:24];
-    wire signed [23:0] sample_value = ($signed({16'd0, sample_byte}) - 24'sd128) <<< 16;
+    wire [23:0] sample_value = {sample_byte ^ 8'h80, 16'd0};
     wire tick_due = (div25 == 2'd0) && (tick_count == 10'd520);
     wire read_current = read_ready && !read_pending && !have_cur &&
                         !read_capture_pending &&
@@ -56,7 +58,7 @@ module media_audio_playback #(parameter PAUSE_ENABLED=0)(
         if (rst) begin
             source_sync <= 3'b000; ack_sync <= 3'b000;
             div25 <= 2'd0; tick_count <= 10'd0;
-            samples_remaining <= 32'd0; active_samples <= 32'd0;
+            samples_remaining <= 22'd0; active_samples <= 22'd0;
             cur_word <= 32'd0; next_word <= 32'd0;
             have_cur <= 1'b0; have_next <= 1'b0;
             read_pending <= 1'b0; read_capture_pending <= 1'b0; read_target_cur <= 1'b0;
@@ -82,13 +84,13 @@ module media_audio_playback #(parameter PAUSE_ENABLED=0)(
                 read_req <= 1'b0;
                 read_index <= source_buffer;
                 read_length <= source_length;
-                active_samples <= source_samples;
-                samples_remaining <= source_samples;
+                active_samples <= (source_samples > 32'd2351104) ? 22'd0 : source_samples[21:0];
+                samples_remaining <= (source_samples > 32'd2351104) ? 22'd0 : source_samples[21:0];
                 have_cur <= 1'b0; have_next <= 1'b0;
                 read_pending <= 1'b0; read_capture_pending <= 1'b0; read_ready <= 1'b0;
                 // Audio source changes only with a committed single-layout image.
                 // Layout changes leave source_toggle unchanged, so playback runs on.
-                request_waiting <= 1'b0; restart_pending <= source_samples != 0;
+                request_waiting <= 1'b0; restart_pending <= source_samples != 0 && source_samples <= 32'd2351104;
                 request_delay <= 2'd3;
                 byte_pos <= 2'd0; duplicate_phase <= 1'b0;
             end else if(!PAUSE_ENABLED||!pause)begin
@@ -137,8 +139,8 @@ module media_audio_playback #(parameter PAUSE_ENABLED=0)(
                         audio_right <= sample_value;
                         if (duplicate_phase) begin
                             duplicate_phase <= 1'b0;
-                            samples_remaining <= samples_remaining - 32'd1;
-                            if (samples_remaining == 32'd1) begin
+                            samples_remaining <= samples_remaining - 22'd1;
+                            if (samples_remaining == 22'd1) begin
                                 samples_remaining <= active_samples;
                                 restart_pending <= 1'b1;
                                 request_delay <= 2'd3;

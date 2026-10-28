@@ -4,6 +4,7 @@
 // 0x0044/0x0045/0x0046 subtitle transaction forwarded by the media board.
 module media_display_control_rx #(
     parameter CV_ENABLED=1,
+    parameter CV_NEIGHBORHOOD_ENABLED=1,
     parameter SPECTRUM_ENABLED=1
 )(
     input  wire        clk,
@@ -52,7 +53,8 @@ module media_display_control_rx #(
                 8'd4, 8'd5: set_value_valid = (value <= 8'd2);
                 8'd6:       set_value_valid = (value <= 8'd1) && (SPECTRUM_ENABLED || value==0);
                 8'd7:       set_value_valid = (value <= 8'd3);
-                8'd9:       set_value_valid = (value <= 8'd5) && (CV_ENABLED || value==0);
+                8'd9:       set_value_valid = (value <= 8'd5) && (CV_ENABLED || value==0) &&
+                                                  (CV_NEIGHBORHOOD_ENABLED || (value!=3 && value!=4));
                 default:    set_value_valid = 1'b0;
             endcase
         end

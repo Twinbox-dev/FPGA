@@ -85,14 +85,22 @@ module media_protocol_rx #(
     wire [31:0] packet_audio_sum=packet_word_sum;
     wire packet_dimension_overflow=|{packet_header[79:76],packet_header[95:92]};
     reg [23:0] begin_pixel_count_r;
-    wire [23:0] begin_word_count = (begin_pixel_count_r + 24'd1) >> 1;
+    reg [23:0] begin_word_count_r;
+    reg begin_count_matches_r;
 
     // Keep the variable-width multiply out of the packet-close acceptance
     // path. BEGIN leaves four metadata bytes after height, so this register
     // naturally contains the complete dimensions before the packet closes.
     always @(posedge clk or posedge rst) begin
-        if (rst) begin_pixel_count_r <= 24'd0;
-        else begin_pixel_count_r <= packet_width * packet_height;
+        if (rst) begin
+            begin_pixel_count_r <= 24'd0;
+            begin_word_count_r <= 24'd0;
+            begin_count_matches_r <= 1'b0;
+        end else begin
+            begin_pixel_count_r <= packet_width * packet_height;
+            begin_word_count_r <= (begin_pixel_count_r + 24'd1) >> 1;
+            begin_count_matches_r <= packet_total_words == {8'd0,begin_word_count_r};
+        end
     end
 
     reg frame_active, frame_context_valid, frame_bad;
@@ -277,7 +285,7 @@ module media_protocol_rx #(
                             if (payload_length == 16'd16 && !frame_active && !packet_dimension_overflow &&
                                 packet_width != 0 && packet_width <= 12'd1280 &&
                                 packet_height != 0 && packet_height <= 12'd720 &&
-                                packet_total_words == {8'd0,begin_word_count} &&
+                                begin_count_matches_r &&
                                 packet_total_words <= {11'd0,FRAME_WORDS} &&
                                 ((!MULTIVIEW && packet_layout==0 && packet_window==0 && packet_generation==0) ||
                                  (MULTIVIEW && ((packet_layout==0 && packet_window==0) ||

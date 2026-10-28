@@ -133,6 +133,8 @@ module eth_subsys(
     wire [47:0] app_rx_source_mac;
     wire [31:0] app_rx_source_ip;
     wire [15:0] app_rx_source_port;
+    wire [47:0] pc_peer_mac;
+    wire pc_peer_valid;
     reg [47:0] owner_mac;
     reg [31:0] owner_ip;
     reg [15:0] owner_port;
@@ -146,10 +148,12 @@ module eth_subsys(
     wire [15:0] tx_dst_port = digest_chunk_active ?
                               (route_chunk_to_owner ? owner_port :
                                (route_chunk_to_source ? app_rx_source_port : MEDIA_PEER_UDP_PORT)) : 16'd4;
-    wire [47:0] tx_dst_mac = tx_dst_ip == MEDIA_PEER_IP ? MEDIA_PEER_MAC :
-                             ((route_chunk_to_owner && tx_dst_ip == owner_ip) ? owner_mac :
-                              ((app_rx_source_ip != 0 && tx_dst_ip == app_rx_source_ip) ?
-                               app_rx_source_mac : MEDIA_PEER_MAC));
+    // Choose MAC by the already-resolved packet route. Avoid a second cascade
+    // of 32-bit destination-IP comparisons on the UDP transmit timing path.
+    wire [47:0] tx_dst_mac = digest_chunk_active ?
+                             (route_chunk_to_owner ? owner_mac :
+                              (route_chunk_to_source ? app_rx_source_mac : MEDIA_PEER_MAC)) :
+                             (pc_peer_valid ? pc_peer_mac : MEDIA_PEER_MAC);
 
     always @(posedge udp_clk or posedge reset) begin
         if (reset) begin
@@ -249,6 +253,8 @@ module eth_subsys(
         .app_rx_source_mac     (app_rx_source_mac),
         .app_rx_source_ip      (app_rx_source_ip),
         .app_rx_source_port    (app_rx_source_port),
+        .pc_peer_mac_out       (pc_peer_mac),
+        .pc_peer_valid_out     (pc_peer_valid),
         .temac_rx_ready        (temac_rx_ready),
         .temac_rx_valid        (!temac_rx_valid_n),
         .temac_rx_data         (temac_rx_data),

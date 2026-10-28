@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('baseline', 'area')][string]$Strategy = 'baseline')
+param([ValidateSet('baseline', 'area')][string]$Strategy = 'baseline', [switch]$SynthesisOnly)
 
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
@@ -19,14 +19,23 @@ if (($Strategy -eq 'baseline') -and ($taskProjectText -match '<map_mode>area_pri
 if (($Strategy -eq 'area') -and ($taskProjectText -notmatch '<map_mode>area_prior</map_mode>')) {
     throw 'Save the matching area strategy in the GUI project before an area build'
 }
-foreach ($taskStage in @('syn_1', 'phy_1')) {
+$taskSeed = 1
+if ($Strategy -eq 'area') {
+    # TD writes raw '&' in UsedInP&R attributes, so .al is not strict XML.
+    $taskPhysicalRun = [regex]::Match($taskProjectText, '(?s)<Run Name="phy_1".*?</Run>')
+    $taskSeedMatch = [regex]::Match($taskPhysicalRun.Value, '<seed>(\d+)</seed>')
+    if (-not $taskSeedMatch.Success) { throw 'Save an explicit placement seed in the area project' }
+    $taskSeed = [int]$taskSeedMatch.Groups[1].Value
+}
+$taskStages = if($SynthesisOnly) { @('syn_1') } else { @('syn_1', 'phy_1') }
+foreach ($taskStage in $taskStages) {
     $taskCfg = Join-Path $taskRuns "$taskStage\settings.cfg"
     $taskName = if ($taskStage -eq 'syn_1') { 'synWildParams' } else { 'phyWildParams' }
     $taskText = Get-Content -LiteralPath $taskCfg -Raw
     $taskText = [regex]::Replace($taskText, '(?s)\r?\n# BEGIN VIDEO AREA OVERRIDES.*?# END VIDEO AREA OVERRIDES\r?\n?', '')
     $taskBlock = "`n# BEGIN VIDEO AREA OVERRIDES`nif {![info exists $taskName]} {set $taskName {}}`nlappend $taskName gate opt_area high gate pack_effort high gate map_mode area_prior`n# END VIDEO AREA OVERRIDES`n"
     if ($taskStage -eq 'phy_1') {
-        $taskBlock = $taskBlock.Replace('# END VIDEO AREA OVERRIDES', "lappend $taskName place pr_strategy 2 place effort high place seed 3`n# END VIDEO AREA OVERRIDES")
+        $taskBlock = $taskBlock.Replace('# END VIDEO AREA OVERRIDES', "lappend $taskName place pr_strategy 2 place effort high place seed $taskSeed`n# END VIDEO AREA OVERRIDES")
     }
     if ($Strategy -eq 'baseline') { $taskBlock = '' }
     [IO.File]::WriteAllText($taskCfg, $taskText + $taskBlock, [Text.UTF8Encoding]::new($false))
@@ -46,13 +55,16 @@ $taskTopText = Get-Content (Join-Path $taskRoot 'board_display\user_source\hdl_s
 $taskWidthMatch = [regex]::Match($taskTopText, 'parameter DIRECT_VIDEO_WIDTH = (\d+)')
 $taskHeightMatch = [regex]::Match($taskTopText, 'parameter DIRECT_VIDEO_HEIGHT = (\d+)')
 $taskCvEnabled = [int]([regex]::Match($taskTopText, 'parameter PRODUCT_CV_ENABLED = ([01])').Groups[1].Value)
+$taskCvNeighborhoodEnabled = [int]([regex]::Match($taskTopText, 'parameter PRODUCT_CV_NEIGHBORHOOD_ENABLED = ([01])').Groups[1].Value)
 $taskSpectrumEnabled = [int]([regex]::Match($taskTopText, 'parameter PRODUCT_SPECTRUM_ENABLED = ([01])').Groups[1].Value)
 if (-not $taskWidthMatch.Success -or -not $taskHeightMatch.Success -or
     [int]$taskPcProfile.width -ne [int]$taskWidthMatch.Groups[1].Value -or
     [int]$taskPcProfile.height -ne [int]$taskHeightMatch.Groups[1].Value) {
     throw 'PC video dimensions differ from display RTL; update both before building'
 }
-if ([bool]$taskPcProfile.cv_enabled -ne [bool]$taskCvEnabled -or [bool]$taskPcProfile.spectrum_enabled -ne [bool]$taskSpectrumEnabled) {
+if ([bool]$taskPcProfile.cv_enabled -ne [bool]$taskCvEnabled -or
+    [bool]$taskPcProfile.cv_neighborhood_enabled -ne [bool]$taskCvNeighborhoodEnabled -or
+    [bool]$taskPcProfile.spectrum_enabled -ne [bool]$taskSpectrumEnabled) {
     throw 'PC capability profile differs from display RTL; update both before building'
 }
 $taskSources = @($taskFiles | Sort-Object FullName -Unique | ForEach-Object {
@@ -82,6 +94,10 @@ foreach ($taskSource in $taskSources) {
         throw "Source/config changed during build: $($taskSource.path)"
     }
 }
+if($SynthesisOnly) {
+    Write-Output 'Synthesis-only candidate complete. Placement and the formal build manifest were not updated.'
+    exit 0
+}
 $taskBit = Join-Path $taskRuns 'phy_1\lab_ex5_i2s_v1.0.bit'
 if (-not (Test-Path -LiteralPath $taskBit)) { throw 'Bit generation did not produce an output' }
 foreach ($taskMarker in @('.opt_place.begin.f', '.opt_route.begin.f', '.bitgen.begin.f')) {
@@ -98,9 +114,9 @@ $taskManifest = [PSCustomObject]@{
     strategy = $Strategy
     bit = 'board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit'
     bit_sha256 = (Get-FileHash -LiteralPath $taskBit).Hash
-    profile = @{ width=[int]$taskPcProfile.width; height=[int]$taskPcProfile.height; window=[int]$taskPcProfile.window; head_rows=[int]$taskPcProfile.head_rows; audio='24k_u8_mono'; statistics=0; link_diagnostics=[int]$taskDiagMatch.Groups[1].Value; cv_enabled=[bool]$taskCvEnabled; spectrum_enabled=[bool]$taskSpectrumEnabled }
+    profile = @{ width=[int]$taskPcProfile.width; height=[int]$taskPcProfile.height; window=[int]$taskPcProfile.window; head_rows=[int]$taskPcProfile.head_rows; audio='24k_u8_mono'; statistics=0; link_diagnostics=[int]$taskDiagMatch.Groups[1].Value; cv_enabled=[bool]$taskCvEnabled; cv_neighborhood_enabled=[bool]$taskCvNeighborhoodEnabled; spectrum_enabled=[bool]$taskSpectrumEnabled }
     gate_overrides = @(if ($Strategy -eq 'area') { 'opt_area=high'; 'pack_effort=high'; 'map_mode=area_prior' })
-    place_overrides = @(if ($Strategy -eq 'area') { 'pr_strategy=2'; 'effort=high'; 'seed=3' })
+    place_overrides = @(if ($Strategy -eq 'area') { 'pr_strategy=2'; 'effort=high'; "seed=$taskSeed" })
     sdk_flow_sha256 = (Get-FileHash -LiteralPath $taskFlow).Hash
     sources = $taskSources
 }

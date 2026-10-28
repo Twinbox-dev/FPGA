@@ -556,7 +556,7 @@
         <label><input type="checkbox" id="pcVideoAudio" checked> 播放音轨</label>
         <button type="button" id="btnVideoStart" disabled>开始播放</button>
         <button type="button" id="btnVideoStop" disabled>停止视频</button>
-        <span class="hint" id="videoPlaybackStatus">选择视频后由 PC 解码，按当前显示板视频配置发送 RGB565 行包；停止后约 1 秒恢复静态图。</span>
+        <span class="hint" id="videoPlaybackStatus">选择视频后由 PC 解码，按当前显示板视频配置发送 RGB565 行包；停止后等待板卡释放资源。</span>
         <span class="hint">640×360 RGB565（四宫格单窗尺寸），约 60.6 帧/秒；可播放视频音轨（24 kHz 单声道）。当前画面位于左上区域，其他区域为黑色。</span>
         <label for="pcImageFile">发送图片到显示板</label>
         <input type="file" id="pcImageFile" accept="image/*">
@@ -598,6 +598,8 @@ RANGE["\u56fe\u50cf\u6548\u679c"] = "HDMI image mode";
 RANGE["\u8c03\u8bd5"] = "SD 状态 / 辅助调试";
 RANGE["画面布局"] = "双图 / 四图需先回单图互切";
 if (!PRODUCT_CAPABILITIES.cv) RANGE["\u56fe\u50cf\u6548\u679c"] = "首轮暂仅支持原图";
+if (PRODUCT_CAPABILITIES.cv && !PRODUCT_CAPABILITIES.cv_neighborhood)
+  RANGE["\u56fe\u50cf\u6548\u679c"] = "Sobel 与锐化暂不可用";
 if (!PRODUCT_CAPABILITIES.spectrum) RANGE["音频频谱"] = "首轮暂不可用，后续恢复";
 Object.assign(ICON, {"6":"▣", "7":"◫", "8":"▦"});
 
@@ -812,12 +814,13 @@ async function syncVideoStatus() {
     const status = document.getElementById("videoPlaybackStatus");
     const progress = `${state.frames || 0} 帧 · ${state.rows || 0} 行 · ${state.credits || 0} 次反馈`;
     status.textContent = videoActive ?
-      (state.state === "starting" ? `正在启动解码：${state.name || "视频"}` :
+      (state.state === "releasing" ? "等待显示板释放视频资源并恢复图片…" :
+       state.state === "starting" ? `正在启动解码：${state.name || "视频"}` :
        state.state === "waiting" ? `等待显示板行反馈 · ${progress}` :
        `正在发送：${state.name || "视频"} · ${progress}`) :
       (state.exit_code === null || state.exit_code === undefined ?
-        "选择视频后由 PC 解码，按当前显示板视频配置发送 RGB565 行包；停止后约 1 秒恢复静态图。" :
-        state.exit_code === 0 ? "视频已停止；静态图将在约 1 秒内恢复。" :
+        "选择视频后由 PC 解码，按当前显示板视频配置发送 RGB565 行包；停止后等待板卡释放资源。" :
+        state.state === "stopped" ? "视频已停止，显示板已恢复空闲。" :
         `视频发送失败：${state.error || `进程退出 ${state.exit_code}`}`);
     if (wasActive && !videoActive) {
       if (connState.eth) sendKey("s");
@@ -863,8 +866,8 @@ document.getElementById("btnVideoStop").onclick = async () => {
     const response = await fetch("/api/eth/video/stop", {method:"POST"});
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
-    addLog("sys", "VIDEO", "已停止发送；FPGA 将在停流超时后恢复静态图");
-    toast("已停止视频发送");
+    addLog("sys", "VIDEO", "已停止发送，等待显示板释放视频资源");
+    toast("正在恢复图片显示");
   } catch (error) {
     addLog("err", "VIDEO", error.message);
     toast(error.message, true);
@@ -1035,7 +1038,8 @@ document.getElementById("btnRefresh").onclick = () => loadPorts(false);
 /* ---------- 命令发送 ---------- */
 async function sendKey(k) {
   if (!connected) return;
-  if (k !== "s" && (viewPending || (boardView && boardView.busy))) return;
+  const videoVolume = videoActive && (k === "+" || k === "-");
+  if (k !== "s" && !videoVolume && (viewPending || (boardView && boardView.busy))) return;
   if (k === "s" && viewPending) viewRecovery = true;
   if (IMAGE_KEYS.includes(k)) {
     viewPending = true;viewSawBusy = false;viewRecovery = false;

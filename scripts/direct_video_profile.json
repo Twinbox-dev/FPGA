@@ -6,6 +6,7 @@
   "format": "RGB565",
   "head_rows": 4,
   "ingress_pages": 4,
-  "cv_enabled": false,
-  "spectrum_enabled": false
+  "cv_enabled": true,
+  "cv_neighborhood_enabled": false,
+  "spectrum_enabled": true
 }

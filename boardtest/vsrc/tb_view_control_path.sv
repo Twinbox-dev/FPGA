@@ -5,6 +5,7 @@
 module tb_view_control_path;
     reg clk=0,rst=1;always #4 clk=~clk;
     reg nr=0,pr=0,dr=0,lr=0,tr=0,local_step=0;
+    reg external_busy=0,drop_display=0;
     reg [1:0] requested=0;
     reg [10:0] cx=0;reg [9:0] cy=0;
     reg [191:0] nexts=0,prevs=0;
@@ -25,7 +26,7 @@ module tb_view_control_path;
     media_view_scheduler #(.CLK_HZ(10000)) media(.clk(clk),.rst(rst),.link_ready(jready),
         .next_request(nr),.prev_request(pr),.snapshot_request(dr),.layout_request(lr),.touch_request(tr),
         .requested_layout(requested),.first_bmp(6'd1),.bmp_next(nexts),.bmp_prev(prevs),
-        .rx_data(ddata),.rx_valid(dvalid),.job_start(js),.job_snapshot(jpc),.job_previous(jprev),
+        .rx_data(ddata),.rx_valid(dvalid && !drop_display),.job_start(js),.job_snapshot(jpc),.job_previous(jprev),
         .job_index(ji),.job_layout(jl),.job_window(jw),.job_generation(jg),
         .job_done(jdone),.job_result(jr),.busy(mbusy),.current_index(current),.current_valid(current_valid),
         .active_layout(media_layout),.active_mask(media_mask),.active_generation(media_gen),
@@ -44,7 +45,7 @@ module tb_view_control_path;
     wire [63:0] pbody;
     wire [127:0] vbody;
     wire [7:0] result;
-    view_session_manager #(.CLK_HZ(10000)) display(.clk(clk),.rst(rst),.external_busy(1'b0),.transaction_busy(),
+    view_session_manager #(.CLK_HZ(10000),.EXTERNAL_BUSY_ENABLED(1)) display(.clk(clk),.rst(rst),.external_busy(external_busy),.transaction_busy(),
         .prepare_valid(pv),.prepare_body(pb),.status_request(sq),.cursor_x(cx),.cursor_y(cy),.local_step(local_step),
         .frame_begin(fb),.frame_id(fid),.frame_generation(jg),.frame_layout(jl),.frame_window(jw),.frame_index(ji),
         .frame_width(12'd571),.frame_height(12'd720),.writer_result_valid(wvalid),.writer_result(wresult),
@@ -137,6 +138,14 @@ module tb_view_control_path;
         if(display.indices[1]!=5 || display.indices[0]!=5)$fatal(1,"local touch focus lock");
         cx=900;cy=500;@(negedge clk);dr=1;@(negedge clk);dr=0;repeat(5)@(negedge clk);idle();
         if(pc_snapshots!=1 || ji!=9 || al!=2)$fatal(1,"snapshot transaction selected wrong source");
+        // Drop the one-shot idle event after video release. A periodic status
+        // query must unlock the media side without replaying a queued image.
+        external_busy=1;
+        wait(media.view_busy);repeat(100) @(negedge clk);
+        drop_display=1;external_busy=0;repeat(200) @(negedge clk);drop_display=0;
+        idle();
+        before_jobs=jobs;step(0);
+        if(jobs!=before_jobs+1)$fatal(1,"media did not resume after lost video-release event");
         $display("PASS: paired PREPARE/STATUS packets, boot, 2/4 windows, independent N/P, wrap, busy drop, touch and D");$finish;
     end
     initial begin #10000000;$fatal(1,"control path watchdog");end

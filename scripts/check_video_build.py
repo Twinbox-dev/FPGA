@@ -20,6 +20,7 @@ def verify():
     if manifest["profile"].get("link_diagnostics"):
         print("Profile: link diagnostics; 7-segment shows 8 sticky MAC/UDP/video stages and live lease/session state")
     print("Capabilities: CV=" + str(manifest["profile"].get("cv_enabled", True)) +
+          ", neighborhood_cv=" + str(manifest["profile"].get("cv_neighborhood_enabled", True)) +
           ", spectrum=" + str(manifest["profile"].get("spectrum_enabled", True)))
     return manifest
 

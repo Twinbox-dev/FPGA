@@ -33,6 +33,7 @@ class FakeProcess:
 class DirectVideoApiTests(unittest.TestCase):
     def setUp(self):
         web.stop_video_sender()
+        web.VIDEO_RELEASE_PENDING = False
         self.old_link = web.eth_link
         self.old_capture_dir = web.VIDEO_CAPTURE_DIR
         test_root = Path(__file__).resolve().parents[2] / "boardtest" / "captures"
@@ -40,7 +41,8 @@ class DirectVideoApiTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory(dir=test_root)
         web.VIDEO_CAPTURE_DIR = Path(self.tempdir.name)
         web.eth_link = type("Link", (), {"is_open": lambda _self: True,
-                                          "image_upload_active": False})()
+                                          "image_upload_active": False,
+                                          "query_display_idle": lambda _self: True})()
         self.client = web.app.test_client()
 
     def tearDown(self):
@@ -48,7 +50,25 @@ class DirectVideoApiTests(unittest.TestCase):
             web.stop_video_sender()
         web.eth_link = self.old_link
         web.VIDEO_CAPTURE_DIR = self.old_capture_dir
+        web.VIDEO_RELEASE_PENDING = False
         self.tempdir.cleanup()
+
+    def test_stop_waits_for_display_to_release(self):
+        fake = FakeProcess()
+        with patch.object(web, "resolve_ffmpeg", return_value="ffmpeg"), \
+             patch.object(web.subprocess, "Popen", return_value=fake):
+            response = self.client.post("/api/eth/video/start", data={
+                "video": (io.BytesIO(b"fake"), "sample.mp4")
+            }, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 200)
+        web.eth_link.query_display_idle = lambda: False
+        with patch.object(web.subprocess, "run"):
+            stopped = self.client.post("/api/eth/video/stop").get_json()
+        self.assertTrue(stopped["active"])
+        self.assertEqual(self.client.get("/api/eth/video/status").get_json()["state"], "releasing")
+        self.assertEqual(self.client.post("/api/cmd", json={"mode": "eth", "key": "n"}).status_code, 409)
+        web.eth_link.query_display_idle = lambda: True
+        self.assertFalse(self.client.get("/api/eth/video/status").get_json()["active"])
 
     def test_start_status_rejects_still_upload_and_stop_cleans_source(self):
         fake = FakeProcess()
@@ -110,18 +130,30 @@ class DirectVideoApiTests(unittest.TestCase):
         finally:
             web.VIDEO_IMAGE_REQUEST_ACTIVE = False
 
-    def test_first_stage_capabilities_are_visible_and_enforced(self):
+    def test_restored_capabilities_are_visible_and_available(self):
         metadata = self.client.get("/api/keys").get_json()
-        self.assertEqual(metadata["capabilities"], {"cv": False, "spectrum": False})
+        self.assertEqual(metadata["capabilities"], {"cv": True, "cv_neighborhood": False, "spectrum": True})
         available = {item["key"]: item["available"] for item in metadata["keys"]}
-        for key in ("g", "b", "e", "h", "w", "q", ";", "'"):
+        web.eth_link.send_key = lambda key: None
+        for key in ("g", "b", "w", "q", ";", "'"):
+            self.assertTrue(available[key])
+            response = self.client.post("/api/cmd", json={"mode": "eth", "key": key})
+            self.assertEqual(response.status_code, 200)
+        for key in ("e", "h"):
             self.assertFalse(available[key])
             response = self.client.post("/api/cmd", json={"mode": "eth", "key": key})
             self.assertEqual(response.status_code, 409)
         self.assertTrue(available["r"])
         self.assertTrue(available["d"])
-        web.eth_link.send_key = lambda key: None
         self.assertEqual(self.client.post("/api/cmd", json={"mode": "eth", "key": "r"}).status_code, 200)
+
+    def test_spectrum_sensitivity_ack_direction(self):
+        increase = web.decode_ack(bytes((0x5A, 0x27, 8, 1, 0, 0, 0, 0x40)))
+        decrease = web.decode_ack(bytes((0x5A, 0x3B, 8, 1, 0, 0, 0, 0x20)))
+        self.assertIn("ACK 灵敏度+", increase)
+        self.assertIn("灵敏度=2/3", increase)
+        self.assertIn("ACK 灵敏度-", decrease)
+        self.assertIn("灵敏度=1/3", decrease)
 
     def test_running_process_reports_waiting_instead_of_playback(self):
         fake = FakeProcess()
@@ -151,6 +183,7 @@ class DirectVideoApiTests(unittest.TestCase):
         self.assertEqual(command[command.index("--width")+1],"180")
         self.assertEqual(command[command.index("--height")+1],"90")
         self.assertIn("--require-ready",command);self.assertIn("--audio",command)
+        self.assertIn("--once", command)
         self.assertEqual(command[command.index("--window")+1],"128")
         self.assertEqual(command[command.index("--prefetch")+1],"16")
 
@@ -193,6 +226,7 @@ class DirectVideoApiTests(unittest.TestCase):
         failures, received, launched_commands = [], [], []
         stop = threading.Event()
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            receiver.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4 * 1024 * 1024)
             receiver.bind(("127.0.0.1", 0))
             receiver.settimeout(0.1)
             def receive():
@@ -236,12 +270,14 @@ class DirectVideoApiTests(unittest.TestCase):
                 state = {}
                 while time.monotonic() < deadline:
                     state = self.client.get("/api/eth/video/status").get_json()
-                    if not state["active"] or state.get("frames", 0) >= 2:
+                    if not state["active"]:
                         break
                     time.sleep(0.05)
                 if failures:
                     raise failures[0]
-                self.assertTrue(state["active"], state)
+                self.assertFalse(state["active"], state)
+                self.assertEqual(state["state"], "stopped", state)
+                self.assertTrue(state["ready_received"], state)
                 sender_log = ""
                 if web.VIDEO_LOG_PATH and Path(web.VIDEO_LOG_PATH).is_file():
                     sender_log = Path(web.VIDEO_LOG_PATH).read_text(encoding="utf-8", errors="replace")
@@ -250,11 +286,12 @@ class DirectVideoApiTests(unittest.TestCase):
                                          "received_packets": len(received), "failures": failures,
                                          "command": launched_commands})
                 self.assertGreater(state["credits"], 0)
+                receive_deadline = time.monotonic() + 2
+                while len(received) < 720 and time.monotonic() < receive_deadline:
+                    time.sleep(0.01)
                 self.assertGreaterEqual(len(received), 720)
                 self.assertEqual(state["skipped_rows"], 0)
-                saved = Path(web.VIDEO_PATH)
-                self.client.post("/api/eth/video/stop")
-                self.assertFalse(saved.exists())
+                self.assertIsNone(web.VIDEO_PATH)
                 self.assertEqual(self.client.get("/api/eth/video/status").get_json()["state"], "stopped")
             finally:
                 web.stop_video_sender()

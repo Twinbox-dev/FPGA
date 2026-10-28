@@ -53,21 +53,25 @@ VIDEO_LAST_EXIT = None
 VIDEO_STATUS_PATH = None
 VIDEO_LOG_PATH = None
 VIDEO_USER_STOPPED = False
+VIDEO_RELEASE_PENDING = False
 VIDEO_IMAGE_REQUEST_ACTIVE = False
 VIDEO_CAPTURE_DIR = Path(__file__).resolve().parents[2] / "boardtest" / "captures" / "video"
 VIDEO_SCRIPT = Path(__file__).resolve().parents[1] / "direct_video_sender.py"
 PRODUCT_PROFILE = json.loads(VIDEO_SCRIPT.with_name("direct_video_profile.json").read_text(encoding="utf-8"))
 PRODUCT_CAPABILITIES = {"cv": PRODUCT_PROFILE.get("cv_enabled", True),
+                        "cv_neighborhood": PRODUCT_PROFILE.get("cv_neighborhood_enabled", True),
                         "spectrum": PRODUCT_PROFILE.get("spectrum_enabled", True)}
 UNAVAILABLE_KEYS = set()
 if not PRODUCT_CAPABILITIES["cv"]:
     UNAVAILABLE_KEYS.update(("g", "b", "e", "h", "w"))
+elif not PRODUCT_CAPABILITIES["cv_neighborhood"]:
+    UNAVAILABLE_KEYS.update(("e", "h"))
 if not PRODUCT_CAPABILITIES["spectrum"]:
     UNAVAILABLE_KEYS.update(("q", ";", "'"))
 
 
 def _video_status_locked():
-    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT, VIDEO_RELEASE_PENDING
     progress = {}
     if VIDEO_STATUS_PATH:
         try:
@@ -81,6 +85,7 @@ def _video_status_locked():
                     "state": progress.get("state", "starting"), "pid": VIDEO_PROCESS.pid}
         VIDEO_LAST_EXIT = exit_code
         VIDEO_PROCESS = None
+        VIDEO_RELEASE_PENDING = True
         if VIDEO_PATH:
             try:
                 Path(VIDEO_PATH).unlink(missing_ok=True)
@@ -90,7 +95,8 @@ def _video_status_locked():
         VIDEO_NAME = ""
     state = "idle" if VIDEO_LAST_EXIT is None else (
         "stopped" if VIDEO_USER_STOPPED or VIDEO_LAST_EXIT == 0 else "error")
-    result = {**progress, "active": False, "name": "", "state": state,
+    result = {**progress, "active": VIDEO_RELEASE_PENDING, "name": "",
+              "state": "releasing" if VIDEO_RELEASE_PENDING else state,
               "exit_code": VIDEO_LAST_EXIT}
     if state == "error" and VIDEO_LOG_PATH:
         try:
@@ -109,11 +115,12 @@ def _video_status_locked():
 
 
 def stop_video_sender():
-    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT, VIDEO_USER_STOPPED
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT, VIDEO_USER_STOPPED, VIDEO_RELEASE_PENDING
     with VIDEO_LOCK:
         process = VIDEO_PROCESS
         if process is not None:
             VIDEO_USER_STOPPED = True
+            VIDEO_RELEASE_PENDING = True
         if process is not None and process.poll() is None:
             if os.name == "nt":
                 subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
@@ -129,6 +136,8 @@ def stop_video_sender():
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
+            VIDEO_LAST_EXIT = process.returncode
+        elif process is not None:
             VIDEO_LAST_EXIT = process.returncode
         VIDEO_PROCESS = None
         if VIDEO_PATH:
@@ -384,7 +393,7 @@ def decode_ack(pkt: bytes) -> str:
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
             0x5D: "亮度+", 0x5B: "亮度-",
             0x2E: "对比度+", 0x2C: "对比度-",
-            0x51: "频谱", 0x3B: "灵敏度+", 0x27: "灵敏度-",
+            0x51: "频谱", 0x3B: "灵敏度-", 0x27: "灵敏度+",
             0x30: "直接切", 0x31: "淡入淡出", 0x32: "滑动转场",
             0x33: "面板关闭", 0x34: "面板调节后 3 秒", 0x35: "面板始终显示",
             0x54: "字幕上传"}.get(cmd, f"0x{cmd:02X}")
@@ -973,6 +982,24 @@ class EthTransport:
         self._send_display(control_packet(0x0048, bytes((sequence,))))
         return self._wait_display(0x0048, timeout, lambda body: len(body) == 16)
 
+    def query_display_idle(self) -> bool:
+        """Ask the display directly; serialize with PC image transactions."""
+        if not self.is_open() or not self.image_upload_lock.acquire(blocking=False):
+            return False
+        try:
+            import socket
+            self.upload_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.upload_sock.bind((self.LOCAL_IP, 0))
+            body = self._refresh_display_view(0.8)
+            return not decode_view(body)["busy"]
+        except (OSError, TimeoutError, RuntimeError, ValueError):
+            return False
+        finally:
+            if self.upload_sock is not None:
+                self.upload_sock.close()
+                self.upload_sock = None
+            self.image_upload_lock.release()
+
     def upload_image(self, rgb_top_down: bytes, width: int, height: int,
                      pcm: bytes = b"") -> dict:
         """Send a PC-decoded image through the display board's normal frame writer."""
@@ -1547,8 +1574,16 @@ def _upload_image_request():
 
 @app.route("/api/eth/video/status")
 def api_eth_video_status():
+    global VIDEO_RELEASE_PENDING
     with VIDEO_LOCK:
-        return jsonify(_video_status_locked())
+        status = _video_status_locked()
+        pending = VIDEO_RELEASE_PENDING
+    if pending and eth_link.query_display_idle():
+        with VIDEO_LOCK:
+            if VIDEO_PROCESS is None:
+                VIDEO_RELEASE_PENDING = False
+            status = _video_status_locked()
+    return jsonify(status)
 
 
 @app.route("/api/eth/video/start", methods=["POST"])
@@ -1601,7 +1636,7 @@ def api_eth_video_start():
             # Decode ahead off the time-critical UDP send loop. At 640x360
             # RGB565, 16 queued frames use about 7 MiB of PC RAM.
             command = [sys.executable, str(VIDEO_SCRIPT), "--input", temp_name,
-                       "--frames", "0", "--quiet", "--ffmpeg", ffmpeg,
+                       "--frames", "0", "--once", "--quiet", "--ffmpeg", ffmpeg,
                        "--prefetch", str(video_prefetch),
                        "--status-file", VIDEO_STATUS_PATH,
                        "--width", str(video_width), "--height", str(video_height),"--window",str(video_window),"--require-ready"]
@@ -1633,7 +1668,7 @@ def api_eth_video_start():
 @app.route("/api/eth/video/stop", methods=["POST"])
 def api_eth_video_stop():
     stop_video_sender()
-    return jsonify({"ok": True, "active": False})
+    return jsonify({"ok": True, "active": VIDEO_RELEASE_PENDING, "state": "releasing" if VIDEO_RELEASE_PENDING else "idle"})
 
 
 @app.route("/api/stream")
