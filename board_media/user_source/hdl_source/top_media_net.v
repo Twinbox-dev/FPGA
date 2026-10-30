@@ -11,7 +11,9 @@ module top (
     output wire eth_phy_reset,
     output wire sd_clk,
     inout  wire sd_cmd,
-    input  wire [3:0] sd_dat
+    input  wire [3:0] sd_dat,
+    inout  wire sensor_scl,
+    inout  wire sensor_sda
 );
     reg boot_rst=1;
     always @(posedge clk) if(rst_n)boot_rst<=0;
@@ -81,6 +83,10 @@ module top (
     wire [4:0] view_current_index;
     wire view_current_valid,view_status_valid;
     wire [127:0] view_status_body;
+    wire sensor_snapshot_request,sensor_snapshot_release_toggle,sensor_snapshot_done_toggle;
+    wire [335:0] sensor_snapshot_bus;
+    reg sensor_query_toggle,sensor_snapshot_ready,sensor_snapshot_seen;
+    reg [2:0] sensor_snapshot_done_sync;
     wire job_start,job_snapshot,job_previous,job_ready,job_done;
     wire [4:0] job_index;
     wire [1:0] job_layout,job_window;
@@ -175,6 +181,29 @@ module top (
         .image_width(image_width),.image_height(image_height),.frame_data(frame_data),.frame_valid(frame_valid),
         .frame_ready(frame_ready),.source_status(image_source_status),.tap_val(tap_val),.tap_end(tap_end),.tap_word(tap_word)
     );
+
+    // Sensor I2C runs from the fixed 50 MHz board clock. Its sampled raw bus
+    // crosses to the Ethernet application domain only on an explicit query.
+    media_sensor_capture u_sensor_capture (
+        .clk(clk),.rst(media_sd_rst),.sensor_scl(sensor_scl),.sensor_sda(sensor_sda),
+        .snapshot_request_toggle(sensor_query_toggle),
+        .snapshot_release_toggle(sensor_snapshot_release_toggle),
+        .snapshot_done_toggle(sensor_snapshot_done_toggle),.snapshot_data(sensor_snapshot_bus)
+    );
+    always @(posedge app_clk) begin
+        if(media_app_rst)begin
+            sensor_query_toggle<=0;sensor_snapshot_done_sync<=0;sensor_snapshot_seen<=0;
+            sensor_snapshot_ready<=0;
+        end else begin
+            if(sensor_snapshot_request)sensor_query_toggle<=~sensor_query_toggle;
+            sensor_snapshot_done_sync<={sensor_snapshot_done_sync[1:0],sensor_snapshot_done_toggle};
+            sensor_snapshot_ready<=0;
+            if(sensor_snapshot_done_sync[2]!=sensor_snapshot_seen)begin
+                sensor_snapshot_seen<=sensor_snapshot_done_sync[2];
+                sensor_snapshot_ready<=1;
+            end
+        end
+    end
     reg [1:0] clear_sync,busy_sync,error_sync,prepared_sync,done_sync;
     reg [2:0] mounted_sync;
     // Playlist buses only change during mount. Two destination registers plus
@@ -287,6 +316,9 @@ module top (
         .uart_cmd_ready(serial_cmd_ready),.uart_source_lock(serial_source_lock),
         .view_busy(view_busy),.uart_cmd_was_busy(serial_cmd_was_busy),
         .layout_request(view_layout_request),.requested_layout(view_requested_layout),.image_touch_request(view_touch_request),
+        .sensor_snapshot_request(sensor_snapshot_request),.sensor_snapshot_ready(sensor_snapshot_ready),
+        .sensor_snapshot_release_toggle(sensor_snapshot_release_toggle),
+        .sensor_snapshot_data(sensor_snapshot_bus),
         .uart_tx_ready(usb_tx_ready),.bt_tx_ready(bt_tx_ready),
         .uart_tx_req(usb_tx_req),.bt_tx_req(bt_tx_req),.uart_tx_pkt(serial_tx_pkt),
         .sd_diag_flags(sd_diag_s1),.sd_init_debug_word(sd_debug_s1),

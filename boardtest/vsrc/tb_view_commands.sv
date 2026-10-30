@@ -24,7 +24,9 @@ module tb_view_commands;
         .auto_on(),.auto_period_s(),.volume(),.brightness(),.contrast(),.effect(),.cv_mode(),.osd_mode(),
         .spectrum_on(),.spectrum_sensitivity(),.last_control_error(error),
         .view_busy(view_busy),.uart_cmd_was_busy(was_busy),.layout_request(lr),
-        .image_touch_request(touch),.requested_layout(requested));
+        .image_touch_request(touch),.requested_layout(requested),
+        .sensor_snapshot_request(),.sensor_snapshot_release_toggle(),
+        .sensor_snapshot_ready(1'b0),.sensor_snapshot_data(336'd0));
     always @(posedge clk)begin
         if(nt)nexts<=nexts+1;if(pt)prevs<=prevs+1;
         if(lr)begin layouts<=layouts+1;last_layout<=requested;end

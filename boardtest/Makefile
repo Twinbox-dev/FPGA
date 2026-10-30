@@ -43,12 +43,20 @@ smoke: $(SIM)
 paircheck: $(SIM)
 	SIM_PAIR=1 CARDS=card_diag ../scripts/run_all_sims.sh
 
-.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront media-net-lite media-net-lite-app dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button
+.PHONY: run clean regress smoke paircheck lean-smoke readeng framepath arbrace memdump writeprobe vdelay axis uart ethfront media-net-lite media-net-lite-app dualboardcmd mediamux cmdarb pulsebar spectrum-unit gt911-unit media-protocol media-writer media-control media-tx media-audio-playback media-display-path ctrlset media-frame-format media-frame-pad media-bmp-format media-tx-gap media-packet-drain media-single-step media-button media-sensor media-sensor-query
 run: $(SIM)
 	./$(SIM) $(CARD)
 
 clean:
 	rm -rf build_board
+
+media-sensor:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_sensor_capture vsrc/tb_media_sensor_capture.sv ../board_media/user_source/hdl_source/media_sensor_capture.v ../board_media/user_source/hdl_source/sensor_i2c_transfer.v ../board_media/user_source/hdl_source/sensor_i2c_byte.v --Mdir build_media_sensor -o sim_media_sensor
+	./build_media_sensor/sim_media_sensor
+
+media-sensor-query:
+	$(VERILATOR) --binary --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_sensor_query vsrc/tb_media_sensor_query.sv ../board_media/user_source/hdl_source/media_control_core.v ../board_media/user_source/hdl_source/subtitle_cmd.v --Mdir build_media_sensor_query -o sim_media_sensor_query
+	./build_media_sensor_query/sim_media_sensor_query
 
 # 读/写引擎真实 RTL 级自检（boardtest 主仿真用 C++ 模型替代这两个引擎，
 # 写翻转/会话抢占类 bug 在主仿真不可见——2026-09-27 板级两连 bug 后补）

@@ -162,6 +162,7 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
         "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44, "i": 0x49,
+        "z": 0x5A,
         "0": 0x30, "1": 0x31, "2": 0x32,
         "3": 0x33, "4": 0x34, "5": 0x35,
         "6": 0x36, "7": 0x37, "8": 0x38,
@@ -173,7 +174,7 @@ HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一
         "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "当前显示图片快照",
         "0": "直接切", "1": "淡入淡出", "2": "滑动转场",
         "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示",
-        "i": "SD 卡状态诊断"}
+        "i": "SD 卡状态诊断", "z": "读取传感器原始数据"}
 
 HELP.update({"r": "\u539f\u56fe\u76f4\u901a", "g": "\u7070\u5ea6", "b": "\u4e8c\u503c\u5316",
              "e": "Sobel \u68af\u5ea6", "h": "\u56fe\u50cf\u9510\u5316", "w": "\u96ea\u82b1"})
@@ -785,6 +786,12 @@ class EthTransport:
         self.subtitle_result = None
         self.subtitle_result_code = 0
         self.subtitle_result_tag = 0
+        self.sensor_query_lock = threading.Lock()
+        self.sensor_condition = threading.Condition()
+        self.sensor_waiting = False
+        self.sensor_active_sequence = None
+        self.sensor_chunks = {}
+        self.sensor_result = None
         self.image_upload_lock = threading.Lock()
         self.image_upload_active = False
         self.upload_sock = None
@@ -887,6 +894,79 @@ class EthTransport:
         except Exception as e:
             return f"UDP 发送到 {self.board}:{self.BOARD_PORT} 失败: {e}"
         return ""
+
+    def read_sensor_snapshot(self, timeout: float = 4.0):
+        """Query the media board for raw BMP280/AHT10 bytes; no conversion."""
+        if self.sock is None:
+            return None, "Ethernet is disconnected"
+        if not self.sensor_query_lock.acquire(blocking=False):
+            return None, "A sensor query is already in progress"
+        try:
+            with self.sensor_condition:
+                self.sensor_waiting = True
+                self.sensor_active_sequence = None
+                self.sensor_chunks = {}
+                self.sensor_result = None
+            error = self.send_key("z")
+            if error:
+                with self.sensor_condition:
+                    self.sensor_waiting = False
+                return None, error
+            deadline = time.monotonic() + timeout
+            with self.sensor_condition:
+                while self.sensor_result is None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        self.sensor_waiting = False
+                        self.sensor_active_sequence = None
+                        self.sensor_chunks = {}
+                        return None, "Timed out waiting for seven sensor data packets"
+                    self.sensor_condition.wait(remaining)
+                raw, sequence = self.sensor_result
+                self.sensor_waiting = False
+                self.sensor_active_sequence = None
+                self.sensor_chunks = {}
+            flags = raw[2]
+            return {
+                "sequence": sequence,
+                "bmp_address": f"0x{raw[0] & 0x7F:02X}",
+                "bmp_id": f"0x{raw[1]:02X}",
+                "flags": {
+                    "initialized": bool(flags & 0x80),
+                    "bmp_present": bool(flags & 0x40),
+                    "bmp_sample_valid": bool(flags & 0x20),
+                    "aht_initialized": bool(flags & 0x10),
+                    "aht_sample_valid": bool(flags & 0x08),
+                    "busy_timeout": bool(flags & 0x04),
+                    "i2c_timeout": bool(flags & 0x02),
+                    "init_error": bool(flags & 0x01),
+                },
+                "bmp_calibration_raw": raw[3:27].hex(" "),
+                "bmp_sample_raw": raw[27:33].hex(" "),
+                "aht_sample_raw": raw[33:39].hex(" "),
+            }, None
+        finally:
+            self.sensor_query_lock.release()
+
+    def _capture_sensor_chunk(self, packet: bytes):
+        if len(packet) != 8:
+            return
+        sequence, index = packet[0], packet[1]
+        if index >= 7:
+            return
+        with self.sensor_condition:
+            if not self.sensor_waiting:
+                return
+            if self.sensor_active_sequence is None:
+                self.sensor_active_sequence = sequence
+            elif sequence != self.sensor_active_sequence:
+                return
+            self.sensor_chunks[index] = packet[2:8]
+            if all(chunk in self.sensor_chunks for chunk in range(7)):
+                payload = b"".join(self.sensor_chunks[chunk] for chunk in range(7))
+                self.sensor_result = (payload, sequence)
+                self.sensor_waiting = False
+                self.sensor_condition.notify_all()
 
     def send_subtitle(self, value: str):
         if self.sock is None:
@@ -1317,6 +1397,10 @@ class EthTransport:
                     if kind == 0x48:
                         publish_view(body, self.broadcast)
                     continue
+            if (n == 16 and data[:4] == b"\xAA\xBB\xCC\xDD" and
+                    data[4:8] == b"\x00\x4D\x00\x08"):
+                self._capture_sensor_chunk(bytes(data[8:16]))
+                continue
             if n == 24 and data[:8] == b"\xAA\xBB\xCC\xDD\x00\x03\x00\x10":
                 publish_view(bytes(data[8:24]), self.broadcast)
                 continue
@@ -1495,6 +1579,19 @@ def api_cmd():
     if err:
         return jsonify({"ok": False, "error": err}), 400
     return jsonify({"ok": True})
+
+
+@app.route("/api/sensor/raw", methods=["POST"])
+def api_sensor_raw():
+    """Read a coherent raw BMP280/AHT10 snapshot from the media board."""
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "Sensor query is unavailable while video owns the media link"}), 409
+    result, error = eth_link.read_sensor_snapshot()
+    if error:
+        status = 503 if not eth_link.is_open() else 504 if "Timed out" in error else 409
+        return jsonify({"ok": False, "error": error}), status
+    return jsonify({"ok": True, "raw": result})
 
 
 @app.route("/api/subtitle", methods=["POST"])

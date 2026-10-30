@@ -61,7 +61,11 @@ module media_control_core #(
     output reg [7:0] last_control_error,
     input wire view_busy,uart_cmd_was_busy,
     output reg layout_request,image_touch_request,
-    output reg [1:0] requested_layout
+    output reg [1:0] requested_layout,
+    output reg sensor_snapshot_request,
+    output reg sensor_snapshot_release_toggle,
+    input wire sensor_snapshot_ready,
+    input wire [335:0] sensor_snapshot_data
 );
     localparam [4:0] IDLE=0, WAIT_REQ_TX=1, WAIT_SET_REPLY=2,
                      WAIT_STATUS_REPLY=3, WAIT_STATUS_TX=4,
@@ -70,7 +74,8 @@ module media_control_core #(
                      WAIT_UART_READY=9, WAIT_UART_BUSY=10, WAIT_UART_DONE=11,
                      SUB_BEGIN_WAIT_TX=12, SUB_DATA_PREFETCH=13,
                      SUB_DATA_SEND=14, SUB_DATA_WAIT_TX=15,
-                     SUB_END_WAIT_TX=16, SUB_PACKET_GAP=17;
+                     SUB_END_WAIT_TX=16, SUB_PACKET_GAP=17,
+                     SENSOR_WAIT_DATA=18, SENSOR_SEND=19, SENSOR_WAIT_TX=20;
     reg [4:0] state, after_req;
     reg cmd_seen,pending_uart,uart_stage,uart_busy_seen,suppress_cmd_ack;
     reg [1:0] pending_source,subtitle_source;
@@ -105,6 +110,21 @@ module media_control_core #(
     reg [7:0] display_status_seq, display_status_volume, display_status_brightness;
     reg [7:0] display_status_contrast, display_status_effect, display_status_osd;
     reg [7:0] display_status_spectrum, display_status_sensitivity;
+    reg [2:0] sensor_chunk_index;
+    reg [7:0] sensor_query_sequence;
+    reg [47:0] sensor_chunk_mux;
+    always @* begin
+        case(sensor_chunk_index)
+            3'd0:sensor_chunk_mux=sensor_snapshot_data[47:0];
+            3'd1:sensor_chunk_mux=sensor_snapshot_data[95:48];
+            3'd2:sensor_chunk_mux=sensor_snapshot_data[143:96];
+            3'd3:sensor_chunk_mux=sensor_snapshot_data[191:144];
+            3'd4:sensor_chunk_mux=sensor_snapshot_data[239:192];
+            3'd5:sensor_chunk_mux=sensor_snapshot_data[287:240];
+            3'd6:sensor_chunk_mux=sensor_snapshot_data[335:288];
+            default:sensor_chunk_mux=48'd0;
+        endcase
+    end
 
     wire eth_event=cmd_pending && !cmd_seen;
     wire serial_source_match=!subtitle_active || (uart_cmd_source==subtitle_source);
@@ -315,16 +335,21 @@ module media_control_core #(
             subtitle_checksum<=0;subtitle_calc_checksum<=0;subtitle_rx_count<=0;
             subtitle_offset<=0;subtitle_attempts<=0;subtitle_display_diag<=0;
             subtitle_gap_to_end<=0;subtitle_gap_count<=0;
+            sensor_chunk_index<=0;sensor_query_sequence<=0;
             tx_done_ref<=0;timeout_count<=0;request_attempts<=0;
             cmd_ack_t<=0;tx_tog<=0;tx_type<=16'h0002;tx_payload_len<=8;tx_pkt<=0;
             debug_request<=0;pc_snapshot_request<=0;auto_on<=0;auto_period_s<=1;volume<=8;brightness<=4;
+            sensor_snapshot_request<=0;
+            sensor_snapshot_release_toggle<=0;
             contrast<=2;effect<=0;cv_mode<=0;osd_mode<=1;spectrum_on<=0;spectrum_sensitivity<=1;last_control_error<=0;
         end else begin
-            debug_request<=0;pc_snapshot_request<=0;uart_tx_req<=0;bt_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
+            debug_request<=0;pc_snapshot_request<=0;sensor_snapshot_request<=0;
+            uart_tx_req<=0;bt_tx_req<=0;image_next_pulse<=0;image_prev_pulse<=0;
             layout_request<=0;image_touch_request<=0;
             if(local_auto_toggle)auto_on<=~auto_on;
             if(!cmd_pending)cmd_seen<=0;
-            if(state==WAIT_SET_REPLY || state==WAIT_STATUS_REPLY || state==WAIT_REQ_TX) begin
+            if(state==WAIT_SET_REPLY || state==WAIT_STATUS_REPLY || state==WAIT_REQ_TX ||
+               state==SENSOR_WAIT_DATA || state==SENSOR_WAIT_TX) begin
                 if(timeout_count<WAIT_LIMIT)timeout_count<=timeout_count+1'b1;
             end
             case(state)
@@ -405,6 +430,16 @@ module media_control_core #(
                         8'h3C:begin auto_period_s<=(auto_period_s > 4'd1) ? (auto_period_s-4'd1) : 4'd1;state<=PREP_ACK;end
                         8'h41:begin auto_on<=~auto_on;state<=PREP_ACK;end
                         8'h53:start_status_request(event_cmd);
+                        8'h5A:begin
+                            if(event_from_uart)state<=PREP_ACK;
+                            else begin
+                                sensor_snapshot_request<=1'b1;
+                                sensor_chunk_index<=0;
+                                sensor_query_sequence<=sensor_query_sequence+1'b1;
+                                timeout_count<=0;
+                                state<=SENSOR_WAIT_DATA;
+                            end
+                        end
                         8'h44:begin
                             debug_request<=event_from_uart;
                             if(!event_from_uart)pc_snapshot_request<=1'b1;
@@ -479,6 +514,41 @@ module media_control_core #(
                         cv_mode<=display_status_volume[6:4];
                         state<=PREP_STATUS;
                     end else if(timeout_count>=WAIT_LIMIT) begin last_control_error<=4;state<=PREP_STATUS;end
+                end
+                SENSOR_WAIT_DATA:begin
+                    if(sensor_snapshot_ready)begin
+                        sensor_chunk_index<=0;
+                        timeout_count<=0;
+                        state<=SENSOR_SEND;
+                    end else if(timeout_count>=WAIT_LIMIT)begin
+                        sensor_snapshot_release_toggle<=~sensor_snapshot_release_toggle;
+                        last_control_error<=1;state<=PREP_ACK;
+                    end
+                end
+                SENSOR_SEND:begin
+                    // Sensor payload is exactly 42 bytes: flags/ID/address,
+                    // BMP280 calibration, BMP raw sample, then AHT10 raw bytes.
+                    // Seven 6-byte chunks fit the existing 8-byte control TX.
+                    tx_type<=16'h004D;tx_payload_len<=8;
+                    tx_pkt<={sensor_chunk_mux,{5'd0,sensor_chunk_index},sensor_query_sequence};
+                    tx_done_ref<=tx_done_tog;tx_tog<=~tx_tog;
+                    timeout_count<=0;state<=SENSOR_WAIT_TX;
+                end
+                SENSOR_WAIT_TX:begin
+                    if(tx_done_tog!=tx_done_ref)begin
+                        if(sensor_chunk_index==3'd6)begin
+                            sensor_snapshot_release_toggle<=~sensor_snapshot_release_toggle;
+                            cmd_ack_t<=~cmd_ack_t;
+                            state<=IDLE;
+                        end else begin
+                            sensor_chunk_index<=sensor_chunk_index+1'b1;
+                            state<=SENSOR_SEND;
+                        end
+                        timeout_count<=0;
+                    end else if(timeout_count>=WAIT_LIMIT)begin
+                        sensor_snapshot_release_toggle<=~sensor_snapshot_release_toggle;
+                        last_control_error<=1;cmd_ack_t<=~cmd_ack_t;state<=IDLE;
+                    end
                 end
                 SUB_BEGIN_WAIT_TX:if(tx_done_tog!=tx_done_ref)begin
                     subtitle_offset<=0;
