@@ -1,21 +1,21 @@
 {
-  "built_at": "2026-10-28T18:13:44.5472829+08:00",
+  "built_at": "2026-10-30T15:16:31.4994407+08:00",
   "product_baseline": "dual-V3-beta",
   "cleanroom_reference": "ba1f949",
   "strategy": "area",
   "bit": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit",
-  "bit_sha256": "FEDB509F3306AD691C2C0606CD132E7FB6FF21E9A8189EF761276A4B72DC6824",
+  "bit_sha256": "4F1BCBAA8A8FCB2B3D3282438CCBCC1F8BAAD949A3722EA0702E361107E68912",
   "profile": {
-    "head_rows": 4,
-    "width": 640,
-    "audio": "24k_u8_mono",
-    "cv_enabled": true,
-    "cv_neighborhood_enabled": false,
     "link_diagnostics": 0,
+    "cv_enabled": true,
+    "window": 512,
+    "head_rows": 4,
     "height": 360,
     "spectrum_enabled": true,
-    "statistics": 0,
-    "window": 512
+    "audio": "24k_u8_mono",
+    "cv_neighborhood_enabled": false,
+    "width": 640,
+    "statistics": 0
   },
   "gate_overrides": [
     "opt_area=high",
@@ -31,11 +31,11 @@
   "sources": [
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0.al",
-      "sha256": "592AAF63EC8DA994FF2AEE5DBD70FDAB41F940B222E8E5396E2C92FBFD03C88D"
+      "sha256": "C4B4D2895C70E24BF021DF110BF4A5910C64E3236B77FAECA141C549B2C715D4"
     },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.prj",
-      "sha256": "6718B35D9B2C62F3718F1A7034C0DC0D3A28455ED919197253B9D5256659B269"
+      "sha256": "3C20BF5821E6DAF715FA108107C14E134A1234070974BA5718D439E8C6DC1FCC"
     },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/settings.cfg",
@@ -43,7 +43,7 @@
     },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/syn_1/lab_ex5_i2s_v1.0.prj",
-      "sha256": "6718B35D9B2C62F3718F1A7034C0DC0D3A28455ED919197253B9D5256659B269"
+      "sha256": "3C20BF5821E6DAF715FA108107C14E134A1234070974BA5718D439E8C6DC1FCC"
     },
     {
       "path": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/syn_1/settings.cfg",
@@ -72,6 +72,26 @@
     {
       "path": "board_display/user_source/hdl_source/ETH/BUFGMUX.v",
       "sha256": "C78AED520E1126721F61A0DC8AE5166C1EBD3B5B5D18C86FDD820832F123FB91"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/IDDR.v",
+      "sha256": "CBF4C3C34DAFE672AA7CCC010440E01FC7DBDDF428BDE868319D8D0580208F53"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/ODDR.v",
+      "sha256": "D3EDB14DAEBDCB028E1CB3A8C6C944556FA28568C04E8A0193C868F654AD3A84"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/RAMB16_S9_S9.v",
+      "sha256": "457278A570CF5A9F6E8280A4C2860154A785E7E110D46F5E6F9C2AA263FE4287"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE.ipc",
+      "sha256": "01938DBFCEE94C85A96A4A5FB68192138DA4C87F843C980DC75969B966BD3CA8"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE_gate.v",
+      "sha256": "710ECF1910800788C3E1315A9F624C712AB481BDD9FFA90A585822D06B0BF1B9"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/clk_gen_rst_gen.v",
@@ -122,10 +142,6 @@
       "sha256": "3EE65898A6DEAB7F79F1CE5C901566D1B0A14EFD46613CBF38D58B1B675A16D9"
     },
     {
-      "path": "board_display/user_source/hdl_source/ETH/IDDR.v",
-      "sha256": "CBF4C3C34DAFE672AA7CCC010440E01FC7DBDDF428BDE868319D8D0580208F53"
-    },
-    {
       "path": "board_display/user_source/hdl_source/ETH/media_display_control_rx.v",
       "sha256": "3F4C3AB5838A798FF1B1A9A300E5189BD05E6CC5048919AF67114D6CA0594A77"
     },
@@ -150,16 +166,8 @@
       "sha256": "A07ACFF6A98A868E442862E33C0BBA56E3A9E76C3BB269533BD8056DDB959E1A"
     },
     {
-      "path": "board_display/user_source/hdl_source/ETH/ODDR.v",
-      "sha256": "D3EDB14DAEBDCB028E1CB3A8C6C944556FA28568C04E8A0193C868F654AD3A84"
-    },
-    {
       "path": "board_display/user_source/hdl_source/ETH/pll_gen.v",
       "sha256": "8A75254A88CA4224314666F9D17E5A492AEB22B392FF7976629922B5731233D8"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/ETH/RAMB16_S9_S9.v",
-      "sha256": "457278A570CF5A9F6E8280A4C2860154A785E7E110D46F5E6F9C2AA263FE4287"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/rgmii_interface.v",
@@ -176,14 +184,6 @@
     {
       "path": "board_display/user_source/hdl_source/ETH/temac_clk_gen.v",
       "sha256": "B1B3474B1A97CC96A73297BE56C4D3FC8322891CD3D6F83B3560D2FE95C126D3"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE.ipc",
-      "sha256": "01938DBFCEE94C85A96A4A5FB68192138DA4C87F843C980DC75969B966BD3CA8"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/ETH/TEMAC_CORE_gate.v",
-      "sha256": "710ECF1910800788C3E1315A9F624C712AB481BDD9FFA90A585822D06B0BF1B9"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/tx_client_fifo.v",
@@ -231,7 +231,11 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_image_pipeline.v",
-      "sha256": "7CDBCAC5B511C53F4F9D6EC69989AAFE74E2A92B3FE19F9138B81C9E826D4663"
+      "sha256": "BBB4B04BB00C8C85077708D95FAFB62C9BAA168AAC99803497382F6DDC80BD32"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/ETH/view_nearest_shrink.v",
+      "sha256": "8B20A3F34C6B01FBB0A1E2AB2499B3539BB1334DA287664DAD6E4E604B9BBB85"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_protocol_rx.v",
@@ -239,7 +243,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_scale_geometry.v",
-      "sha256": "6CC23F3DB0E5051A99A3BC6340AA9400CE4B836CB2E26D34C6C39381ADE1609F"
+      "sha256": "161F4AE9C2BE65EB8A8B591CAEF3BE39FF4B53908922E4F51E2246652FEAB683"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_scan_address.v",
@@ -256,30 +260,6 @@
     {
       "path": "board_display/user_source/hdl_source/ETH/view_write_address.v",
       "sha256": "631A861C1C49FA1DDC3206554691214137C5D5ECB4F31650D779FF896D6EA28A"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/hdmi_phy_warpper.v",
-      "sha256": "A9A35C71EEC277A136FA436F58904B3EE90B1C0E29206B77256B29820D185B8D"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/hdmi1.4b_transmitter_core/hdmi_1_4b_transmitter_core_wrapper.enc.v",
-      "sha256": "867E0B0BDD874BC383D00918C9E1BE3FE01EDF41F343B6A0D73E262776596A63"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/include/global_def.v",
-      "sha256": "13388DF3E0A753F928FD394F41B931A7E372ADECE20C7F79C07C0B19B589067F"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/include/sdr_as_ram.enc.v",
-      "sha256": "767DBDFBD83D42223B77DFA7DEAB42CE8216A8FD6F6CB41B7E7593D9A345BA57"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/include/sdr_init_ref.enc.v",
-      "sha256": "6DA5945F4AF793610D0D64C65C7E5D2D1C86ED4C11BC5FDEACD27EB03178B9F6"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/include/sdr_wrrd.enc.v",
-      "sha256": "C7D7FE07D75F66AA88D9F986B3006319C995162434F104F9990664B374CDFDD2"
     },
     {
       "path": "board_display/user_source/hdl_source/IP/afifo_16_256.tcl",
@@ -356,14 +336,6 @@
     {
       "path": "board_display/user_source/hdl_source/IP/video_pll.vhd",
       "sha256": "4315939B2C1617DA9D7A058861BC77CD376C0BA563C56A8D263F616EBF28FA3E"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/key_remove_shakes.v",
-      "sha256": "8832F59E7BA94BFB8CF31E4F5A772EF7177D5257A5A2532D53CBFA1D9B7F5CD9"
-    },
-    {
-      "path": "board_display/user_source/hdl_source/lane_lvds_10_1.v",
-      "sha256": "DE9529321354F04837E051D0EC1681CF44783D4BE3284703A788E081147500BC"
     },
     {
       "path": "board_display/user_source/hdl_source/SD/ax_debounce.v",
@@ -520,6 +492,38 @@
     {
       "path": "board_display/user_source/hdl_source/SD/video_timing_data.v",
       "sha256": "C6F75501E98DD5995F687AAFB40455BEFFE45B426137B5089A73AC3A036F7282"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/hdmi1.4b_transmitter_core/hdmi_1_4b_transmitter_core_wrapper.enc.v",
+      "sha256": "867E0B0BDD874BC383D00918C9E1BE3FE01EDF41F343B6A0D73E262776596A63"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/hdmi_phy_warpper.v",
+      "sha256": "A9A35C71EEC277A136FA436F58904B3EE90B1C0E29206B77256B29820D185B8D"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/include/global_def.v",
+      "sha256": "13388DF3E0A753F928FD394F41B931A7E372ADECE20C7F79C07C0B19B589067F"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/include/sdr_as_ram.enc.v",
+      "sha256": "767DBDFBD83D42223B77DFA7DEAB42CE8216A8FD6F6CB41B7E7593D9A345BA57"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/include/sdr_init_ref.enc.v",
+      "sha256": "6DA5945F4AF793610D0D64C65C7E5D2D1C86ED4C11BC5FDEACD27EB03178B9F6"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/include/sdr_wrrd.enc.v",
+      "sha256": "C7D7FE07D75F66AA88D9F986B3006319C995162434F104F9990664B374CDFDD2"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/key_remove_shakes.v",
+      "sha256": "8832F59E7BA94BFB8CF31E4F5A772EF7177D5257A5A2532D53CBFA1D9B7F5CD9"
+    },
+    {
+      "path": "board_display/user_source/hdl_source/lane_lvds_10_1.v",
+      "sha256": "DE9529321354F04837E051D0EC1681CF44783D4BE3284703A788E081147500BC"
     },
     {
       "path": "board_display/user_source/hdl_source/startup_pulse.v",

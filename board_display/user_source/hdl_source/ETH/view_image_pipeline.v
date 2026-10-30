@@ -21,7 +21,7 @@ module view_image_pipeline(
     wire [11:0] width,height;
     wire [31:0] pixels;
     wire pad_ready;
-    view_bilinear_shrink u_shrink(.clk(clk),.rst(rst),.frame_begin(frame_begin),
+    view_nearest_shrink u_shrink(.clk(clk),.rst(rst),.frame_begin(frame_begin),
         .frame_end(frame_end),.source_width(image_width),.source_height(image_height),
         .layout(layout),.in_data(in_data),.in_valid(in_valid && !in_audio),
         .in_ready(shrink_take),.out_frame_begin(shrink_begin),.out_width(width),

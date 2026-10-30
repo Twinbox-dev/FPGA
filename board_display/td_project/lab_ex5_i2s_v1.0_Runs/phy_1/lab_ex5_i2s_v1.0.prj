@@ -538,7 +538,7 @@
                     <Attr Name="CompileOrder" Val="72"/>
                 </FileInfo>
             </File>
-            <File Path="../../../user_source/hdl_source/ETH/view_bilinear_shrink.v">
+            <File Path="../../../user_source/hdl_source/ETH/view_nearest_shrink.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>

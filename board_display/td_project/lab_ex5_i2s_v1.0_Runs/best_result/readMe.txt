@@ -1,4 +1,4 @@
-The implemented result of phy_1 is saved as best result.
-
-SWNS: -5.699ns, STNS: -3124.687ns.
-HWNS: -3.054ns, HTNS: -71.878ns.
+Accepted 2026-10-30: nearest-neighbour multiview scaler, based on d281ca0.
+Same bit as phy_1, CLI cable0 SRAM and user board acceptance passed.
+Display DFT retained; Sobel/sharpen remain disabled as in d281ca0.
+See docs/resource_optimization_20261030.md and td_project/video_build_manifest.json.

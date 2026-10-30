@@ -443,7 +443,7 @@ view-usb:
 
 .PHONY: view-image-pipeline
 view-image-pipeline:
-	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_bilinear_shrink -GPIPELINE=1 vsrc/tb_view_bilinear_shrink.sv ../board_display/user_source/hdl_source/ETH/view_image_pipeline.v ../board_display/user_source/hdl_source/ETH/view_bilinear_shrink.v ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v --Mdir build_view_image_pipeline -o sim_view_image_pipeline
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_bilinear_shrink -GPIPELINE=1 vsrc/tb_view_bilinear_shrink.sv diagnostics/bilinear_reference/view_image_pipeline.v ../board_display/user_source/hdl_source/ETH/view_bilinear_shrink.v ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v --Mdir build_view_image_pipeline -o sim_view_image_pipeline
 	./build_view_image_pipeline/sim_view_image_pipeline
 
 .PHONY: view-image-jobs
@@ -664,3 +664,12 @@ video-ipv4-sum:
 video-stage1-controls:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_stage1_controls vsrc/tb_video_stage1_controls.sv ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_video_stage1_controls -o sim_video_stage1_controls
 	./build_video_stage1_controls/sim_video_stage1_controls
+
+# Nearest-neighbour production scaler; historical bilinear tests remain intact.
+.PHONY: view-nearest view-nearest-pipeline
+view-nearest:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_nearest_shrink vsrc/tb_view_nearest_shrink.sv ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/view_nearest_shrink.v --Mdir build_view_nearest -o sim_view_nearest
+	./build_view_nearest/sim_view_nearest
+view-nearest-pipeline:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_nearest_shrink -GPIPELINE=1 vsrc/tb_view_nearest_shrink.sv ../board_display/user_source/hdl_source/ETH/view_image_pipeline.v ../board_display/user_source/hdl_source/ETH/view_nearest_shrink.v ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v --Mdir build_view_nearest_pipeline -o sim_view_nearest_pipeline
+	./build_view_nearest_pipeline/sim_view_nearest_pipeline

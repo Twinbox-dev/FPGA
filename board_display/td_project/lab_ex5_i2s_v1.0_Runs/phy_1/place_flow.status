@@ -1,4 +1,4 @@
-Location         : C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs\phy_1
+Location         : C:\Users\23506\Desktop\anlogic\boardtest\captures\resource_experiments\nearest_20261030\board_display\td_project\lab_ex5_i2s_v1.0_Runs\phy_1
 Running with     : Tang Dynasty v6.2.168116
                    Copyright (c) 2012-2025 Anlogic Inc.
 Top Model        : top
@@ -6,16 +6,16 @@ Device           : EG4S20BG256
 Speed            : NA
 
 Timing Mode      : manhattan
-Setup            : WNS -5793ps  TNS  -835250ps  NUM_FEPS   917
-Hold             : WNS   -14ps  TNS     -135ps  NUM_FEPS    12
+Setup            : WNS -6843ps  TNS -1117974ps  NUM_FEPS   913
+Hold             : WNS   -11ps  TNS      -77ps  NUM_FEPS     7
 
 Flow Statistics  :
 ----------------------------------------------------------------------------------------------------
      command     |  #calls  |   wall time   |  cpu time(s)  |  used memory(mb)  |  peak memory(mb)  
 ----------------------------------------------------------------------------------------------------
-      place      |    1     |  1m35s(100%)  |   156(100%)   |       1178        |       1179        
-    import_db    |    1     |    0s(0%)     |     0(0%)     |        287        |        287        
-  import_device  |    1     |    0s(0%)     |     0(0%)     |        89         |        89         
+      place      |    1     |  1m15s(100%)  |   123(100%)   |       1158        |       1158        
+    import_db    |    1     |    0s(0%)     |     0(0%)     |        277        |        277        
+  import_device  |    1     |    0s(0%)     |     0(0%)     |        83         |        83         
 ----------------------------------------------------------------------------------------------------
-      total      |    3     |     1m35s     |      156      |       1178        |       1179        
+      total      |    3     |     1m15s     |      123      |       1158        |       1158        
 ----------------------------------------------------------------------------------------------------
