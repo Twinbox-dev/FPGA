@@ -132,20 +132,22 @@ class DirectVideoApiTests(unittest.TestCase):
 
     def test_restored_capabilities_are_visible_and_available(self):
         metadata = self.client.get("/api/keys").get_json()
-        self.assertEqual(metadata["capabilities"], {"cv": True, "cv_neighborhood": False, "spectrum": True})
+        self.assertEqual(metadata["capabilities"], {"cv": True, "cv_neighborhood": True, "spectrum": True})
         available = {item["key"]: item["available"] for item in metadata["keys"]}
         web.eth_link.send_key = lambda key: None
-        for key in ("g", "b", "w", "q", ";", "'"):
+        for key in ("g", "b", "e", "h", "w", "q", ";", "'"):
             self.assertTrue(available[key])
             response = self.client.post("/api/cmd", json={"mode": "eth", "key": key})
             self.assertEqual(response.status_code, 200)
-        for key in ("e", "h"):
-            self.assertFalse(available[key])
-            response = self.client.post("/api/cmd", json={"mode": "eth", "key": key})
-            self.assertEqual(response.status_code, 409)
         self.assertTrue(available["r"])
         self.assertTrue(available["d"])
         self.assertEqual(self.client.post("/api/cmd", json={"mode": "eth", "key": "r"}).status_code, 200)
+
+    def test_declared_unavailable_cv_is_still_rejected(self):
+        with patch.object(web, "UNAVAILABLE_KEYS", {"e", "h"}):
+            for key in ("e", "h"):
+                response = self.client.post("/api/cmd", json={"mode": "eth", "key": key})
+                self.assertEqual(response.status_code, 409)
 
     def test_spectrum_sensitivity_ack_direction(self):
         increase = web.decode_ack(bytes((0x5A, 0x27, 8, 1, 0, 0, 0, 0x40)))

@@ -3,7 +3,7 @@
 // small BRAM head -> HDMI. There is no per-frame SDRAM commit/scan engine.
 module video_hybrid_pipeline #(
  parameter WIDTH=640,HEIGHT=360,WINDOW=512,LW=$clog2(WINDOW),HEAD_ROWS=8,
- parameter PRIME_ROWS=HEIGHT,INGRESS_PAGES=4,IDLE_TIMEOUT=100000000
+ parameter PRIME_ROWS=HEIGHT,INGRESS_PAGES=4,IDLE_TIMEOUT=100000000,STATUS_ENABLED=1
 )(
  input wire app_clk,mem_clk,pixel_clk,rst,memory_enable,
  input wire sdr_init_done,sdr_busy,sdr_refresh,input wire [20:0] scratch_base,
@@ -29,7 +29,7 @@ module video_hybrid_pipeline #(
  wire desc_valid,desc_start,ing_data_valid;wire [15:0] desc_frame,desc_seq,desc_seed,desc_crc;
  wire [8:0] desc_row;wire [31:0] ing_data;wire [31:0] ingress_good,ingress_bad;
  reg desc_pop;wire ing_read;wire [8:0] ing_index;
- video_row_ingress #(.WIDTH(WIDTH),.PAGES(INGRESS_PAGES)) ingress(
+ video_row_ingress #(.WIDTH(WIDTH),.PAGES(INGRESS_PAGES),.STATUS_ENABLED(STATUS_ENABLED)) ingress(
  .app_clk(app_clk),.app_rst(rst),.row_begin(row_begin),.row_start(row_start),.pixel_write(pixel_write),.row_commit(row_commit),.row_reject(row_reject),
  .row_frame(row_frame),.row_sequence(row_sequence),.pixel_data(pixel_data),.crc_seed(crc_seed),.crc_expected(crc_expected),.row_index(row_index),.pixel_index(pixel_index),
  .source_ready(source_ready),.accepted(ingress_good),.rejected(ingress_bad),.mem_clk(mem_clk),.mem_rst(rst),.desc_pop(desc_pop),.data_read(ing_read),.data_index(ing_index),
@@ -41,7 +41,7 @@ module video_hybrid_pipeline #(
  reg head_we,head_publish,head_publish_good;reg [8:0] head_index;reg [31:0] head_data;reg [15:0] head_pub_seq;
  wire video_missing_pixel;reg [1:0] missing_app_sync;assign video_missing=missing_app_sync[1];
  wire [31:0] head_good,head_bad;wire [15:0] read_good,read_bad;wire [47:0] read_last_bad;
- video_head_cache #(.WIDTH(WIDTH),.HEIGHT(HEIGHT),.DEPTH(HEAD_ROWS),.B32_GROUPS(1),.READ_CRC_ENABLE(1)) head(
+ video_head_cache #(.WIDTH(WIDTH),.HEIGHT(HEIGHT),.DEPTH(HEAD_ROWS),.B32_GROUPS(1),.READ_CRC_ENABLE(STATUS_ENABLED),.STATUS_ENABLED(STATUS_ENABLED)) head(
  .mem_clk(mem_clk),.mem_rst(rst),.session_start(head_session),.stream_enable(active),.primed(primed),.session_base(session_base),
  .write_sequence(prefetch_seq),.publish_sequence(head_pub_seq),.write_en(head_we),.write_index(head_index),.write_data(head_data),.publish(head_publish),.publish_good(head_publish_good),.publish_crc_seed(job_seed),.publish_crc_expected(job_crc),
  .write_ready(head_write_ready),.consumed_mem(head_consumed),.credit_event(),.accepted(head_good),.rejected(head_bad),
@@ -149,8 +149,10 @@ module video_hybrid_pipeline #(
   end else begin
    desc_pop<=0;head_session<=0;head_we<=0;head_publish<=0;meta_reset<=0;mark_valid<=0;mark_invalid<=0;
    gray_consumed<=head_consumed^(head_consumed>>1);
+   if(STATUS_ENABLED)begin
    gray_stats<={port_fault^(port_fault>>1),tag_bad^(tag_bad>>1),crc_bad^(crc_bad>>1),fasts^(fasts>>1),prefetches^(prefetches>>1),spills^(spills>>1)};
    gray_committed<=committed^(committed>>1);gray_dropped<=dropped^(dropped>>1);gray_duplicates<=duplicates^(duplicates>>1);
+   end
    if(consume_event)begin last_consumed<=head_consumed;if(head_consumed<last_consumed)consumed_high<=consumed_high+1'b1;end
    if(active)idle_age<=idle_age+1'b1;
    if(!active||primed)prime_retry_timer<=0;else if(prime_retry_timer<99999)prime_retry_timer<=prime_retry_timer+1'b1;
@@ -178,12 +180,12 @@ module video_hybrid_pipeline #(
      // Repeated row zero reissues READY if its first feedback was lost.
      if(active&&job_start&&job_frame==session_frame&&job_seq==session_base)begin ready_toggle<=~ready_toggle;ready_seq_mem<=session_base;ready_frame_mem<=session_frame;end
      if(new_session)begin
-      if(job_row!=0)begin dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
+      if(job_row!=0)begin if(STATUS_ENABLED) dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
       else if(memory_enable)begin
        session_frame<=job_frame;session_base<=job_seq;epoch<=epoch+1'b1;prefetch_seq<=job_seq;last_consumed<=job_seq;queue_base<=scratch_base;
        active<=1;primed<=0;head_session<=1;meta_reset<=1;have_highest<=0;consumed_high<=0;quiet_count<=WINDOW-1;state<=SESSION;
       end
-     end else if(job_age>=WINDOW)begin dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
+     end else if(job_age>=WINDOW)begin if(STATUS_ENABLED) dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
      else begin query_slot<=job_seq[LW-1:0];query_sequence<=job_seq;query_epoch<=epoch[14:0];query_reference_high<=consumed_high;query_wrap<=job_seq<last_consumed;purpose<=P_INGRESS;state<=Q0;end
     end
     SESSION:if(quiet_count!=0)quiet_count<=quiet_count-1'b1;else begin
@@ -208,8 +210,8 @@ module video_hybrid_pipeline #(
       else begin scan_index<=scan_index+1'b1;query_slot<=next_scan_sequence[LW-1:0];query_sequence<=next_scan_sequence;query_epoch<=epoch[14:0];query_reference_high<=consumed_high;query_wrap<=next_scan_sequence<last_consumed;state<=Q0;end
      end
      P_INGRESS:begin
-      if(job_age>=WINDOW)begin dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
-      else if(query_value)begin duplicates<=duplicates+1'b1;dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
+      if(job_age>=WINDOW)begin if(STATUS_ENABLED) dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
+      else if(query_value)begin if(STATUS_ENABLED) duplicates<=duplicates+1'b1;if(STATUS_ENABLED) dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
       else if(job_seq==prefetch_seq && head_write_ready)state<=FAST_INIT;
       else begin offset<=0;last_prefetch<=0;state<=W_PREP;end
      end
@@ -236,10 +238,10 @@ module video_hybrid_pipeline #(
     FAST_CHECK:begin
      head_publish<=1;head_pub_seq<=job_seq;head_publish_good<=crc_state==job_crc&&job_age<HEAD_ROWS;
      if(crc_state==job_crc&&job_age<HEAD_ROWS)begin
-      fasts<=fasts+1'b1;committed<=committed+1'b1;mark_valid<=1;mark_seq<=job_seq;prefetch_seq<=prefetch_seq+1'b1;
+      if(STATUS_ENABLED) fasts<=fasts+1'b1;if(STATUS_ENABLED) committed<=committed+1'b1;mark_valid<=1;mark_seq<=job_seq;prefetch_seq<=prefetch_seq+1'b1;
       if(!have_highest || ((job_seq-highest)!=0 && !((job_seq-highest)&16'h8000)))begin highest<=job_seq;have_highest<=1;end
      end else begin
-      crc_bad<=crc_bad+1'b1;dropped<=dropped+1'b1;nack_seq_mem<=job_seq;nack_toggle<=~nack_toggle;
+      if(STATUS_ENABLED) crc_bad<=crc_bad+1'b1;if(STATUS_ENABLED) dropped<=dropped+1'b1;nack_seq_mem<=job_seq;nack_toggle<=~nack_toggle;
       if(primed)prefetch_seq<=prefetch_seq+1'b1;
      end
      desc_pop<=1;last_prefetch<=0;state<=POST;
@@ -247,14 +249,14 @@ module video_hybrid_pipeline #(
     W_PREP:begin port_address<=payload_address;port_length<=next_chunk;chunk_length<=next_chunk;state<=W_REQ;end
     W_REQ:if(p_req_ready)begin issued<=0;skid_count<=0;outstanding<=0;skid_wp<=0;skid_rp<=0;state<=W_WAIT;end
     W_WAIT:if(p_done)begin
-     if(p_error)begin port_fault<=port_fault+1'b1;dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
+     if(p_error)begin if(STATUS_ENABLED) port_fault<=port_fault+1'b1;if(STATUS_ENABLED) dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
      else if(offset+chunk_length==WORDS)begin
       // Publish metadata only after the final payload write has drained.
       // The RAM table holds seed/CRC as well as the full session/row identity;
       // duplicating another four-word header in SDRAM served no extra reader.
-      if(job_age>=WINDOW)begin dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
+      if(job_age>=WINDOW)begin if(STATUS_ENABLED) dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
       else begin
-       spills<=spills+1'b1;committed<=committed+1'b1;mark_valid<=1;mark_seq<=job_seq;
+       if(STATUS_ENABLED) spills<=spills+1'b1;if(STATUS_ENABLED) committed<=committed+1'b1;mark_valid<=1;mark_seq<=job_seq;
        if(!have_highest || ((job_seq-highest)!=0 && !((job_seq-highest)&16'h8000)))begin highest<=job_seq;have_highest<=1;end
        desc_pop<=1;last_prefetch<=0;state<=POST;
       end
@@ -267,16 +269,16 @@ module video_hybrid_pipeline #(
       head_we<=1;head_index<=offset+received;head_data<=p_rd_data;crc_state<=crc_next_word;received<=received+1'b1;
      end
      if(p_done)begin
-      if(p_error)begin port_fault<=port_fault+1'b1;dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
+      if(p_error)begin if(STATUS_ENABLED) port_fault<=port_fault+1'b1;if(STATUS_ENABLED) dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
       else if(offset+chunk_length==WORDS)state<=CRC_CHECK;
       else begin offset<=offset+chunk_length;state<=R_PREP;end
      end
     end
     CRC_CHECK:begin
      head_publish<=1;head_pub_seq<=job_seq;head_publish_good<=crc_state==job_crc&&job_age<HEAD_ROWS;
-     if(crc_state==job_crc&&job_age<HEAD_ROWS)begin prefetches<=prefetches+1'b1;prefetch_seq<=prefetch_seq+1'b1;end
+     if(crc_state==job_crc&&job_age<HEAD_ROWS)begin if(STATUS_ENABLED) prefetches<=prefetches+1'b1;prefetch_seq<=prefetch_seq+1'b1;end
      else begin
-      crc_bad<=crc_bad+1'b1;dropped<=dropped+1'b1;mark_invalid<=1;invalid_seq<=job_seq;nack_seq_mem<=job_seq;nack_toggle<=~nack_toggle;
+      if(STATUS_ENABLED) crc_bad<=crc_bad+1'b1;if(STATUS_ENABLED) dropped<=dropped+1'b1;mark_invalid<=1;invalid_seq<=job_seq;nack_seq_mem<=job_seq;nack_toggle<=~nack_toggle;
       if(primed)prefetch_seq<=prefetch_seq+1'b1;
      end
      state<=POST;
@@ -289,14 +291,14 @@ module video_hybrid_pipeline #(
  reg [15:0] cg1,cg2,gg1,gg2,bg1,bg2,dg1,dg2;reg [2:0] advice_sync;reg advice_seen;reg [7:0] ad1,ad2,free_q;reg [95:0] sg1,sg2;
  reg [15:0] rg1,rg2,rb1,rb2;reg [47:0] rbad1,rbad2;
  reg [15:0] rg_src,rb_src;
- always @(posedge pixel_clk or posedge rst)if(rst)begin rg_src<=0;rb_src<=0;end else begin rg_src<=read_good^(read_good>>1);rb_src<=read_bad^(read_bad>>1);end
+ always @(posedge pixel_clk or posedge rst)if(rst)begin rg_src<=0;rb_src<=0;end else if(STATUS_ENABLED)begin rg_src<=read_good^(read_good>>1);rb_src<=read_bad^(read_bad>>1);end
  reg [1:0] active_app_sync;assign session_live=active_app_sync[1];
  reg [2:0] ready_sync;reg ready_seen;reg [31:0] ready_meta,ready_data;
  reg [2:0] nsync;reg nseen;reg [15:0] nq1,nq2;
  assign free_rows=free_q;
- assign accepted_rows={16'd0,ungray16(gg2)};
- assign rejected_rows={16'd0,ungray16(bg2)}+ingress_bad;
- assign duplicate_rows={16'd0,ungray16(dg2)};
+ assign accepted_rows=STATUS_ENABLED?{16'd0,ungray16(gg2)}:32'd0;
+ assign rejected_rows=STATUS_ENABLED?({16'd0,ungray16(bg2)}+ingress_bad):32'd0;
+ assign duplicate_rows=STATUS_ENABLED?{16'd0,ungray16(dg2)}:32'd0;
  integer f;
  always @(posedge app_clk or posedge rst)begin
   if(rst)begin cg1<=0;cg2<=0;gg1<=0;gg2<=0;bg1<=0;bg2<=0;dg1<=0;dg2<=0;advice_sync<=0;advice_seen<=0;ad1<=255;ad2<=255;free_q<=255;sg1<=0;sg2<=0;
@@ -306,14 +308,18 @@ module video_hybrid_pipeline #(
   end else begin
    missing_app_sync<={missing_app_sync[0],video_missing_pixel};active_app_sync<={active_app_sync[0],active};ready_sync<={ready_sync[1:0],ready_toggle};ready_meta<={ready_frame_mem,ready_seq_mem};ready_data<=ready_meta;ready_event<=0;
    if(ready_sync[2]!=ready_seen)begin ready_seen<=ready_sync[2];ready_sequence<=ready_data[15:0];ready_frame<=ready_data[31:16];ready_event<=1;end
+   // Absolute CREDIT crosses here even when diagnostics are disabled.
+   cg1<=gray_consumed;cg2<=cg1;
+   if(STATUS_ENABLED)begin
    rg1<=rg_src;rg2<=rg1;rb1<=rb_src;rb2<=rb1;rbad1<=read_last_bad;rbad2<=rbad1;
    readback_stats<={16'd0,rbad2,ungray16(rb2),ungray16(rg2)};
-   cg1<=gray_consumed;cg2<=cg1;gg1<=gray_committed;gg2<=gg1;bg1<=gray_dropped;bg2<=bg1;dg1<=gray_duplicates;dg2<=dg1;
+gg1<=gray_committed;gg2<=gg1;bg1<=gray_dropped;bg2<=bg1;dg1<=gray_duplicates;dg2<=dg1;
+   end
    advice_sync<={advice_sync[1:0],advice_toggle};ad1<=advice_data;ad2<=ad1;
    if(advice_sync[2]!=advice_seen)begin advice_seen<=advice_sync[2];free_q<=ad2;end
-   sg1<=gray_stats;sg2<=sg1;
+   if(STATUS_ENABLED)begin sg1<=gray_stats;sg2<=sg1;end
    credit_event<=credit_sequence!=ungray16(cg2);credit_sequence<=ungray16(cg2);
-   for(f=0;f<6;f=f+1)hybrid_stats[f*16+:16]<=ungray16(sg2[f*16+:16]);
+   if(STATUS_ENABLED)for(f=0;f<6;f=f+1)hybrid_stats[f*16+:16]<=ungray16(sg2[f*16+:16]);
    nsync<={nsync[1:0],nack_toggle};nq1<=nack_seq_mem;nq2<=nq1;nack_event<=0;
    if(nsync[2]!=nseen)begin nseen<=nsync[2];nack_sequence<=nq2;nack_event<=1;end
   end

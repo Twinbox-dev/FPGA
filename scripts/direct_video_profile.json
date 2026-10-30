@@ -7,6 +7,6 @@
   "head_rows": 4,
   "ingress_pages": 4,
   "cv_enabled": true,
-  "cv_neighborhood_enabled": false,
+  "cv_neighborhood_enabled": true,
   "spectrum_enabled": true
 }

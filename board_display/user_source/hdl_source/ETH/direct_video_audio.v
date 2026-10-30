@@ -2,14 +2,14 @@
 // One CRC-protected 396-byte PCM block per video frame. Four bounded slots,
 // two native BRAM9K, no new memory controller or audio feedback connection.
 module direct_video_audio #(
- parameter SAMPLES=396,HALF_BASE=1562,START_DELAY=15
+ parameter SAMPLES=396,HALF_BASE=1562,START_DELAY=15,STATUS_ENABLED=1
 )(
  input wire app_clk,pixel_clk,rst,
  input wire rx_valid,packet_start,packet_end,input wire [7:0] rx_data,input wire [15:0] packet_length,
  input wire session_event,session_live,input wire [15:0] session_frame,
  input wire video_ready,frame_start,
  output reg missing_seen,output reg audio_valid,output reg [23:0] audio_data,
- output reg [95:0] audio_stats
+ output wire [95:0] audio_stats
 );
  localparam LENGTH=8+SAMPLES+2;
  reg session_known,session_toggle;reg [15:0] base_frame;
@@ -70,10 +70,10 @@ module direct_video_audio #(
       if(idx==9+SAMPLES&&identified)begin
        if(header_ok&&{rx_data,wire_crc_low}==crc)begin
         if(admitted)begin
-         valid_bits[write_slot]<=1;tags[write_slot]<=fid;seeds[write_slot]<=parsed_seed;expected[write_slot]<={rx_data,wire_crc_low};
-         accepted<=accepted+1'b1;audio_enabled<=1;
-        end else duplicates<=duplicates+1'b1;
-       end else bad_packets<=bad_packets+1'b1;
+         valid_bits[write_slot]<=1;tags[write_slot]<=fid;if(STATUS_ENABLED)begin seeds[write_slot]<=parsed_seed;expected[write_slot]<={rx_data,wire_crc_low};end
+         if(STATUS_ENABLED) accepted<=accepted+1'b1;audio_enabled<=1;
+        end else if(STATUS_ENABLED) duplicates<=duplicates+1'b1;
+       end else if(STATUS_ENABLED) bad_packets<=bad_packets+1'b1;
       end
      end
     endcase
@@ -100,8 +100,8 @@ module direct_video_audio #(
   begin
    played_frame<=f;sample_index<=0;repeat_half<=0;timer<=START_DELAY;audio_valid<=0;audio_data<=0;odd_half<=0;
    block_valid<=valid_sync[f[1:0]]&&tags[f[1:0]]==f;
-   play_crc<=seeds[f[1:0]];play_expected<=expected[f[1:0]];
-   if(enabled_sync[1]&&!(valid_sync[f[1:0]]&&tags[f[1:0]]==f))begin missing_frames<=missing_frames+1'b1;missing_seen<=1;end
+   if(STATUS_ENABLED)begin play_crc<=seeds[f[1:0]];play_expected<=expected[f[1:0]];end
+   if(enabled_sync[1]&&!(valid_sync[f[1:0]]&&tags[f[1:0]]==f))begin if(STATUS_ENABLED) missing_frames<=missing_frames+1'b1;missing_seen<=1;end
   end
  endtask
  always @(posedge pixel_clk or posedge rst)begin
@@ -112,6 +112,7 @@ module direct_video_audio #(
   end else begin
    session_sync<={session_sync[1:0],session_toggle};base_meta<=base_frame;base_sync<=base_meta;
    valid_meta<=valid_bits;valid_sync<=valid_meta;enabled_sync<={enabled_sync[0],audio_enabled};
+   // Played-frame CDC controls slot admission, so it is never a statistics gate.
    played_gray<=played_frame^(played_frame>>1);read_bank<=read_addr[9];ready_d<=video_ready;audio_valid<=0;
    if(timer!=0)timer<=timer-1'b1;
    else begin
@@ -121,7 +122,7 @@ module direct_video_audio #(
      repeat_half<=~repeat_half;
      if(repeat_half)begin
       sample_index<=sample_index+1'b1;
-      if(block_valid)begin
+      if(STATUS_ENABLED && block_valid)begin
        play_crc<=next_play_crc;
        if(sample_index==SAMPLES-1)begin
         if(next_play_crc==play_expected)good_blocks<=good_blocks+1'b1;else bad_blocks<=bad_blocks+1'b1;
@@ -136,13 +137,18 @@ module direct_video_audio #(
    else if(frame_start&&playing)start_block(next_frame);
   end
  end
+ generate if(STATUS_ENABLED)begin:g_audio_stats
+ reg [95:0] stats_q;assign audio_stats=stats_q;
  reg [15:0] gg,bg,mg,g1,g2,b1,b2,m1,m2;
  always @(posedge pixel_clk or posedge rst)if(rst)begin gg<=0;bg<=0;mg<=0;end else begin gg<=good_blocks^(good_blocks>>1);bg<=bad_blocks^(bad_blocks>>1);mg<=missing_frames^(missing_frames>>1);end
  always @(posedge app_clk or posedge rst)begin
-  if(rst)begin g1<=0;g2<=0;b1<=0;b2<=0;m1<=0;m2<=0;audio_stats<=0;end
+  if(rst)begin g1<=0;g2<=0;b1<=0;b2<=0;m1<=0;m2<=0;stats_q<=0;end
   else begin
    g1<=gg;g2<=g1;b1<=bg;b2<=b1;m1<=mg;m2<=m1;
-   audio_stats<={duplicates,ungray(b2),ungray(m2),ungray(g2),bad_packets,accepted};
+   stats_q<={duplicates,ungray(b2),ungray(m2),ungray(g2),bad_packets,accepted};
   end
  end
+ end else begin:g_no_audio_stats
+  assign audio_stats=96'd0;
+ end endgenerate
 endmodule

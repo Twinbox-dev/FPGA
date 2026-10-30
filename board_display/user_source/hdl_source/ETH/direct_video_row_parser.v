@@ -1,6 +1,7 @@
 module direct_video_row_parser #(
     parameter integer PIXELS_PER_ROW=640,
-    parameter integer ACTIVE_LINES=360
+    parameter integer ACTIVE_LINES=360,
+    parameter integer STATUS_ENABLED=1
 )(
     input              clk,
     input              rst,
@@ -201,10 +202,10 @@ module direct_video_row_parser #(
                      (byte_index == ROW_PACKET_BYTES ||
                       (rx_valid && current_index == ROW_PACKET_BYTES - 11'd1)))) begin
                     row_commit <= 1'b1;row_crc_expected<=crc_state;
-                    accepted_rows <= accepted_rows + 32'd1;
+                    if(STATUS_ENABLED) accepted_rows <= accepted_rows + 32'd1;
                 end else begin
                     row_reject <= 1'b1;
-                    rejected_rows <= rejected_rows + 32'd1;
+                    if(STATUS_ENABLED) rejected_rows <= rejected_rows + 32'd1;
                 end
             end
         end

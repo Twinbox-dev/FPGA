@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_direct_video_audio #(parameter N=8,HALF=4,DELAY=2);
+module tb_direct_video_audio #(parameter N=8,HALF=4,DELAY=2,COMPARE_STATUS=0);
  localparam FRAME_CYCLES=N*(2*HALF+1);
  reg ac=0,pc=0,rst=1;always #4 ac=~ac;always #6.667 pc=~pc;
  reg live=1;reg rv=0,ps=0,pe=0,se=0,vr=0,fs=0;reg[7:0] data=0;reg[15:0] sf=65534;
@@ -7,6 +7,17 @@ module tb_direct_video_audio #(parameter N=8,HALF=4,DELAY=2);
  direct_video_audio #(.SAMPLES(N),.HALF_BASE(HALF),.START_DELAY(DELAY)) dut(.app_clk(ac),.pixel_clk(pc),.rst(rst),
  .rx_valid(rv),.packet_start(ps),.packet_end(pe),.rx_data(data),.packet_length(16'(N+10)),.session_live(live),.session_event(se),.session_frame(sf),
  .video_ready(vr),.frame_start(fs),.missing_seen(),.audio_valid(av),.audio_data(ad),.audio_stats(stats));
+ generate if(COMPARE_STATUS)begin:g_status_compare
+  wire out_valid,missing;wire [23:0] pcm;wire [95:0] counters;
+  direct_video_audio #(.SAMPLES(N),.HALF_BASE(HALF),.START_DELAY(DELAY),.STATUS_ENABLED(0)) off_path(
+   .app_clk(ac),.pixel_clk(pc),.rst(rst),.rx_valid(rv),.packet_start(ps),.packet_end(pe),.rx_data(data),.packet_length(16'(N+10)),
+   .session_live(live),.session_event(se),.session_frame(sf),.video_ready(vr),.frame_start(fs),
+   .missing_seen(missing),.audio_valid(out_valid),.audio_data(pcm),.audio_stats(counters));
+  always @(posedge pc)begin #1;if(!rst)begin
+   if(out_valid!==av || pcm!==ad || missing!==dut.missing_seen)$fatal(1,"audio diagnostics changed PCM/missing status");
+   if(counters!==96'd0)$fatal(1,"disabled audio statistics not zero");
+  end end
+ end endgenerate
  function [7:0] sample(input [15:0] f,input integer x);sample=8'(f+x*17);endfunction
  function [15:0] crc(input[15:0] c,input[7:0] d);reg[15:0] v;begin v=c^{d,8'd0};for(integer n=0;n<8;n++)v=v[15]?(v<<1)^16'h1021:v<<1;return v;end endfunction
  task packet(input [15:0] f,input bit corrupt);

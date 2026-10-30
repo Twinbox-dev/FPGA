@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 // Two complete CRC-validated rows. Pixel RAM is not exposed across domains
 // until the row descriptor is published; a bad row reuses its unpublished page.
-module video_row_ingress #(parameter WIDTH=640,PAGES=2,LP=$clog2(PAGES))(
+module video_row_ingress #(parameter WIDTH=640,PAGES=2,LP=$clog2(PAGES),STATUS_ENABLED=1)(
  input wire app_clk,app_rst,row_begin,row_start,pixel_write,row_commit,row_reject,
  input wire [15:0] row_frame,row_sequence,pixel_data,crc_seed,crc_expected,
  input wire [8:0] row_index,input wire [9:0] pixel_index,
@@ -47,8 +47,8 @@ module video_row_ingress #(parameter WIDTH=640,PAGES=2,LP=$clog2(PAGES))(
    end
    if(row_commit||row_reject)begin
     admitted<=0;
-    if(row_commit&&admitted)begin crcs[wp]<=crc_expected;wb<=wb+1'b1;wg<=(wb+1'b1)^((wb+1'b1)>>1);accepted<=accepted+1'b1;end
-    else rejected<=rejected+1'b1;
+    if(row_commit&&admitted)begin crcs[wp]<=crc_expected;wb<=wb+1'b1;wg<=(wb+1'b1)^((wb+1'b1)>>1);if(STATUS_ENABLED) accepted<=accepted+1'b1;end
+    else if(STATUS_ENABLED) rejected<=rejected+1'b1;
    end
   end
  end

@@ -62,10 +62,10 @@ parameter DIRECT_VIDEO_ROWS = 512;
 // Temporary full-product diagnostic: sticky link stages on the existing LEDs.
 // Restore 0 before accepting the normal product baseline.
 parameter VIDEO_LINK_DIAGNOSTICS = 0;
-// First integration stage approved by the user. Source and regressions stay
-// available; restore these independently after the video baseline is verified.
+// Product capabilities. All six CV modes and the audio spectrum are enabled;
+// optional video diagnostic statistics above remain independently disabled.
 parameter PRODUCT_CV_ENABLED = 1;
-parameter PRODUCT_CV_NEIGHBORHOOD_ENABLED = 0;
+parameter PRODUCT_CV_NEIGHBORHOOD_ENABLED = 1;
 parameter PRODUCT_SPECTRUM_ENABLED = 1;
 
 wire Sdr_init_done;
@@ -625,7 +625,7 @@ direct_video_packet_demux #(.DROP_AUDIO(1)) u_direct_video_packet_demux (
     .video_packet_end (video_rx_end)
 );
 
-direct_video_row_parser #(.PIXELS_PER_ROW(DIRECT_VIDEO_WIDTH),.ACTIVE_LINES(DIRECT_VIDEO_HEIGHT)) u_direct_video_row_parser (
+direct_video_row_parser #(.PIXELS_PER_ROW(DIRECT_VIDEO_WIDTH),.ACTIVE_LINES(DIRECT_VIDEO_HEIGHT),.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_row_parser (
     .clk (eth_app_clk), .rst (rst_all),
     .packet_start (video_rx_start), .packet_end (video_rx_end),
     .packet_length (video_rx_length), .rx_valid (video_rx_valid),
@@ -1137,7 +1137,7 @@ always @(posedge video_clk or posedge rst_all) begin
     end
 end
 
-video_hybrid_pipeline #(.WIDTH(DIRECT_VIDEO_WIDTH),.HEIGHT(DIRECT_VIDEO_HEIGHT),.WINDOW(DIRECT_VIDEO_ROWS),.HEAD_ROWS(4),.INGRESS_PAGES(4)) u_direct_video_pipeline(
+video_hybrid_pipeline #(.WIDTH(DIRECT_VIDEO_WIDTH),.HEIGHT(DIRECT_VIDEO_HEIGHT),.WINDOW(DIRECT_VIDEO_ROWS),.HEAD_ROWS(4),.INGRESS_PAGES(4),.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_pipeline(
  .app_clk(eth_app_clk),.mem_clk(ext_mem_clk),.pixel_clk(video_clk),.rst(rst_all),.memory_enable(video_memory_grant),
  .sdr_init_done(Sdr_init_done),.sdr_busy(Sdr_busy),.sdr_refresh(Sdr_init_ref_vld),.scratch_base(video_scratch_base),
  .row_begin(video_row_begin),.row_start(video_row_stream_start),.pixel_write(video_pixel_write),.row_commit(video_row_commit),.row_reject(video_row_reject),
@@ -1153,7 +1153,7 @@ video_memory_lease u_video_memory_lease(
  .frame_start(video_frame_start),.old_rd_en(mux_app_rd_en),.old_wr_en(App_wr_en),.old_rd_valid(Sdr_rd_en&&!video_memory_grant),.old_rd_busy(frame_rd_busy),.old_wr_busy(frame_wr_busy),.old_line_busy(transition_line_hold),
  .sdr_busy(Sdr_busy),.sdr_refresh(Sdr_init_ref_vld),.stream_active(video_memory_active),.stream_idle(video_memory_idle),
  .hold_old(video_hold_old),.memory_grant(video_memory_grant),.scratch_base(video_scratch_base),.video_mode(video_mode_active),.release_toggle(video_lease_done),.accounting_error(video_lease_fault));
-direct_video_audio u_direct_video_audio(.app_clk(eth_app_clk),.pixel_clk(video_clk),.rst(rst_all),
+direct_video_audio #(.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_audio(.app_clk(eth_app_clk),.pixel_clk(video_clk),.rst(rst_all),
  .rx_valid(eth_stack_rx_valid),.packet_start(eth_stack_rx_start),.packet_end(eth_stack_rx_end),.rx_data(eth_stack_rx_data),.packet_length(eth_stack_rx_length),
  .session_live(video_stream_active),.session_event(video_ready_event),.session_frame(video_ready_frame),.video_ready(video_stream_ready),.frame_start(video_frame_start),
  .missing_seen(audio_missing),.audio_valid(direct_audio_valid),.audio_data(direct_audio_sample),.audio_stats(direct_audio_stats));

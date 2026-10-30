@@ -2,7 +2,7 @@
 // Small deterministic BRAM scanout queue. Only completed rows become visible.
 // Paired native 16-bit RAMs accept one 32-bit SDRAM return each memory clock.
 module video_head_cache #(
- parameter WIDTH=640,HEIGHT=360,DEPTH=8,LGDEPTH=$clog2(DEPTH),B32_GROUPS=1,READ_CRC_ENABLE=0,
+ parameter WIDTH=640,HEIGHT=360,DEPTH=8,LGDEPTH=$clog2(DEPTH),B32_GROUPS=1,READ_CRC_ENABLE=0,STATUS_ENABLED=1,
  parameter [15:0] MISSING_RGB565=16'hf800
 )(
  input wire mem_clk,mem_rst,session_start,stream_enable,primed,
@@ -13,7 +13,7 @@ module video_head_cache #(
  input wire pixel_clk,pixel_rst,frame_start,line_start,line_done,word_pop,
  input wire [9:0] video_y,output wire [31:0] word_data,output wire word_valid,line_available,
  output wire video_ready,output reg [31:0] underflows,
- output reg missing_seen,output reg [15:0] read_crc_good,read_crc_bad,output reg [47:0] read_crc_last_bad
+ output reg missing_seen,output wire [15:0] read_crc_good,read_crc_bad,output wire [47:0] read_crc_last_bad
 );
  // Four 720-pixel rows already occupy a 2048-word native allocation.
  // Use its spare words as row padding: 512-word strides remove both address
@@ -89,9 +89,9 @@ module video_head_cache #(
     if(head_release)begin valid_bits[release_slot]<=0;last_consumed<=consumed_mem;credit_event<=1;end
     if(publish)begin
      if(publish_good && pd<DEPTH && (!valid_bits[pslot]||(head_release&&release_slot==pslot)))begin
-      valid_bits[pslot]<=1;accepted<=accepted+1'b1;
+      valid_bits[pslot]<=1;if(STATUS_ENABLED) accepted<=accepted+1'b1;
       if(READ_CRC_ENABLE)begin crc_seeds[pslot]<=publish_crc_seed;crc_expected_table[pslot]<=publish_crc_expected;end
-     end else rejected<=rejected+1'b1;
+     end else if(STATUS_ENABLED) rejected<=rejected+1'b1;
     end
    end
   end
@@ -117,7 +117,7 @@ module video_head_cache #(
     end else if(armed && line_done && video_y<HEIGHT)consumed_pixel<=expected+1'b1;
     if(line_start)begin
      line_sequence<=expected;line_valid<=line_available;read_word_index<=0;have_word<=0;
-     if(!line_available && video_y<HEIGHT)begin underflows<=underflows+1'b1;if(armed)missing_seen<=1;end
+     if(!line_available && video_y<HEIGHT)begin if(STATUS_ENABLED) underflows<=underflows+1'b1;if(armed)missing_seen<=1;end
     end else if(read_en)begin
      read_word_index<=read_word_index+1'b1;have_word<=1;read_is32<=read32;read_bank<=read32?(read_address>>11):(ra9>>9);
     end
@@ -135,10 +135,13 @@ module video_head_cache #(
  reg verify_active,verify_strobe;reg [8:0] verify_index;
  reg [15:0] verify_crc,verify_expected,verify_sequence;
  wire [15:0] verify_next=crc_word(verify_crc,selected);
+ generate if(READ_CRC_ENABLE)begin:g_read_crc
+ reg [15:0] good_count,bad_count;reg [47:0] last_bad;
+ assign read_crc_good=good_count;assign read_crc_bad=bad_count;assign read_crc_last_bad=last_bad;
  always @(posedge pixel_clk or posedge pixel_rst)begin
   if(pixel_rst)begin
    verify_active<=0;verify_strobe<=0;verify_index<=0;verify_crc<=0;verify_expected<=0;verify_sequence<=0;
-   read_crc_good<=0;read_crc_bad<=0;read_crc_last_bad<=0;
+   good_count<=0;bad_count<=0;last_bad<=0;
   end else if(READ_CRC_ENABLE)begin
    verify_strobe<=read_en;if(read_en)verify_index<=read_word_index;
    if(!active_sync[2]||toggle_sync[2]!=ack)begin verify_active<=0;verify_strobe<=0;end
@@ -149,12 +152,15 @@ module video_head_cache #(
     verify_crc<=verify_next;
     if(verify_index==WORDS-1)begin
      verify_active<=0;
-     if(verify_next==verify_expected)read_crc_good<=read_crc_good+1'b1;
-     else begin read_crc_bad<=read_crc_bad+1'b1;read_crc_last_bad<={verify_sequence,verify_expected,verify_next};end
+     if(verify_next==verify_expected)good_count<=good_count+1'b1;
+     else begin bad_count<=bad_count+1'b1;last_bad<={verify_sequence,verify_expected,verify_next};end
     end
    end
   end
  end
+ end else begin:g_no_read_crc
+  assign read_crc_good=0;assign read_crc_bad=0;assign read_crc_last_bad=0;
+ end endgenerate
 `ifdef VERILATOR
  initial if((DEPTH&(DEPTH-1))!=0 || WIDTH%2!=0)$fatal(1,"head needs power-of-two depth and even width");
  always @(posedge mem_clk)if(!mem_rst && active && ack_sync[2]==toggle && consumed_mem!=last_consumed &&

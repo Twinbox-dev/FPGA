@@ -56,6 +56,22 @@ module tb_direct_video_row_parser #(
         .accepted_rows(accepted_rows), .rejected_rows(rejected_rows)
     );
 
+    // Diagnostic counters may disappear; parsing, CRC and commit timing may not.
+    wire [104:0] off_result;
+    wire [31:0] off_accepted,off_rejected;
+    direct_video_row_parser #(.PIXELS_PER_ROW(PIXELS_PER_ROW),.ACTIVE_LINES(ACTIVE_LINES),.STATUS_ENABLED(0)) off_path(
+        .clk(clk),.rst(rst),.packet_start(packet_start),.packet_end(packet_end),.packet_length(packet_length),.rx_valid(rx_valid),.rx_data(rx_data),
+        .row_prepare(off_result[104]),.row_begin(off_result[103]),.row_stream_start(off_result[102]),
+        .row_frame_id(off_result[101:86]),.row_index(off_result[85:77]),.row_sequence(off_result[76:61]),
+        .pixel_write(off_result[60]),.pixel_index(off_result[59:50]),.pixel_data(off_result[49:34]),
+        .row_commit(off_result[33]),.row_reject(off_result[32]),.row_crc_seed(off_result[31:16]),.row_crc_expected(off_result[15:0]),
+        .accepted_rows(off_accepted),.rejected_rows(off_rejected));
+    always @(posedge clk)begin #1;if(!rst)begin
+        if(off_result!=={row_prepare,row_begin,row_stream_start,row_frame_id,row_index,row_sequence,pixel_write,pixel_index,pixel_data,row_commit,row_reject,crc_seed_out,crc_expected_out})
+            $fatal(1,"statistics switch changed row parser/CRC behavior");
+        if({off_accepted,off_rejected}!==64'd0)$fatal(1,"disabled parser counters not zero");
+    end end
+
     direct_video_session_gate session_gate(
         .clk(clk), .rst(rst), .row_stream_start(row_stream_start),
         .row_frame_id(row_frame_id), .row_index(row_index),

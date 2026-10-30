@@ -691,3 +691,18 @@ video-fullscreen-chain:
 video-still-equivalence:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_still_equivalence vsrc/tb_video_still_equivalence.sv diagnostics/video_header_reference/video_delay_before_zoom.v ../board_display/user_source/hdl_source/SD/video_delay.v --Mdir build_video_still_equivalence -o sim_video_still_equivalence
 	./build_video_still_equivalence/sim_video_still_equivalence
+
+.PHONY: video-status-equivalence
+video-status-equivalence:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GCOMPARE_STATUS=1 -GRECOVER_HOLE=1 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_status_equivalence -o sim_video_status_equivalence
+	./build_video_status_equivalence/sim_video_status_equivalence
+
+.PHONY: cv-capability-full
+cv-capability-full:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_media_cv_mode_capability -GNEIGHBOUR=1 vsrc/tb_media_cv_mode_capability.sv ../board_display/user_source/hdl_source/ETH/media_display_control_rx.v --Mdir build_cv_capability_full -o sim_cv_capability_full
+	./build_cv_capability_full/sim_cv_capability_full
+
+.PHONY: audio-status-equivalence
+audio-status-equivalence:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_direct_video_audio -GN=396 -GHALF=1562 -GDELAY=15 -GCOMPARE_STATUS=1 vsrc/tb_direct_video_audio.sv ../board_display/user_source/hdl_source/ETH/direct_video_audio.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_audio_status_equivalence -o sim_audio_status_equivalence
+	./build_audio_status_equivalence/sim_audio_status_equivalence

@@ -1,11 +1,11 @@
-> 历史记录：本文描述早期单板/SPI 阶段。旧路径、待办、数码管定义和“当前状态”只对应记录当时；当前双板入口见 [双板架构](dual_board_architecture.md) 与 [验证指南](verification.md)。保留本文用于复盘，不作为现行实施计划。
+> 历史记录：本文描述早期单板/SPI 阶段。旧路径、待办、数码管定义和“当前状态”只对应记录当时；当前双板入口见 [双板架构](../dual_board_architecture.md) 与 [验证指南](../verification.md)。保留本文用于复盘，不作为现行实施计划。
 
 # 设计文档 — HDMI 多媒体播放系统（安路选题一）
 
 > **历史初版规格。** 本文的 640×480 时钟、独立仓库与流式音频计划已被
 > 当前 720p + SDRAM WAV 设计替代。FAT32/BMP 的早期接口约定仍可供追溯，
-> 但修改当前板级 RTL 时请先读 [README](../README.md)、
-> [验证入口](verification.md) 和现行源码。
+> 但修改当前板级 RTL 时请先读 [README](../../README.md)、
+> [验证入口](../verification.md) 和现行源码。
 
 平台：HX4S20C / EG4S20BG256（19,600 LUT / 19,600 DFF，片内 SDRAM 2M×32bit，
 64×9Kb + 16×32Kb ERAM，4×PLL，193 用户 IO，50MHz 晶振，双 HDMI、TF 卡槽、

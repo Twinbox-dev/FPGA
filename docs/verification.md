@@ -101,7 +101,7 @@ PC WebTransport 快照接收回包单测：python scripts/web_console/test_media
 
 ## 现有工具取舍
 
-- `boardtest/diagnostics/prepare_resource_experiment.py`：冻结整份板级源码和 TD 输入到独立实验目录，避免资源实验覆盖已验收正式 bit；`--display-diagnostics` 只在副本中启用扫描摘要/测试光标。步骤和对比见 [资源优化记录](resource_optimization_20261024.md)。
+- `boardtest/diagnostics/prepare_resource_experiment.py`：冻结整份板级源码和 TD 输入到独立实验目录，避免资源实验覆盖已验收正式 bit；`--display-diagnostics` 只在副本中启用扫描摘要/测试光标。步骤和对比见 [资源优化记录](resource_optimization_history.md#optimization-20261024)。
 
 - `scripts/media_sd_board_acceptance.py`：真实双板单图 N/D 和源 BMP golden；不是显示端扫描验收。
 - `scripts/dual_board_cmd_probe.py`：经媒体板往返显示设置并恢复原音量。

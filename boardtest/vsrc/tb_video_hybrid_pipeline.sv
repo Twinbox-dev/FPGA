@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module tb_video_hybrid_pipeline #(
- parameter W=32,H=12,WIN=32,HD=4,HT=160,VT=20,FRAMES=4,STALL_NS=0,INJECT_CRC=0,INJECT_TAG=0,WAIT_READY=0,RECOVER_HOLE=0,INJECT_METADATA=0
+ parameter W=32,H=12,WIN=32,HD=4,HT=160,VT=20,FRAMES=4,STALL_NS=0,INJECT_CRC=0,INJECT_TAG=0,WAIT_READY=0,RECOVER_HOLE=0,INJECT_METADATA=0,COMPARE_STATUS=0
 );
  reg ac=0,mc=0,pc=0,rst=1;always #4 ac=~ac;always #5 mc=~mc;always #6.667 pc=~pc;
  reg begin_row=0,rowstart=0,pwrite=0,commit=0;reg [15:0] fid=0,seq=0,pixel=0,seed=0,expected_crc=0;
@@ -26,6 +26,37 @@ module tb_video_hybrid_pipeline #(
  .hybrid_stats(stats),.readback_stats(read_stats),.nack_event(nack),.nack_sequence(nseq),.frame_start(fs),.line_start(ls),.line_done(ld),.word_pop(pop),.video_y(vy),
  .word_data(word),.word_valid(wvalid),.line_available(available),.video_ready(ready),.underflows(underflows),
  .app_wr_en(awe),.app_wr_addr(awa),.app_wr_data(awdata),.app_rd_en(are),.app_rd_addr(ara),.sdr_rd_en(svalid),.sdr_rd_data(sdata));
+ // All three domains compare product behavior with diagnostic statistics
+ // enabled/disabled; only counters and passive readback CRC may differ.
+ generate if(COMPARE_STATUS)begin:g_status_compare
+  wire we,re,wp,have,avail,vr,ce,ne,se,sl,ma,mi,sready,miss;
+  wire [20:0] wa,ra;wire [31:0] wd,rd;wire [15:0] cs,ns,rs,rf;
+  wire [31:0] ca,cr,cd,uf;wire [95:0] hs,bs;
+  video_hybrid_pipeline #(.WIDTH(W),.HEIGHT(H),.WINDOW(WIN),.HEAD_ROWS(HD),.PRIME_ROWS(H),.INGRESS_PAGES(4),.STATUS_ENABLED(0)) off_path(
+   .app_clk(ac),.mem_clk(mc),.pixel_clk(pc),.rst(rst),.memory_enable(memory_enable),.sdr_init_done(!rst),.sdr_busy(busy),.sdr_refresh(refresh),.scratch_base(21'd0),
+   .row_begin(begin_row),.row_start(rowstart),.pixel_write(pwrite),.row_commit(commit),.row_reject(1'b0),
+   .row_frame(fid),.row_sequence(seq),.pixel_data(pixel),.crc_seed(seed),.crc_expected(expected_crc),.row_index(ry),.pixel_index(px),
+   .ready_event(se),.ready_sequence(rs),.ready_frame(rf),.memory_active(ma),.memory_idle(mi),.video_missing(miss),.source_ready(sready),
+   .credit_sequence(cs),.credit_event(ce),.free_rows(),.accepted_rows(ca),.rejected_rows(cr),.duplicate_rows(cd),.hybrid_stats(hs),.readback_stats(bs),
+   .nack_event(ne),.nack_sequence(ns),.frame_start(fs),.line_start(ls),.line_done(ld),.word_pop(pop),.video_y(vy),
+   .word_data(rd),.word_valid(have),.line_available(avail),.video_ready(vr),.underflows(uf),
+   .app_wr_en(we),.app_wr_addr(wa),.app_wr_data(wd),.app_rd_en(re),.app_rd_addr(ra),.sdr_rd_en(svalid),.sdr_rd_data(sdata));
+  always @(posedge mc)begin #1;if(!rst)begin
+   if({we,re,ma,mi}!=={awe,are,dut.memory_active,dut.memory_idle})$fatal(1,"statistics changed memory ownership/commands");
+   if(we&&{wa,wd}!=={awa,awdata})$fatal(1,"statistics changed memory writes");
+   if(re&&ra!==ara)$fatal(1,"statistics changed memory reads");
+  end end
+  always @(posedge ac)begin #1;if(!rst)begin
+   if({sready,ce,ne,se,sl}!=={source_ready,credit_event,nack,session_ready,dut.session_live})$fatal(1,"statistics changed stream control");
+   if(cs!==credit||(ne&&ns!==nseq)||(se&&{rs,rf}!=={ready_seq,ready_frame}))$fatal(1,"statistics changed credit/NACK/READY identity");
+   if({ca,cr,cd,hs,bs}!==0)$fatal(1,"disabled statistics are not zero");
+  end end
+  assign sl=off_path.session_live;
+  always @(posedge pc)begin #1;if(!rst)begin
+   if({have,avail,vr}!=={wvalid,available,ready})$fatal(1,"statistics changed HDMI validity");
+   if(have&&rd!==word)$fatal(1,"statistics changed HDMI pixels");
+  end end
+ end endgenerate
  reg [31:0] mem[0:WIN*512-1],response_data[0:127],response_due[0:127];
  reg [6:0] qw=0,qr=0;integer qcount=0;reg injected=0;
  wire response_pop=qcount!=0 && response_due[qr]<=mcycle && !hold_response;

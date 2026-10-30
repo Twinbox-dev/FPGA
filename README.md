@@ -6,13 +6,14 @@
 
 - 原生 4-bit SD High Speed 50 MHz 只读、FAT32、24-bit BMP 解析及同名 WAV 配对。
 - 固定 1280×720 HDMI 输出；网络只传源图尺寸的 RGB565，显示板居中填黑。
-- 单图、左右双图、四宫格；多窗口等比例双线性缩小，不放大。切图只更新请求发生时光标所在的窗口，加载期间该窗口为黑色。
-- 单图保留直接切、交叉溶解、32 像素柔边替换和配对音频；多窗口静音、直接切图。
+- 单图、左右双图、四宫格；图片以最近邻等比例缩小、不放大，居中补黑。切图只更新请求发生时光标所在窗口，在另一页准备后提交，支持直接切、淡入淡出和滑动转场。
+- 多窗口保留进入前的单图音频，布局切换不打断播放。返回单图装载期间，和目标写入区冲突的旧窗口会暂时隐藏并排空读取，避免闪出新图碎片。
+- Ethernet 页选择 MP4，由本机 FFmpeg 转成 640×360 RGB565 与 24 kHz/8-bit/mono 音频。显示板按 2×最近邻铺满 1280×720；视频独占时保留音量、状态和停止操作，结束后恢复原图片布局及控制。
 - 全屏原图、灰度、二值化、Sobel、锐化、雪花六种运行时 CV 模式；字幕、OSD、频谱和 GT911 角色光标继续叠加；字幕/OSD 使用透明背景的 16×32 彩色字形，频谱最高 160px，雪花使用双层六瓣样式。
 - Ethernet、USB UART、HC-08（9600 baud）及实体按键控制；GT911 支持相对移动和横划切图。
 - Web 控制台保留 D 源图快照、BMP 对比及板卡忙状态互锁。
 
-2026-10-23 双板 V2.2 全功能版已验收；本轮后续显示样式也已由用户在 HDMI 上确认。复位默认值保持原样：无字幕、频谱关、CV 原图、OSD 调节后 3 秒。正式 RTL、已验收 bit/报告及文档一并保存。本轮状态和资源数字见 [板卡资源与验收](docs/board_status.md)。
+2026-10-30 当前 feature 已通过用户验收：全屏视频与音频、多窗口及完整六种 CV 可用；此前为资源关闭的 Sobel/锐化已恢复，DFT 仍在显示板。复位默认值保持原样：无字幕、频谱关、CV 原图、OSD 调节后 3 秒。正式 RTL、实测 bit/报告和输入清单配套保存，资源见 [板卡资源与验收](docs/board_status.md)。
 
 ## 工程与网络
 
@@ -52,13 +53,14 @@ python scripts/web_console/app.py
 | --- | --- |
 | 当前分工、SDRAM 与路由 | [双板架构](docs/dual_board_architecture.md) |
 | 字段、字节序、校验与重试 | [板间协议](docs/media_link_protocol.md) |
-| 可变帧、多窗口、黑窗更新、仲裁 | [多窗口实现](docs/native_frame_multiview_handoff.md) |
+| 可变帧、多窗口、转场、跨布局音频与仲裁 | [多窗口实现](docs/native_frame_multiview_handoff.md)、[转场/音频](docs/multiview_transition_worktree_20261025.md) |
+| 全屏视频、统计裁剪与完整 CV | [视频实现](docs/video_fullscreen_optimization_20261030.md)、[完整 CV 验收](docs/video_statistics_full_cv_20261030.md) |
 | SD 原生模式与 HC-08 | [读卡与蓝牙](docs/native_sd_hc08.md) |
 | CV、字幕/OSD、频谱、触控 | [CV](docs/display_cv_effects_exploration.md)、[OSD](docs/osd_subtitle.md)、[DFT](docs/audio_spectrum.md)、[GT911](docs/gt911_trackpad.md) |
 | 验证入口、资源、时序 | [验证](docs/verification.md)、[资源](docs/board_status.md)、[时序判读](docs/timing_report_howto.md) |
 | 典型故障与修复证据 | [多分辨率复盘](docs/multires_fix_postmortem.md)、[双板联调](docs/dual_board_live_debug_20261020.md)、[音频回卷](docs/media_sd_audio_reject_debug.md) |
 | 多窗口调试与优化历史 | [开发记录](docs/history/multiview_development_log.md) |
-| 后续视频、局部播放与多窗口音频/转场方向（尚未实现） | [讨论记录](docs/video_multiview_direction.md) |
-| 当前分支资源回收候选与独立构建 | [优化记录](docs/resource_optimization_20261024.md) |
+| 资源实验与视频接入历史 | [资源历史](docs/resource_optimization_history.md)、[视频历史](docs/history/video_integration_20261027_28.md) |
+| 后续局部视频与架构讨论（不是当前实施计划） | [讨论记录](docs/video_multiview_direction.md) |
 
-`docs/architecture.md`、`docs/design.md` 与 `docs/TODO.md` 保存早期单板架构和开发历史，不再是当前双板的实施计划。所有历史仿真保留，测试镜像和可再生输出按 `.gitignore` 管理；正式已跟踪 bit/报告不因忽略规则而停止跟踪。
+`docs/history/single_board_architecture.md`、`docs/history/single_board_design.md` 与 `docs/history/single_board_development_log.md` 保存早期单板架构和开发历史，不再是当前双板的实施计划。所有历史仿真保留，测试镜像和可再生输出按 `.gitignore` 管理；正式已跟踪 bit/报告不因忽略规则而停止跟踪。
