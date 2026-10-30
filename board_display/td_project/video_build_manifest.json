@@ -1,21 +1,21 @@
 {
-  "built_at": "2026-10-30T15:16:31.4994407+08:00",
+  "built_at": "2026-10-30T16:51:01.6694477+08:00",
   "product_baseline": "dual-V3-beta",
   "cleanroom_reference": "ba1f949",
   "strategy": "area",
   "bit": "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit",
-  "bit_sha256": "4F1BCBAA8A8FCB2B3D3282438CCBCC1F8BAAD949A3722EA0702E361107E68912",
+  "bit_sha256": "7E72E666B123B819129358D40BFC9F14B1B79CE9E0B16DD4700A82DC12528FA2",
   "profile": {
-    "link_diagnostics": 0,
-    "cv_enabled": true,
     "window": 512,
-    "head_rows": 4,
+    "cv_neighborhood_enabled": false,
+    "link_diagnostics": 0,
+    "audio": "24k_u8_mono",
     "height": 360,
     "spectrum_enabled": true,
-    "audio": "24k_u8_mono",
-    "cv_neighborhood_enabled": false,
-    "width": 640,
-    "statistics": 0
+    "head_rows": 4,
+    "cv_enabled": true,
+    "statistics": 0,
+    "width": 640
   },
   "gate_overrides": [
     "opt_area=high",
@@ -203,7 +203,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v",
-      "sha256": "962465BA7F5A45DC7189E854829B331FAEB45C6C870A91D25B7F2BE914EDB759"
+      "sha256": "AE0116D476C3739FED72B9CC53461E5A0929EA1D5DE45D719F7F213EBD5F4CF7"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/video_memory_lease.v",
@@ -215,7 +215,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/video_row_tags.v",
-      "sha256": "A8F2E001B776FD6AC024A14E41C678F0EEB71732F1B504E8116D844C8E14E566"
+      "sha256": "481A0CA0DBD58F52AD5B7429DCDE549E59EDC764DC5F43287E270B3CEB61816C"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/video_sdram_port.v",
@@ -251,7 +251,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_session_manager.v",
-      "sha256": "C371B7ED0CE7481EC96832517BA1685A3C6E6C02FE16530F525B807BA3024433"
+      "sha256": "194CA441EBA6D885380593BD14F19A920A4D5BD19014391B24B33733766F4F0D"
     },
     {
       "path": "board_display/user_source/hdl_source/ETH/view_video_config.v",
@@ -487,7 +487,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/SD/video_delay.v",
-      "sha256": "577FC9D5C366212DD4567CE70EB41EAE349FC1F63F62E4234EBB6EA04B0A9C43"
+      "sha256": "A058C6F5B98EC0FC8C8AF27E45F0578519C853D881CE35B598B7653336511359"
     },
     {
       "path": "board_display/user_source/hdl_source/SD/video_timing_data.v",
@@ -531,7 +531,7 @@
     },
     {
       "path": "board_display/user_source/hdl_source/top_tf_hdmi_audio.v",
-      "sha256": "35F759D216EF897A89251F7E2B13335B5C1E7875C97F32D604C86C640DAF007A"
+      "sha256": "3A8D3C9AB93F1295DB943613EBA76A862629957AA9C8482DC039549590B34F61"
     },
     {
       "path": "board_display/user_source/hdl_source/video_rgb_to_axis_640x480.v",

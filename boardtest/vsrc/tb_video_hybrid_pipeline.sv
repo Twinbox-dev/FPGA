@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module tb_video_hybrid_pipeline #(
- parameter W=32,H=12,WIN=32,HD=4,HT=160,VT=20,FRAMES=4,STALL_NS=0,INJECT_CRC=0,INJECT_TAG=0,WAIT_READY=0,RECOVER_HOLE=0
+ parameter W=32,H=12,WIN=32,HD=4,HT=160,VT=20,FRAMES=4,STALL_NS=0,INJECT_CRC=0,INJECT_TAG=0,WAIT_READY=0,RECOVER_HOLE=0,INJECT_METADATA=0
 );
  reg ac=0,mc=0,pc=0,rst=1;always #4 ac=~ac;always #5 mc=~mc;always #6.667 pc=~pc;
  reg begin_row=0,rowstart=0,pwrite=0,commit=0;reg [15:0] fid=0,seq=0,pixel=0,seed=0,expected_crc=0;
@@ -76,6 +76,17 @@ module tb_video_hybrid_pipeline #(
    repeat(3)@(negedge ac);expected_crc=c;commit=1;@(negedge ac);commit=0;rowstart=0;
   end
  end
+ // Inject a single corrupted CRC field at the actual BRAM metadata output.
+ // Row identity still matches, so payload CRC must reject and hide that row.
+ generate if(INJECT_METADATA)begin:g_metadata_fault
+  reg used=0,forced=0;reg [95:0] damaged;
+  always @(negedge mc)begin
+   if(forced)begin release dut.tag_read_data;forced=0;end
+   else if(!used && dut.state==5 && dut.purpose==1 && dut.job_seq==16'(FIRST+10))begin
+    damaged=dut.tag_read_data^(96'd1<<64);force dut.tag_read_data=damaged;used=1;forced=1;
+   end
+  end
+ end endgenerate
  integer total_words=0;
  initial begin:consumer
   reg missing_expected;
@@ -85,7 +96,7 @@ module tb_video_hybrid_pipeline #(
    if(!ready)$fatal(1,"hybrid failed to arm frame%0d state%0d",f,dut.state);
    for(integer y=0;y<H;y=y+1)begin
     vy=y;ls=1;@(negedge pc);ls=0;repeat(18)@(negedge pc);
-    missing_expected=(INJECT_CRC||INJECT_TAG)&&f==0&&y==10;
+    missing_expected=(INJECT_CRC||INJECT_TAG||INJECT_METADATA)&&f==0&&y==10;
     if(available==missing_expected)$fatal(1,"hybrid row validity frame%0d y%0d avail%0d expected_missing%0d good%0d bad%0d ingressbad%0d state%0d seq%0d pf%0d cons%0d stats%h",f,y,available,missing_expected,good,bad,dut.ingress_bad,dut.state,dut.job_seq,dut.prefetch_seq,credit,stats);
     for(integer x=0;x<W/2;x=x+1)begin
      pop=1;@(posedge pc);#1;
@@ -99,11 +110,11 @@ module tb_video_hybrid_pipeline #(
    repeat((VT-H)*HT)@(negedge pc);
   end
   repeat(10)@(negedge ac);
-  if(read_stats[15:0]!=FRAMES*H-((INJECT_CRC||INJECT_TAG)?1:0))$fatal(1,"HDMI head CRC checker row count invalid %0d",read_stats[15:0]);
+  if(read_stats[15:0]!=FRAMES*H-((INJECT_CRC||INJECT_TAG||INJECT_METADATA)?1:0))$fatal(1,"HDMI head CRC checker row count invalid %0d",read_stats[15:0]);
   if(read_stats[31:16]!=0)$fatal(1,"HDMI head readback CRC failed %h",read_stats);
   if(stats[95:80]!=0)$fatal(1,"hybrid port failure");
-  if(!(INJECT_CRC||INJECT_TAG) && (bad!=0 || underflows!=0 || stats[79:48]!=0))$fatal(1,"hybrid loss bad%0d underflows%0d stats%h",bad,underflows,stats);
-  if(INJECT_CRC && stats[63:48]!=1)$fatal(1,"CRC fault counter invalid");
+  if(!(INJECT_CRC||INJECT_TAG||INJECT_METADATA) && (bad!=0 || underflows!=0 || stats[79:48]!=0))$fatal(1,"hybrid loss bad%0d underflows%0d stats%h",bad,underflows,stats);
+  if((INJECT_CRC||INJECT_METADATA) && stats[63:48]!=1)$fatal(1,"CRC fault counter invalid");
   if(INJECT_TAG && stats[79:64]!=1)$fatal(1,"tag fault counter invalid");
   $display("PASS hybrid W%0d H%0d: %0d RGB565 words golden, 3 clocks, stall%0d ns, CRCfault%0d tagfault%0d, stats%h",W,H,total_words,STALL_NS,INJECT_CRC,INJECT_TAG,stats);$finish;
  end

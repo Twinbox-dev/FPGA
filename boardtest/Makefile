@@ -569,7 +569,7 @@ video-hybrid-integration-crc:
 
 .PHONY: video-hybrid-integration-tag
 video-hybrid-integration-tag:
-	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GINJECT_TAG=1 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_hybrid_integration_tag -o sim_video_hybrid_integration_tag
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GINJECT_TAG=1 vsrc/tb_video_hybrid_pipeline.sv diagnostics/video_header_reference/video_hybrid_pipeline.v diagnostics/video_header_reference/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_hybrid_integration_tag -o sim_video_hybrid_integration_tag
 	./build_video_hybrid_integration_tag/sim_video_hybrid_integration_tag
 
 
@@ -673,3 +673,21 @@ view-nearest:
 view-nearest-pipeline:
 	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_view_nearest_shrink -GPIPELINE=1 vsrc/tb_view_nearest_shrink.sv ../board_display/user_source/hdl_source/ETH/view_image_pipeline.v ../board_display/user_source/hdl_source/ETH/view_nearest_shrink.v ../board_display/user_source/hdl_source/ETH/view_scale_geometry.v ../board_display/user_source/hdl_source/ETH/media_frame_pad.v --Mdir build_view_nearest_pipeline -o sim_view_nearest_pipeline
 	./build_view_nearest_pipeline/sim_view_nearest_pipeline
+
+.PHONY: video-fullscreen-raster video-metadata-fault
+video-fullscreen-raster:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_raster -GW=640 -GH=360 -GWIN=512 -GHD=4 -GSCALE2=1 -GFRAMES=3 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_raster.sv ../board_display/user_source/hdl_source/SD/video_delay.v ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_fullscreen -o sim_video_fullscreen
+	./build_video_fullscreen/sim_video_fullscreen
+video-metadata-fault:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_pipeline -GINJECT_METADATA=1 vsrc/tb_video_hybrid_pipeline.sv ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_metadata_fault -o sim_video_metadata_fault
+	./build_video_metadata_fault/sim_video_metadata_fault
+
+.PHONY: video-fullscreen-chain
+video-fullscreen-chain:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_hybrid_raster -GW=640 -GH=360 -GWIN=512 -GHD=4 -GHT=1650 -GVT=750 -GFRAMES=3 -GPRODUCT_CHAIN=1 -GSCALE2=1 -GSTALL_NS=3000000 vsrc/tb_video_hybrid_raster.sv ../board_display/user_source/hdl_source/SD/cv_pixel_effects.v ../board_display/user_source/hdl_source/SD/video_delay.v ../board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v ../board_display/user_source/hdl_source/ETH/video_row_tags.v ../board_display/user_source/hdl_source/ETH/video_head_cache.v ../board_display/user_source/hdl_source/ETH/video_row_ingress.v ../board_display/user_source/hdl_source/ETH/video_sdram_port.v ../board_display/user_source/hdl_source/ETH/direct_video_region_mux.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v ../board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v --Mdir build_video_fullscreen_chain -o sim_video_fullscreen_chain
+	./build_video_fullscreen_chain/sim_video_fullscreen_chain
+
+.PHONY: video-still-equivalence
+video-still-equivalence:
+	$(VERILATOR) --binary --build-jobs 4 --timing -Wno-fatal -Wno-WIDTH --top-module tb_video_still_equivalence vsrc/tb_video_still_equivalence.sv diagnostics/video_header_reference/video_delay_before_zoom.v ../board_display/user_source/hdl_source/SD/video_delay.v --Mdir build_video_still_equivalence -o sim_video_still_equivalence
+	./build_video_still_equivalence/sim_video_still_equivalence

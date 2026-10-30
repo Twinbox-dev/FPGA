@@ -23,7 +23,7 @@ module video_hybrid_pipeline #(
  localparam [15:0] WORDS_U16=WIDTH/2;
  localparam WORDS=WIDTH/2,STRIDE=512,GROUPS=(WINDOW+63)/64;
  localparam QUIET=0,IDLE=1,DESC=2,SESSION=3,Q0=4,Q1=5,Q2=6,FAST_INIT=7,FAST_COPY=8,FAST_DRAIN=9,FAST_CHECK=10,
- W_PREP=11,W_REQ=12,W_WAIT=13,WH_REQ=14,WH_WAIT=15,RH_REQ=16,RH_WAIT=17,R_PREP=18,R_REQ=19,R_WAIT=20,CRC_CHECK=21,POST=22,HALT=23;
+ W_PREP=11,W_REQ=12,W_WAIT=13,R_PREP=18,R_REQ=19,R_WAIT=20,CRC_CHECK=21,POST=22,HALT=23;
  localparam P_INGRESS=0,P_PREFETCH=1,P_PRIME=2;
  reg [4:0] state;reg [1:0] purpose;reg [9:0] quiet_count;
  wire desc_valid,desc_start,ing_data_valid;wire [15:0] desc_frame,desc_seq,desc_seed,desc_crc;
@@ -58,9 +58,9 @@ module video_hybrid_pipeline #(
  reg [31:0] query_reference_high;reg query_wrap;
  wire consume_event=active && state!=SESSION && state!=DESC && head_consumed!=last_consumed;
  wire [8:0] tag_write_address=(state==SESSION)?quiet_count[8:0]:(mark_valid?mark_seq[LW-1:0]:invalid_seq[LW-1:0]);
- wire [63:0] tag_write_data=(state==SESSION||!mark_valid)?64'd0:mark_tag;
- wire [63:0] tag_read_data;reg [LW-1:0] query_slot;
- video_row_tags tags(.clk(mem_clk),.write_en(state==SESSION||mark_valid||mark_invalid),.read_en(state==Q0),
+ wire [95:0] tag_write_data=(state==SESSION||!mark_valid)?96'd0:{job_seed,job_crc,mark_tag};
+ wire [95:0] tag_read_data;reg [LW-1:0] query_slot;
+ video_row_tags #(.WIDTH(96)) tags(.clk(mem_clk),.write_en(state==SESSION||mark_valid||mark_invalid),.read_en(state==Q0),
   .write_address(tag_write_address),.read_address(query_slot),.write_tag(tag_write_data),.read_tag(tag_read_data));
  always @(posedge mem_clk or posedge rst)begin
   if(rst)occupancy<=0;
@@ -86,7 +86,7 @@ module video_hybrid_pipeline #(
  end
 
  reg [20:0] queue_base,port_address;reg [8:0] port_length,offset,chunk_length,issued,received;
- reg [2:0] header_count;reg [31:0] header_tag,header_crc,header_magic,header_inverse;
+
  reg [15:0] crc_state;reg [2:0] drain_count;reg [31:0] idle_age;
  reg last_prefetch;reg [8:0] scan_index;reg query_value;
  wire [15:0] next_scan_sequence=session_base+scan_index+1'b1;
@@ -94,11 +94,12 @@ module video_hybrid_pipeline #(
  wire [15:0] initial_head_span=prefetch_seq-session_base;
  wire new_session=!active || (job_start&&job_frame!=session_frame);
  wire [20:0] row_address=queue_base+(job_seq[LW-1:0]*STRIDE);
- wire [20:0] payload_address=row_address+4+offset;
- wire [8:0] until_column=9'd256-{1'b0,payload_address[7:0]};
+ // Production scratch banks are 512-word aligned. With the duplicate header
+ // removed, payload chunks start at column 0/64/128/192 and never straddle it.
+ wire [20:0] payload_address={row_address[20:9],offset};
  wire [9:0] remaining=WORDS-offset;
  wire [8:0] limit64=(remaining<64)?remaining:9'd64;
- wire [8:0] next_chunk=(limit64<until_column)?limit64:until_column;
+ wire [8:0] next_chunk=(WORDS%64==0)?9'd64:limit64;
  // All production widths here are divisible by eight, so each chunk and the
  // four-word header obey the SDK controller's natural four-word grouping.
  function [15:0] crc_byte(input [15:0] old,input [7:0] data);
@@ -112,12 +113,10 @@ module video_hybrid_pipeline #(
  // Two-word skid queue covers the synchronous ingress RAM read pipeline.
  reg [31:0] skid[0:1];reg skid_wp,skid_rp;reg [1:0] skid_count,outstanding;
  wire p_req_ready,p_wr_ready,p_rd_valid,p_done,p_error;wire [31:0] p_rd_data;
- wire p_req=state==W_REQ||state==WH_REQ||state==RH_REQ||state==R_REQ;
- wire p_write=state==W_REQ||state==WH_REQ;
- wire p_wr_valid=(state==W_WAIT&&skid_count!=0)||(state==WH_WAIT&&header_count<4);
- wire [31:0] header_word=(header_count==0)?{epoch,job_seq}:(header_count==1)?{job_crc,job_seed}:
-                                (header_count==2)?{16'h5644,WORDS_U16}:~{epoch,job_seq};
- wire [31:0] p_wr_data=(state==WH_WAIT)?header_word:skid[skid_rp];
+ wire p_req=state==W_REQ||state==R_REQ;
+ wire p_write=state==W_REQ;
+ wire p_wr_valid=state==W_WAIT&&skid_count!=0;
+ wire [31:0] p_wr_data=skid[skid_rp];
  wire skid_pop=state==W_WAIT && skid_count!=0 && p_wr_ready;
  wire skid_push=state==W_WAIT && ing_data_valid;
  wire [2:0] reserved_words={1'b0,skid_count}+{1'b0,outstanding};
@@ -141,8 +140,8 @@ module video_hybrid_pipeline #(
    head_session<=0;head_we<=0;head_publish<=0;head_publish_good<=0;head_index<=0;head_data<=0;head_pub_seq<=0;
    desc_pop<=0;meta_reset<=0;mark_valid<=0;mark_invalid<=0;mark_seq<=0;invalid_seq<=0;
    job_seq<=0;job_frame<=0;job_seed<=0;job_crc<=0;job_row<=0;job_start<=0;queue_base<=0;
-   port_address<=0;port_length<=0;offset<=0;chunk_length<=0;issued<=0;received<=0;header_count<=0;
-   header_tag<=0;header_crc<=0;header_magic<=0;header_inverse<=0;crc_state<=0;drain_count<=0;idle_age<=0;
+   port_address<=0;port_length<=0;offset<=0;chunk_length<=0;issued<=0;received<=0;
+   crc_state<=0;drain_count<=0;idle_age<=0;
    last_prefetch<=0;scan_index<=0;query_slot<=0;query_sequence<=0;query_epoch<=0;query_reference_high<=0;query_wrap<=0;query_value<=0;purpose<=0;
    skid_wp<=0;skid_rp<=0;skid_count<=0;outstanding<=0;
    spills<=0;prefetches<=0;fasts<=0;crc_bad<=0;tag_bad<=0;port_fault<=0;committed<=0;dropped<=0;duplicates<=0;nack_toggle<=0;nack_seq_mem<=0;
@@ -195,7 +194,8 @@ module video_hybrid_pipeline #(
      job_tag<={1'b1,query_epoch,(query_reference_high+{31'd0,query_wrap}),query_sequence};state<=Q1;
     end
     Q1:begin
-     query_value<=tag_read_data==job_tag;
+     query_value<=tag_read_data[63:0]==job_tag;
+     if(purpose==P_PREFETCH)begin job_seed<=tag_read_data[95:80];job_crc<=tag_read_data[79:64];end
      
      state<=Q2;
     end
@@ -217,7 +217,7 @@ module video_hybrid_pipeline #(
       last_prefetch<=1;
       if(prefetch_age[15])begin prefetch_seq<=head_consumed;state<=IDLE;end
       else if(prefetch_age>=HEAD_ROWS||!head_write_ready)state<=IDLE;
-      else if(query_value)begin port_address<=row_address;port_length<=4;header_count<=0;state<=RH_REQ;end
+      else if(query_value)begin crc_state<=job_seed;offset<=0;state<=R_PREP;end
       else begin
        if(primed&&have_highest&&highest_ahead!=0&&!highest_ahead[15])prefetch_seq<=prefetch_seq+1'b1;
        state<=IDLE;
@@ -248,35 +248,17 @@ module video_hybrid_pipeline #(
     W_REQ:if(p_req_ready)begin issued<=0;skid_count<=0;outstanding<=0;skid_wp<=0;skid_rp<=0;state<=W_WAIT;end
     W_WAIT:if(p_done)begin
      if(p_error)begin port_fault<=port_fault+1'b1;dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
-     else if(offset+chunk_length==WORDS)begin port_address<=row_address;port_length<=4;header_count<=0;state<=WH_REQ;end
-     else begin offset<=offset+chunk_length;state<=W_PREP;end
-    end
-    WH_REQ:if(p_req_ready)begin header_count<=0;state<=WH_WAIT;end
-    WH_WAIT:begin
-     if(p_wr_ready&&p_wr_valid)header_count<=header_count+1'b1;
-     if(p_done)begin
-      if(p_error)begin port_fault<=port_fault+1'b1;dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
-      else if(job_age>=WINDOW)begin dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
+     else if(offset+chunk_length==WORDS)begin
+      // Publish metadata only after the final payload write has drained.
+      // The RAM table holds seed/CRC as well as the full session/row identity;
+      // duplicating another four-word header in SDRAM served no extra reader.
+      if(job_age>=WINDOW)begin dropped<=dropped+1'b1;desc_pop<=1;state<=POST;end
       else begin
        spills<=spills+1'b1;committed<=committed+1'b1;mark_valid<=1;mark_seq<=job_seq;
        if(!have_highest || ((job_seq-highest)!=0 && !((job_seq-highest)&16'h8000)))begin highest<=job_seq;have_highest<=1;end
        desc_pop<=1;last_prefetch<=0;state<=POST;
       end
-     end
-    end
-    RH_REQ:if(p_req_ready)begin header_count<=0;state<=RH_WAIT;end
-    RH_WAIT:begin
-     if(p_rd_valid)begin
-      case(header_count)0:header_tag<=p_rd_data;1:header_crc<=p_rd_data;2:header_magic<=p_rd_data;3:header_inverse<=p_rd_data;endcase
-      header_count<=header_count+1'b1;
-     end
-     if(p_done)begin
-      if(p_error)begin port_fault<=port_fault+1'b1;dropped<=dropped+1'b1;active<=0;primed<=0;meta_reset<=1;state<=HALT;end
-      else if(header_tag!={epoch,job_seq} || header_magic!={16'h5644,WORDS_U16} || header_inverse!=~header_tag)begin
-       tag_bad<=tag_bad+1'b1;dropped<=dropped+1'b1;mark_invalid<=1;invalid_seq<=job_seq;nack_seq_mem<=job_seq;nack_toggle<=~nack_toggle;
-       if(primed)prefetch_seq<=prefetch_seq+1'b1;state<=POST;
-      end else begin crc_state<=header_crc[15:0];job_seed<=header_crc[15:0];job_crc<=header_crc[31:16];offset<=0;state<=R_PREP;end
-     end
+     end else begin offset<=offset+chunk_length;state<=W_PREP;end
     end
     R_PREP:begin port_address<=payload_address;port_length<=next_chunk;chunk_length<=next_chunk;state<=R_REQ;end
     R_REQ:if(p_req_ready)begin received<=0;state<=R_WAIT;end
@@ -341,6 +323,7 @@ module video_hybrid_pipeline #(
   if((WINDOW&(WINDOW-1))!=0||WINDOW>512||WINDOW<HEIGHT||WIDTH%8!=0||WORDS+4>STRIDE)$fatal(1,"hybrid configuration invalid");
  end
  always @(posedge mem_clk)if(!rst)begin
+  if(state==DESC&&new_session&&scratch_base[8:0]!=0)$fatal(1,"video scratch requires 512-word alignment");
   if(occupancy>WINDOW)$fatal(1,"hybrid occupancy overflow %0d",occupancy);
   if(state==W_WAIT&&p_done&&(skid_count!=0||outstanding!=0))$fatal(1,"write chunk finished with reserved ingress words");
   if(consume_event&&(head_consumed-last_consumed)!=16'd1)$fatal(1,"hybrid consumer pointer skipped");

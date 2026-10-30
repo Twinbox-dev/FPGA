@@ -55,7 +55,7 @@ module view_session_manager #(
     output reg view_transition_release_toggle,
     output reg view_transition_active
 );
-    localparam IDLE=0,TRANSFER=1,SHOW_WAIT=2,SNAPSHOT=3,CANCEL_DRAIN=4,VIEW_TRANSITION=5;
+    localparam IDLE=0,TRANSFER=1,SHOW_WAIT=2,SNAPSHOT=3,CANCEL_DRAIN=4,VIEW_TRANSITION=5,HIDE_WAIT=6;
     reg [2:0] state;
     reg active_buffer,active_valid,page_build,owned;
     reg [3:0] staged_mask,active_window_buffers;
@@ -201,7 +201,7 @@ module view_session_manager #(
                     prepare_reply_body<={16'd0,active_generation,6'd0,active_layout,6'd0,cursor_window,8'd1,prepare_body[7:0]};
                 end else if(req_action==3 || req_action==5)begin
                     if(req_action==5 && state==SNAPSHOT)begin state<=IDLE;publish_pending<=1;end
-                    else if(req_action==3 && !owned && state!=SHOW_WAIT && state!=VIEW_TRANSITION)begin
+                    else if(req_action==3 && !owned && state!=SHOW_WAIT && state!=VIEW_TRANSITION && state!=HIDE_WAIT)begin
                         state<=IDLE;publish_pending<=1;cache_valid<=0;
                     end else if(req_action==3 && owned && state==TRANSFER)begin
                         abort_image<=1;state<=CANCEL_DRAIN;
@@ -233,11 +233,23 @@ module view_session_manager #(
                     transition_commit_wait<=0;
                     watchdog<=0;publish_pending<=1;last_result<=0;
                     if(req_action==4)state<=SNAPSHOT;
-                    else state<=TRANSFER;
+                    else if(active_layout!=0 && req_layout!=active_layout &&
+                            (active_mask & active_window_buffers)!=0)begin
+                        // Window page flips can leave pixels visible in the
+                        // nominal inactive full-page bank. Revoke those readers
+                        // at VS and drain them BEFORE granting the new producer.
+                        config_buffer<=active_buffer;config_layout<=active_layout;
+                        config_window_buffers<=active_window_buffers;
+                        config_mask<=active_mask & ~active_window_buffers;
+                        config_epoch<=~config_epoch;state<=HIDE_WAIT;
+                    end else state<=TRANSFER;
                     cache_valid<=0;
                 end
             end
             // Build the response only after the chosen target registers settle.
+            if(state==HIDE_WAIT && drain_sync[2]==config_epoch)begin
+                active_mask<=config_mask;state<=TRANSFER;publish_pending<=1;
+            end
             if(!cache_valid && (state==TRANSFER || state==SNAPSHOT))begin
                 reply(0,target_window,target_generation,prepare_base_index,active_mask);
                 cached_window<=target_window;cached_mask<=active_mask;

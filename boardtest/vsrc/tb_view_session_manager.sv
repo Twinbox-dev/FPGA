@@ -183,7 +183,14 @@ module tb_view_session_manager;
             $fatal(1,"soft-wipe window commit/release failed");
         effect_mode=0;
         cx=900;cy=550;repeat(3)@(negedge clk);
-        request_prepare(0,0,255,1);expect_reply(0);
+        // Several windows now show the nominal opposite full-page bank.
+        // Returning to single must revoke those readers before admitting writes.
+        allow_drain=0;
+        request_prepare(0,0,255,1);
+        repeat(12)begin @(negedge clk);if(prep_valid)$fatal(1,"single writer admitted before conflicting window drain");end
+        if((cm & dut.active_window_buffers)!=0 || dut.state!=6)
+            $fatal(1,"opposite-page windows not hidden before single load");
+        allow_drain=1;expect_reply(0);
         if(reply[55:48]!=9)$fatal(1,"return single chose wrong image");
         send_begin(9);writer_reply(0);expect_result(0);sb=tb;writer_reply(2);expect_result(2);
         if(layout!=0 || ag!=2 || dut.indices[0]!=9)$fatal(1,"return single commit");

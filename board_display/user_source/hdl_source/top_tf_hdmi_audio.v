@@ -141,6 +141,8 @@ wire [3:0]  dbg_underrun;
 wire        video_read_req;
 wire        video_read_req_ack;
 wire        video_read_en;
+wire        video_scaled_read_en;
+wire [23:0] still_unpacked_rgb, video_unpacked_rgb;
 wire [31:0] video_read_data;
 wire [31:0] transition_word;
 wire        de_word, vs_word;
@@ -1098,26 +1100,30 @@ video_timing_data video_timing_data_m0(
 
 // Hybrid queue: complete ingress rows -> SDRAM lookahead -> small BRAM head.
 // The head returns RGB565 pairs to the unchanged video_delay unpacker.
-reg de_raw_d_video, vs_raw_d_video;
+reg de_raw_d_video, vs_raw_d_video, de_fetch_d_video;
 reg video_word_pop_d_video;
 reg [10:0] video_scan_x_reg;
 reg [9:0] video_scan_y_reg;
 assign video_frame_start = vs_raw_d_video && !vs_0;
 assign video_line_start = de_0 && !de_raw_d_video;
-assign video_line_done = !de_0 && de_raw_d_video;
+// Release a repeated row only after the LAST delayed BRAM fetch. Raw DE
+// ends before video_delay's final word request and cannot safely retire it.
+assign video_line_done = !de_word && de_fetch_d_video;
 assign video_scan_x = video_scan_x_reg;
 assign video_scan_y = video_scan_y_reg;
 always @(posedge video_clk or posedge rst_all) begin
     if (rst_all) begin
         de_raw_d_video <= 1'b0;
+        de_fetch_d_video <= 1'b0;
         vs_raw_d_video <= 1'b1;
         video_word_pop_d_video <= 1'b0;
         video_scan_x_reg <= 11'd0;
         video_scan_y_reg <= 10'd0;
     end else begin
         de_raw_d_video <= de_0;
+        de_fetch_d_video <= de_word;
         vs_raw_d_video <= vs_0;
-        video_word_pop_d_video <= video_read_en;
+        video_word_pop_d_video <= video_scaled_read_en;
         if (video_frame_start)
             video_scan_y_reg <= 10'd0;
         else if (video_line_done && video_scan_y_reg < 10'd720)
@@ -1138,7 +1144,7 @@ video_hybrid_pipeline #(.WIDTH(DIRECT_VIDEO_WIDTH),.HEIGHT(DIRECT_VIDEO_HEIGHT),
  .row_frame(video_row_frame_id),.row_sequence(video_row_sequence),.pixel_data(video_pixel_data),.crc_seed(video_crc_seed),.crc_expected(video_crc_expected),.row_index(video_row_index),.pixel_index(video_pixel_index),
  .source_ready(),.credit_sequence(video_credit_next_sequence),.credit_event(video_credit_update),.ready_event(video_ready_event),.ready_sequence(video_ready_sequence),.ready_frame(video_ready_frame),.free_rows(video_free_row_credits),
  .accepted_rows(video_accepted_rows),.rejected_rows(video_rejected_rows),.duplicate_rows(video_duplicate_rows),.hybrid_stats(video_hybrid_stats),.readback_stats(video_readback_stats),.nack_event(video_nack_valid),.nack_sequence(video_nack_sequence),
- .frame_start(video_frame_start),.line_start(video_line_start),.line_done(video_line_done),.word_pop(video_word_pop_d_video),.video_y(video_scan_y),
+ .frame_start(video_frame_start),.line_start(video_line_start),.line_done(video_line_done && video_scan_y[0]),.word_pop(video_word_pop_d_video),.video_y({1'b0,video_scan_y[9:1]}),
  .word_data(video_word_data),.word_valid(video_word_valid),.line_available(video_line_available),.video_ready(video_stream_ready),.underflows(video_underflow_lines),
  .session_live(video_stream_active),.video_missing(video_missing),.memory_active(video_memory_active),.memory_idle(video_memory_idle),
  .app_wr_en(video_wr_en),.app_wr_addr(video_wr_addr),.app_wr_data(video_wr_data),.app_rd_en(video_rd_en),.app_rd_addr(video_rd_addr),.sdr_rd_en(Sdr_rd_en&&video_memory_grant),.sdr_rd_data(Sdr_rd_dout));
@@ -1151,7 +1157,7 @@ direct_video_audio u_direct_video_audio(.app_clk(eth_app_clk),.pixel_clk(video_c
  .rx_valid(eth_stack_rx_valid),.packet_start(eth_stack_rx_start),.packet_end(eth_stack_rx_end),.rx_data(eth_stack_rx_data),.packet_length(eth_stack_rx_length),
  .session_live(video_stream_active),.session_event(video_ready_event),.session_frame(video_ready_frame),.video_ready(video_stream_ready),.frame_start(video_frame_start),
  .missing_seen(audio_missing),.audio_valid(direct_audio_valid),.audio_data(direct_audio_sample),.audio_stats(direct_audio_stats));
-wire [31:0] video_selected_word = video_mode_active ? (video_stream_ready ? video_word_data : 32'd0) : transition_word;
+assign vout_data_raw = video_mode_active ? video_unpacked_rgb : still_unpacked_rgb;
 
 transition_ctrl #(
     .BUF0_ADDR (BUF0_ADDR[20:0]),
@@ -1198,11 +1204,14 @@ transition_blender transition_blender_m0 (
     .wipe_progress (effect_wipe_progress), .mixed_word (transition_word)
 );
 
+// Keep the established still-image FIFO read enable independent of video mode.
+// The two constant-rate unpackers share identical timing registers in synthesis.
 video_delay #(.MIX_PIPELINE(1)) video_delay_m0(
     .video_clk         (video_clk),
     .rst               (rst_all),
+    .repeat_2x         (1'b0),
     .read_en           (video_read_en),
-    .read_data         (video_selected_word),
+    .read_data         (transition_word),
     .hs                (hs_0),
     .vs                (vs_0),
     .de                (de_0),
@@ -1211,7 +1220,14 @@ video_delay #(.MIX_PIPELINE(1)) video_delay_m0(
     .de_r              (de),
     .de_word           (de_word),
     .vs_word           (vs_word),
-    .vout_data         (vout_data_raw)
+    .vout_data         (still_unpacked_rgb)
+);
+video_delay #(.MIX_PIPELINE(1),.REPEAT_2X_ENABLED(1)) video_zoom_unpack (
+    .video_clk(video_clk),.rst(rst_all),.repeat_2x(1'b1),
+    .read_en(video_scaled_read_en),
+    .read_data(video_stream_ready ? video_word_data : 32'd0),
+    .hs(hs_0),.vs(vs_0),.de(de_0),
+    .hs_r(),.vs_r(),.de_r(),.de_word(),.vs_word(),.vout_data(video_unpacked_rgb)
 );
 
 // 首图提交前黑屏；提交后一直显示当前显示缓冲区内容
@@ -1335,7 +1351,7 @@ wire view_pixel_black;
 view_black_mask u_view_black_mask(.clk(video_clk),.rst(rst_all),.de(cv_de),.vs(cv_vs),
     .layout(view_video_layout),.valid_mask(view_video_mask),.black(view_pixel_black));
 wire [23:0] base_video;
-direct_video_region_mux #(.VIDEO_WIDTH(DIRECT_VIDEO_WIDTH),.VIDEO_HEIGHT(DIRECT_VIDEO_HEIGHT)) u_direct_video_region_mux (
+direct_video_region_mux #(.VIDEO_WIDTH(DIRECT_VIDEO_WIDTH*2),.VIDEO_HEIGHT(DIRECT_VIDEO_HEIGHT*2)) u_direct_video_region_mux (
     .clk (video_clk), .rst (rst_all), .video_mode (video_mode_active),
     .de (cv_de), .vs (cv_vs), .video_rgb (cv_data),
     .still_rgb (display_valid && !view_pixel_black ? vout_adj : 24'd0),

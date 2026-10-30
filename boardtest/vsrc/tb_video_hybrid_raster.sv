@@ -1,20 +1,20 @@
 `timescale 1ns/1ps
 module tb_video_hybrid_raster #(
- parameter W=32,H=12,WIN=32,HD=4,HT=160,VT=20,FRAMES=4,STALL_NS=0,INJECT_CRC=0,INJECT_TAG=0,PRODUCT_CHAIN=0
+ parameter W=32,H=12,WIN=32,HD=4,HT=160,VT=20,FRAMES=4,STALL_NS=0,INJECT_CRC=0,INJECT_TAG=0,PRODUCT_CHAIN=0,SCALE2=0
 );
  reg ac=0,mc=0,pc=0,rst=1;always #4 ac=~ac;always #5 mc=~mc;always #6.667 pc=~pc;
  reg begin_row=0,rowstart=0,pwrite=0,commit=0;reg [15:0] fid=0,seq=0,pixel=0,seed=0,expected_crc=0;
  reg [8:0] ry=0;reg [9:0] px=0;wire source_ready,credit_event,nack;wire [15:0] credit,nseq;wire [7:0] free_rows;
  wire [31:0] good,bad,dups,word,underflows;wire [95:0] stats,read_stats;wire available,ready,wvalid;
- reg vs=1,de=0,hs=1;reg de_q=0,vs_q=1,pop_q=0;reg [9:0] vy=0;
- wire fs=vs_q&&!vs,ls=de&&!de_q,ld=!de&&de_q,pop=pop_q;
+ reg vs=1,de=0,hs=1;reg de_q=0,vs_q=1,pop_q=0,fetch_de_q=0;wire fetch_de;reg [9:0] vy=0;
+ wire fs=vs_q&&!vs,ls=de&&!de_q,ld=SCALE2?(!fetch_de&&fetch_de_q):(!de&&de_q),pop=pop_q;
  wire read_en,delayed_de,delayed_vs,delayed_hs,unpack_de,unpack_vs;wire [23:0] raw_rgb,rgb,display_rgb;
  always @(posedge pc)begin
-  if(rst)begin de_q<=0;vs_q<=1;pop_q<=0;end
-  else begin de_q<=de;vs_q<=vs;pop_q<=read_en;end
+  if(rst)begin de_q<=0;vs_q<=1;pop_q<=0;fetch_de_q<=0;end
+  else begin de_q<=de;vs_q<=vs;pop_q<=read_en;fetch_de_q<=fetch_de;end
  end
- video_delay #(.MIX_PIPELINE(1)) unpack(.video_clk(pc),.rst(rst),.read_en(read_en),.read_data(word),.hs(hs),.vs(vs),.de(de),
- .hs_r(delayed_hs),.vs_r(unpack_vs),.de_r(unpack_de),.de_word(),.vs_word(),.vout_data(raw_rgb));
+ video_delay #(.MIX_PIPELINE(1),.REPEAT_2X_ENABLED(SCALE2)) unpack(.repeat_2x(1'b1),.video_clk(pc),.rst(rst),.read_en(read_en),.read_data(word),.hs(hs),.vs(vs),.de(de),
+ .hs_r(delayed_hs),.vs_r(unpack_vs),.de_r(unpack_de),.de_word(fetch_de),.vs_word(),.vout_data(raw_rgb));
  generate if(PRODUCT_CHAIN)begin:product_chain
   cv_pixel_effects_runtime #(.H_ACTIVE(1280),.H_TOTAL(1650),.V_ACTIVE(720)) cv(
    .clk(pc),.rst(rst),.rgb_in(raw_rgb),.de_in(unpack_de),.vs_in(unpack_vs),.mode_raw(3'd0),
@@ -22,7 +22,7 @@ module tb_video_hybrid_raster #(
  end else begin:direct_chain
   assign display_rgb=raw_rgb;assign delayed_de=unpack_de;assign delayed_vs=unpack_vs;
  end endgenerate
- direct_video_region_mux #(.VIDEO_WIDTH(W),.VIDEO_HEIGHT(H)) region(.clk(pc),.rst(rst),.video_mode(1'b1),
+ direct_video_region_mux #(.VIDEO_WIDTH(W*(SCALE2?2:1)),.VIDEO_HEIGHT(H*(SCALE2?2:1))) region(.clk(pc),.rst(rst),.video_mode(1'b1),
  .de(delayed_de),.vs(delayed_vs),.video_rgb(display_rgb),.still_rgb(24'd0),.rgb_out(rgb));
  wire awe,are;wire [20:0] awa,ara;wire [31:0] awdata;reg svalid=0;reg [31:0] sdata=0;
  reg [31:0] mcycle=0;wire busy=mcycle%97>=73 && mcycle%97<79;
@@ -36,7 +36,7 @@ module tb_video_hybrid_raster #(
  .row_begin(begin_row),.row_start(rowstart),.pixel_write(pwrite),.row_commit(commit),.row_reject(1'b0),
  .row_frame(fid),.row_sequence(seq),.pixel_data(pixel),.crc_seed(seed),.crc_expected(expected_crc),.row_index(ry),.pixel_index(px),
  .memory_active(),.memory_idle(),.video_missing(),.source_ready(source_ready),.credit_sequence(credit),.credit_event(credit_event),.free_rows(free_rows),.accepted_rows(good),.rejected_rows(bad),.duplicate_rows(dups),
- .hybrid_stats(stats),.readback_stats(read_stats),.nack_event(nack),.nack_sequence(nseq),.frame_start(fs),.line_start(ls),.line_done(ld),.word_pop(pop),.video_y(vy),
+ .hybrid_stats(stats),.readback_stats(read_stats),.nack_event(nack),.nack_sequence(nseq),.frame_start(fs),.line_start(ls),.line_done(ld&&(!SCALE2||vy[0])),.word_pop(pop),.video_y(SCALE2?(vy>>1):vy),
  .word_data(word),.word_valid(wvalid),.line_available(available),.video_ready(ready),.underflows(underflows),
  .app_wr_en(awe),.app_wr_addr(awa),.app_wr_data(awdata),.app_rd_en(are),.app_rd_addr(ara),.sdr_rd_en(svalid),.sdr_rd_data(sdata));
  reg [31:0] mem[0:WIN*512-1],response_data[0:127],response_due[0:127];
@@ -88,7 +88,7 @@ module tb_video_hybrid_raster #(
    if(delayed_de)begin
     if(!de_monitor)out_x=0;else out_x++;
     if(out_frame>=0 && out_frame<FRAMES)begin
-     if(rgb!==((out_x<W&&out_y<H)?expand565(sample(FIRST+out_frame*H+out_y,out_x)):24'd0))
+     if(rgb!==((out_x<W*(SCALE2?2:1)&&out_y<H*(SCALE2?2:1))?expand565(sample(FIRST+out_frame*H+(out_y/(SCALE2?2:1)),out_x/(SCALE2?2:1))):24'd0))
       $fatal(1,"raster RGB mismatch f%0d y%0d x%0d got%h",out_frame,out_y,out_x,rgb);
      checked_pixels++;
     end
@@ -108,7 +108,7 @@ module tb_video_hybrid_raster #(
   end
   repeat(40)@(negedge pc);repeat(10)@(negedge ac);
   if(checked_pixels!=FRAMES*1280*720)$fatal(1,"raster pixel count %0d",checked_pixels);
-  if(read_stats[31:16]!=0 || read_stats[15:0]!=FRAMES*H)$fatal(1,"raster head CRC evidence invalid %h",read_stats);
+  if(read_stats[31:16]!=0 || read_stats[15:0]!=FRAMES*H*(SCALE2?2:1))$fatal(1,"raster head CRC evidence invalid %h",read_stats);
   if(bad || underflows || stats[95:48])$fatal(1,"raster loss bad%0d uflow%0d stats%h",bad,underflows,stats);
   $display("PASS actual 1280x720 raster: %0d RGB888 pixels, native RGB565 video+black margins, video_delay, all read CRCs exact",checked_pixels);$finish;
  end
