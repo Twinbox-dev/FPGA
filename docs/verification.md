@@ -101,7 +101,7 @@ PC WebTransport 快照接收回包单测：python scripts/web_console/test_media
 
 ## 现有工具取舍
 
-- `boardtest/diagnostics/prepare_resource_experiment.py`：冻结整份板级源码和 TD 输入到独立实验目录，避免资源实验覆盖已验收正式 bit；`--display-diagnostics` 只在副本中启用扫描摘要/测试光标。步骤和对比见 [资源优化记录](resource_optimization_history.md#optimization-20261024)。
+- `boardtest/diagnostics/prepare_resource_experiment.py`：冻结整份板级源码和 TD 输入到独立实验目录，避免资源实验覆盖已验收正式 bit；`--display-diagnostics` 只在副本中启用扫描摘要/测试光标。步骤和对比见 [历史记录](history.md)。
 
 - `scripts/media_sd_board_acceptance.py`：真实双板单图 N/D 和源 BMP golden；不是显示端扫描验收。
 - `scripts/dual_board_cmd_probe.py`：经媒体板往返显示设置并恢复原音量。
@@ -111,3 +111,16 @@ PC WebTransport 快照接收回包单测：python scripts/web_console/test_media
 - `boardtest/diagnostics/check_multiview_scan.py` 读取 64-byte 诊断体；`check_multiview_scan_short.py` 读取 16-byte 诊断体。二者只有包长度判断不同，但对应不同硬件协议，均保留。
 
 仅等待早期 media demo 固定 `E1 53 45 4D` 回复的 `media_eth_probe.py` 已清除；当前在线检查用 S/VIEW_STATUS 或上述控制探针。所有仿真 RTL、模型、桩、测试目标和参考诊断 bit 均保留。
+
+## 仿真提速与 SIM_FAST（自原 boardtest_speed.md 合并）
+
+- 七卡并行回归为默认完整覆盖（`make -C boardtest regress`，墙钟约最慢
+  单卡）；日常迭代先跑相关模块单测或 `smoke`。历史耗时数字仅对应当时
+  机器与镜像。
+- `SIM_FAST=1` 走扇区直连快速档（绕开 sd_spi 引脚级模型），单卡约 2.7×
+  提速；代价是 SPI 协议栈退出仿真覆盖。**默认档保留全保真**——排查可疑
+  bug 时先切默认档排除 SPI 因素。快速档字节节拍 `PACE_DIV=4` 是实测下限，
+  勿改小。
+- 提速要点：测试 WAV 截断（`scripts/truncate_wav_in_img.py`）、并行回归、
+  boardtest 副本 1 ms 去抖、`-O3 -march=native`、getenv 缓存；
+  `--threads` 实测反噬，弃用。性能自检看每次运行的 Mcyc/s。

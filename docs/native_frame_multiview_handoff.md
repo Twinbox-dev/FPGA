@@ -1,6 +1,6 @@
 # 可变尺寸图像与固定多窗口实现
 
-更新：2026-10-23。原交接计划已实施；本文作为当前功能/模块说明，不再作为自动执行计划。阶段现场和资源实验已迁至 [开发历史](history/multiview_development_log.md)。
+更新：2026-10-23。原交接计划已实施；本文作为当前功能/模块说明，不再作为自动执行计划。阶段现场和资源实验见 [历史记录](history.md)。
 
 ## 当前验收与构建
 
@@ -112,7 +112,7 @@ D 是媒体板重读锁定源图，不是显示扫描或 CV 输出。正式 PC �
 | 缩小/填黑/入存 | `view_image_pipeline`、`view_bilinear_shrink`、`media_transaction_writer` |
 | 扫描与跨域配置 | `view_video_config`、`view_scan_address`、`view_write_address`、`frame_fifo_read/write` |
 | 全屏图像处理 | `cv_pixel_effects_runtime`、`display_levels_rgb` |
-| 参考诊断 | `boardtest/diagnostics/` 与 `boardtest/reference_builds/` |
+| 参考诊断 | `boardtest/diagnostics/`（历史诊断 bit 见发布标签） |
 
 ```sh
 make -C boardtest view-geometry view-bilinear view-image-pipeline

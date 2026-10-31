@@ -34,12 +34,13 @@
 
 ## 构建与资源（2026-10-31 22:07）
 
-- 媒体板 bit：`board_media/td_project/media_net_Runs/phy_1/media_net.bit`，
+- 媒体板 bit 与构建清单随发布标签 `dual-V4.0` 归档（主线不再跟踪 `*_Runs/` 与 manifest）。
+- 媒体板 bit（标签内路径 `board_media/td_project/media_net_Runs/phy_1/media_net.bit`），
   SHA-256 `463578AE7888DD7E33B9F2E8821B53B0320A534CE4EDD9EF0D9D7EFC32CDC8A7`。
 - 布局布线：16,188 / 19,600 LUT（82.59%），10,090 FF，BRAM9K 19/64，BRAM32K 2/16；
   SWNS −4.206 ns、HWNS −3.188 ns。**仍为既有静态时序违例，未收敛**。
-- 该 bit 由桌面更新工程构建；`media_build_manifest.json` 已按仓库内同一源码集合与该 bit
-  重新发布。`.al` 的桌面外部路径和 UDP 栈上误加的 `AutoExcluded` 已修正，不影响网表。
+- 该 bit 由桌面更新工程构建，后在仓库内按同一源码集合重新发布 manifest 并完成板测；
+  `.al` 的桌面外部路径和 UDP 栈上误加的 `AutoExcluded` 已修正，不影响网表。
 - `.prj` 与源码清单已包含 `MF168/mf168_link.v`、`MF168/gesture_cmd_gen.v`；
   新增引脚与 false_path 已写入约束。
 

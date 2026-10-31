@@ -172,3 +172,17 @@ PC 上传遵循显示板当前 VIEW_STATUS：PREPARE 沿用当前布局、请求
 The reported ACK `FPGA_TAG=5 FPGA_ERR=2 SUB_LEN=11 RX_COUNT=14 WIRE=78 CALC=78 COMMIT=NO` means the PC-to-media parser received the declared 11 characters and verified the PC checksum, then exhausted display-side retries. The 14 received protocol bytes are one length byte, 11 text bytes and two checksum nibbles. A 4 ms packet gap was tried and did not change the board failure; it has been reverted. The RTL roundtrip regression now checks successful 13-character commit, a corrupted display END, propagation of the display reject reason to the existing PC ACK, 1 ms spacing and local PC checksum rejection.
 
 After restoring the 1 ms gap and rebuilding both boards with the reason byte, a backend API test sent the same 11-character class of subtitle (`HELLO WORLD`) and received HTTP 200 with `acknowledged=true`; the error did not reproduce. The 4 ms gap candidate had failed the same board test, so the active implementation keeps the original 1 ms interval. The reject-reason path remains available if the failure recurs.
+
+## 以太网通道硬件（自原 ethernet.md 合并）
+
+- 物理层：RTL8211 PHY（RGMII）→ 官方 `TEMAC_CORE`（MAC，`_gate.v` 网表直接
+  参与 综合，`.ipc` 仅备重生成）→ 官方 `udp_ip_protocol_stack`（ARP/IP/UDP，
+  加密 IP）→ 自研 `eth_front` 应用层。
+- 移植来源：`32_Ethernet_test`（APUG013 UDP 百兆参考，RTL/时钟骨架）与
+  `33_HX4S20_Etherent_test_01_02_final_1000`（本板千兆版：`OUTDEL`、RGMII
+  90° 时钟、`rx_pll` 引脚与时钟按它）。
+- 两板均为千兆（125 MHz udp_clk）。**千兆综合时序存在既有违例**，历史上
+  是已知风险项；网络配置与端口见本文"地址与包头"。
+- 显示板 `display_udp_lite` 为固定媒体 peer 的精简栈，不提供通用 PC
+  ARP/ICMP；不要用历史显示板 ping/探针定义判断当前产品。早期探针移植
+  细节在 git 历史的 `ethernet.md` 中。

@@ -75,3 +75,20 @@ CMD, ~CMD
 3. 若重新下载桌面独立项目 `hc08_hex_probe` 的测试 bit，用 TEXT 模式发送 `N`，数码管右侧显示 `4E`，字节计数加一；这是原始接收测试，不代表生产命令帧已经完整。
 
 生产代码来源：`board_media/user_source/hdl_source/uart_link.v` 的两字节反码帧解析、`media_control_core.v` 的命令映射，以及 `docs/media_link_protocol.md` 的 PC V1 命令表。
+
+## UART 直连与实现说明（自原 uart_link.md 合并）
+
+- 板上 CH340G USB-UART 桥，8N1，默认 1 Mbaud（`uart_link` 参数化；CH340G
+  支持到 2 M）。引脚 `uart_rx=F12`、`uart_tx=D12`。HC-08 为 9600 baud。
+- 命令语义在 `media_control_core.v`（早前单板在 `ctrl_core.v`），与传输
+  无关：UART、HC-08、以太网前端都翻译成同一"命令字节 + valid"。
+- 手机→FPGA 同样是 `[CMD,~CMD]` 反码帧；两字节必须相邻。UART 直连下
+  PC 端可用 `scripts/web_console/app.py` 的串口模式。
+- 历史调试教训（防复发）：
+  - 发包判发用 `pkt_len != 0`，不能用 idx/len 交叉条件；
+  - `tx_load` 必须屏蔽 done 拍，否则 len 下溢回卷失控连发；
+  - **虚拟按键计数器位宽必须按最大参数值验算**——`vk_cnt` 23 位截断曾把
+    100 ms 脉冲变 16 ms，板上过不了 50 ms 去抖；缩短参数的 TB 测不出
+    宽度类 bug，须保留一条真实参数用例。
+- 播放列表 `L` 转储为早期调试命令，当前链路无常规响应；现役诊断入口见
+  [验证](verification.md)。

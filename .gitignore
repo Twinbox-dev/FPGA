@@ -1,5 +1,6 @@
 # TD 生成物与运行痕迹
 board_*/**/*_Runs/
+board_*/td_project/*_build_manifest.json
 board_*/**/log/
 board_*/**/*.db
 board_*/**/*.timing

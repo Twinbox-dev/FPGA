@@ -30,8 +30,9 @@
 
 ## 构建与资源（2026-10-31 18:48）
 
-- 构建清单：`board_display/td_project/video_build_manifest.json`；所有清单源码哈希与提交源码一致。
-- 显示板 bit：`board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`，
+- 构建清单与 bit 随发布标签 `dual-V4.0` 归档（主线不再跟踪 `*_Runs/` 与 manifest）；
+  当时 manifest 内全部源码哈希与提交源码一致。
+- 显示板 bit（标签内路径 `board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`），
   SHA-256 `010EE1BBE108ED1BBF9519C1D9C1302688E6A5841B95BA13E25422AF776FA0AE`。
 - 布局布线：17,527 / 19,600 LUT（89.42%），BRAM9K 51/64，BRAM32K 11/16，12,392 FF；
   SWNS −9.599 ns、HWNS −2.935 ns。**仍为既有静态时序违例，未收敛**，不能称为时序通过。

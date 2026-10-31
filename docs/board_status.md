@@ -15,11 +15,11 @@
 
 本轮恢复卷积后，相比 d28c27f 增加 443 个布线后 LUT、233 FF、三块 BRAM32K；仅统计开关的单独综合实验少 41 LUT，FF 不变，不能宣称回收了 800–1,100 LUT。相比 d281ca0 的 17,501 LUT，当前总 LUT 少 433，同时已恢复其当时关闭的 Sobel/锐化。切片为 9,168/9,800（93.55%），名义 LUT 余量 2,532、切片余量 632。Setup/Hold WNS 为 −5.699/−3.008 ns，功能验收不代表静态时序收敛；当前比 17,000 LUT 高 68。
 
-正式 bit 路径仍为下面两板各自的 `*_Runs/phy_1/*.bit`，cable0 显示板、cable1 媒体板；显示板已同步实际验收的完整 CV bit/报告及 manifest，媒体板沿用 d281ca0 的已跟踪配套构建。完整六种 CV 的像素、统计开关前后数据/流控一致性、实际 App 图传/布局/控制均有验证，随后用户自行串口和网页测试并确认无问题。多窗口返回单图时，写入前仍隐藏冲突窗口并等旧读排空，加载期间这些窗口可能短暂黑色。
+该轮正式 bit 为两板各自的 `*_Runs/phy_1/*.bit`，cable0 显示板、cable1 媒体板；显示板已同步实际验收的完整 CV bit/报告及 manifest，媒体板沿用 d281ca0 的配套构建。这些产物现随发布标签归档，主线不再跟踪。完整六种 CV 的像素、统计开关前后数据/流控一致性、实际 App 图传/布局/控制均有验证，随后用户自行串口和网页测试并确认无问题。多窗口返回单图时，写入前仍隐藏冲突窗口并等旧读排空，加载期间这些窗口可能短暂黑色。
 
 ## 历史双板全功能构建（2026-10-23）
 
-本节数字对应已验收的 `4cbbe23` 构建。2026-10-24 工作区的独立资源优化候选及其筛选结果见 [优化记录](resource_optimization_history.md#optimization-20261024)；候选实验不覆盖此处的正式 bit/报告。
+本节数字对应已验收的 `4cbbe23` 构建。2026-10-24 工作区的独立资源优化候选及其筛选结果见 [历史记录](history.md)；候选实验不覆盖此处的正式 bit/报告。
 
 本版在 `dual-V2.2` 基础上更新显示样式：透明底板、16×32 彩色字幕/OSD、160px 频谱和双层六瓣雪花。字幕位于 y=480，雪花按用户反馈减密约三分之一。用户已确认实际 HDMI 效果良好并授权提交；复位默认值保持原样。媒体板 RTL/bit 沿用 V2.2，显示板保存本轮正式构建与报告。
 
@@ -37,8 +37,10 @@
 
 正式 bit 位置：
 
-- 显示板：`board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit`，cable0。
-- 媒体板：`board_media/td_project/media_net_Runs/phy_1/media_net.bit`，cable1。
+- 正式 bit、报告与构建清单随发布标签 `dual-V4.0` 归档（显示板 cable0、媒体板 cable1）；
+  主线不再跟踪 `*_Runs/` 与 manifest，首次重建时由 TD 工程重新生成。
+- 恢复历史 bit：`git show dual-V4.0:board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit > display.bit`
+  （媒体板同理，路径 `board_media/td_project/media_net_Runs/phy_1/media_net.bit`）。
 
 V2.2 自动验证包括：六张变尺寸源图 D 无缺包且 BMP golden 精确一致；双图/四图、焦点窗独立切图和返回单图；非法双图直接进四图拒绝；六种 CV 的板卡 ACK；CV、双线性、AXIS、窗口会话及控制路径定向仿真。D 不读取显示板 SDRAM，也不携带实际配对 WAV PCM；它不能证明 HDMI 合成、CV 像素或实际声音。用户的正式板级测试补充了可视功能确认。本次样式另通过 osd-unit、spectrum-unit、cv-unit/snow-unit，覆盖字模双倍显示、裁切/配色、透明合成、频谱高度/帧邮箱、雪花形状/密度/运动及 CV 帧同步；上板演示的控制和字幕 ACK 也已记录。
 

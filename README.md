@@ -53,16 +53,14 @@ python scripts/web_console/app.py
 | --- | --- |
 | 当前分工、SDRAM 与路由 | [双板架构](docs/dual_board_architecture.md) |
 | 字段、字节序、校验与重试 | [板间协议](docs/media_link_protocol.md) |
-| 可变帧、多窗口、转场、跨布局音频与仲裁 | [多窗口实现](docs/native_frame_multiview_handoff.md)、[转场/音频](docs/multiview_transition_worktree_20261025.md) |
+| 可变帧、多窗口、转场、跨布局音频与仲裁 | [多窗口实现](docs/native_frame_multiview_handoff.md) |
 | 全屏视频、统计裁剪与完整 CV | [视频实现](docs/video_fullscreen_optimization_20261030.md)、[完整 CV 验收](docs/video_statistics_full_cv_20261030.md) |
 | SD 原生模式与 HC-08 | [读卡与蓝牙](docs/native_sd_hc08.md) |
 | CV、字幕/OSD、频谱、触控 | [CV](docs/display_cv_effects_exploration.md)、[OSD](docs/osd_subtitle.md)、[DFT](docs/audio_spectrum.md)、[GT911](docs/gt911_trackpad.md) |
 | 显示板 LED 点阵（静态测试版） | [LED 矩阵](docs/led_matrix.md) |
 | 媒体板 MF168 激光手势 | [MF168 手势](docs/mf168_gesture.md) |
 | 验证入口、资源、时序 | [验证](docs/verification.md)、[资源](docs/board_status.md)、[时序判读](docs/timing_report_howto.md) |
-| 典型故障与修复证据 | [多分辨率复盘](docs/multires_fix_postmortem.md)、[双板联调](docs/dual_board_live_debug_20261020.md)、[音频回卷](docs/media_sd_audio_reject_debug.md) |
-| 多窗口调试与优化历史 | [开发记录](docs/history/multiview_development_log.md) |
-| 资源实验与视频接入历史 | [资源历史](docs/resource_optimization_history.md)、[视频历史](docs/history/video_integration_20261027_28.md) |
+| 历史阶段、典型故障与修复证据 | [历史记录](docs/history.md) |
 | 后续局部视频与架构讨论（不是当前实施计划） | [讨论记录](docs/video_multiview_direction.md) |
 
-`docs/history/single_board_architecture.md`、`docs/history/single_board_design.md` 与 `docs/history/single_board_development_log.md` 保存早期单板架构和开发历史，不再是当前双板的实施计划。所有历史仿真保留，测试镜像和可再生输出按 `.gitignore` 管理；正式已跟踪 bit/报告不因忽略规则而停止跟踪。
+历史专题原文已合并进 [历史记录](docs/history.md)，全文可在 git 历史中检索。仿真构建、捕获、日志与 TD 运行目录按 `.gitignore` 管理；正式 bit/报告/manifest 随发布标签（当前 `dual-V4.0`）归档，主线只保留源码与工程配置。
