@@ -1,6 +1,6 @@
 # 原生 SD 读卡与 HC-08 控制
 
-本文整理已经落地的 SD/蓝牙实现，替代 2026-10-21 的执行计划；更早的故障和性能测量见 [音频回卷排查](media_sd_audio_reject_debug.md)、[资源实验](resource_balance_20261021.md)。
+本文整理已经落地的 SD/蓝牙实现，替代 2026-10-21 的执行计划；更早的故障和性能测量见 [音频回卷排查](media_sd_audio_reject_debug.md)、[资源实验](resource_optimization_history.md#balance-20261021)。
 
 ## 媒体板读卡边界
 

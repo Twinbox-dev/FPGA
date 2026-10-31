@@ -24,20 +24,132 @@ web_console/app.py — 板卡控制 Web 控制台（串口 / 以太网双控）
 注意: 串口独占——打开本控制台前请关掉其他占用串口的程序。
 依赖: pip install flask pyserial
 """
+import atexit
 import json
 import os
 import queue
+import shutil
+import signal
 import struct
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 from media_upload import (AUDIO_PACKET_SAMPLES, IMAGE_PACKET_WORDS, MAX_HEIGHT, MAX_WIDTH,
                           PC_AUDIO_MAX_SAMPLES, control_packet, image_packet, load_pcm_wav,
-                          rgb24_to_native_words, transcode_audio_stream, unpack_display_packet)
+                          resolve_ffmpeg, rgb24_to_native_words, transcode_audio_stream, unpack_display_packet)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
+VIDEO_LOCK = threading.Lock()
+VIDEO_PROCESS = None
+VIDEO_PATH = None
+VIDEO_NAME = ""
+VIDEO_LAST_EXIT = None
+VIDEO_STATUS_PATH = None
+VIDEO_LOG_PATH = None
+VIDEO_USER_STOPPED = False
+VIDEO_RELEASE_PENDING = False
+VIDEO_IMAGE_REQUEST_ACTIVE = False
+VIDEO_CAPTURE_DIR = Path(__file__).resolve().parents[2] / "boardtest" / "captures" / "video"
+VIDEO_SCRIPT = Path(__file__).resolve().parents[1] / "direct_video_sender.py"
+PRODUCT_PROFILE = json.loads(VIDEO_SCRIPT.with_name("direct_video_profile.json").read_text(encoding="utf-8"))
+PRODUCT_CAPABILITIES = {"cv": PRODUCT_PROFILE.get("cv_enabled", True),
+                        "cv_neighborhood": PRODUCT_PROFILE.get("cv_neighborhood_enabled", True),
+                        "spectrum": PRODUCT_PROFILE.get("spectrum_enabled", True)}
+UNAVAILABLE_KEYS = set()
+if not PRODUCT_CAPABILITIES["cv"]:
+    UNAVAILABLE_KEYS.update(("g", "b", "e", "h", "w"))
+elif not PRODUCT_CAPABILITIES["cv_neighborhood"]:
+    UNAVAILABLE_KEYS.update(("e", "h"))
+if not PRODUCT_CAPABILITIES["spectrum"]:
+    UNAVAILABLE_KEYS.update(("q", ";", "'"))
+
+
+def _video_status_locked():
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT, VIDEO_RELEASE_PENDING
+    progress = {}
+    if VIDEO_STATUS_PATH:
+        try:
+            progress = json.loads(Path(VIDEO_STATUS_PATH).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    if VIDEO_PROCESS is not None:
+        exit_code = VIDEO_PROCESS.poll()
+        if exit_code is None:
+            return {**progress, "active": True, "name": VIDEO_NAME,
+                    "state": progress.get("state", "starting"), "pid": VIDEO_PROCESS.pid}
+        VIDEO_LAST_EXIT = exit_code
+        VIDEO_PROCESS = None
+        VIDEO_RELEASE_PENDING = True
+        if VIDEO_PATH:
+            try:
+                Path(VIDEO_PATH).unlink(missing_ok=True)
+            except OSError:
+                pass
+        VIDEO_PATH = None
+        VIDEO_NAME = ""
+    state = "idle" if VIDEO_LAST_EXIT is None else (
+        "stopped" if VIDEO_USER_STOPPED or VIDEO_LAST_EXIT == 0 else "error")
+    result = {**progress, "active": VIDEO_RELEASE_PENDING, "name": "",
+              "state": "releasing" if VIDEO_RELEASE_PENDING else state,
+              "exit_code": VIDEO_LAST_EXIT}
+    if state == "error" and VIDEO_LOG_PATH:
+        try:
+            with open(VIDEO_LOG_PATH, "rb") as log:
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0, log.tell() - 4096))
+                result["details"] = log.read().decode("utf-8", errors="replace").strip()
+        except OSError:
+            pass
+        if "error" not in result:
+            sender_error = next((line.split("direct_video_sender:", 1)[1].strip()
+                                 for line in reversed(result.get("details", "").splitlines())
+                                 if "direct_video_sender:" in line), None)
+            result["error"] = sender_error or "Video sender exited before completing playback"
+    return result
+
+
+def stop_video_sender():
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT, VIDEO_USER_STOPPED, VIDEO_RELEASE_PENDING
+    with VIDEO_LOCK:
+        process = VIDEO_PROCESS
+        if process is not None:
+            VIDEO_USER_STOPPED = True
+            VIDEO_RELEASE_PENDING = True
+        if process is not None and process.poll() is None:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False)
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            try:
+                process.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+            VIDEO_LAST_EXIT = process.returncode
+        elif process is not None:
+            VIDEO_LAST_EXIT = process.returncode
+        VIDEO_PROCESS = None
+        if VIDEO_PATH:
+            try:
+                Path(VIDEO_PATH).unlink(missing_ok=True)
+            except OSError:
+                pass
+        VIDEO_PATH = None
+        VIDEO_NAME = ""
+
+
+atexit.register(stop_video_sender)
 sys.setswitchinterval(0.0005)   # GIL 快速切换：流帧突发期读线程不容许毫秒级停顿（默认 5ms > 64KB 内核缓冲的 1.7ms 吸收窗）
 
 DEFAULT_BAUD = int(os.environ.get("WEB_BAUD", "1000000"))   # 默认波特率
@@ -50,6 +162,7 @@ CMDS = {"n": 0x4E, "a": 0x41, "s": 0x53, "p": 0x50,
         "+": 0x2B, "-": 0x2D, ">": 0x3E, "<": 0x3C,
         "]": 0x5D, "[": 0x5B, ".": 0x2E, ",": 0x2C,
         "q": 0x51, ";": 0x3B, "'": 0x27, "l": 0x4C, "d": 0x44, "i": 0x49,
+        "z": 0x5A,
         "0": 0x30, "1": 0x31, "2": 0x32,
         "3": 0x33, "4": 0x34, "5": 0x35,
         "6": 0x36, "7": 0x37, "8": 0x38,
@@ -61,7 +174,7 @@ HELP = {"n": "下一张", "a": "自动轮播", "s": "状态回读", "p": "上一
         "q": "频谱开关", "'": "频谱灵敏度+", ";": "频谱灵敏度-", "l": "播放列表转储(调试)", "d": "当前显示图片快照",
         "0": "直接切", "1": "淡入淡出", "2": "滑动转场",
         "3": "面板关闭", "4": "面板调节后 3 秒", "5": "面板始终显示",
-        "i": "SD 卡状态诊断"}
+        "i": "SD 卡状态诊断", "z": "读取传感器原始数据"}
 
 HELP.update({"r": "\u539f\u56fe\u76f4\u901a", "g": "\u7070\u5ea6", "b": "\u4e8c\u503c\u5316",
              "e": "Sobel \u68af\u5ea6", "h": "\u56fe\u50cf\u9510\u5316", "w": "\u96ea\u82b1"})
@@ -281,7 +394,7 @@ def decode_ack(pkt: bytes) -> str:
             0x2B: "音量+", 0x2D: "音量-", 0x3E: "周期+", 0x3C: "周期-",
             0x5D: "亮度+", 0x5B: "亮度-",
             0x2E: "对比度+", 0x2C: "对比度-",
-            0x51: "频谱", 0x3B: "灵敏度+", 0x27: "灵敏度-",
+            0x51: "频谱", 0x3B: "灵敏度-", 0x27: "灵敏度+",
             0x30: "直接切", 0x31: "淡入淡出", 0x32: "滑动转场",
             0x33: "面板关闭", 0x34: "面板调节后 3 秒", 0x35: "面板始终显示",
             0x54: "字幕上传"}.get(cmd, f"0x{cmd:02X}")
@@ -673,6 +786,12 @@ class EthTransport:
         self.subtitle_result = None
         self.subtitle_result_code = 0
         self.subtitle_result_tag = 0
+        self.sensor_query_lock = threading.Lock()
+        self.sensor_condition = threading.Condition()
+        self.sensor_waiting = False
+        self.sensor_active_sequence = None
+        self.sensor_chunks = {}
+        self.sensor_result = None
         self.image_upload_lock = threading.Lock()
         self.image_upload_active = False
         self.upload_sock = None
@@ -776,6 +895,79 @@ class EthTransport:
             return f"UDP 发送到 {self.board}:{self.BOARD_PORT} 失败: {e}"
         return ""
 
+    def read_sensor_snapshot(self, timeout: float = 4.0):
+        """Query the media board for raw BMP280/AHT10 bytes; no conversion."""
+        if self.sock is None:
+            return None, "Ethernet is disconnected"
+        if not self.sensor_query_lock.acquire(blocking=False):
+            return None, "A sensor query is already in progress"
+        try:
+            with self.sensor_condition:
+                self.sensor_waiting = True
+                self.sensor_active_sequence = None
+                self.sensor_chunks = {}
+                self.sensor_result = None
+            error = self.send_key("z")
+            if error:
+                with self.sensor_condition:
+                    self.sensor_waiting = False
+                return None, error
+            deadline = time.monotonic() + timeout
+            with self.sensor_condition:
+                while self.sensor_result is None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        self.sensor_waiting = False
+                        self.sensor_active_sequence = None
+                        self.sensor_chunks = {}
+                        return None, "Timed out waiting for seven sensor data packets"
+                    self.sensor_condition.wait(remaining)
+                raw, sequence = self.sensor_result
+                self.sensor_waiting = False
+                self.sensor_active_sequence = None
+                self.sensor_chunks = {}
+            flags = raw[2]
+            return {
+                "sequence": sequence,
+                "bmp_address": f"0x{raw[0] & 0x7F:02X}",
+                "bmp_id": f"0x{raw[1]:02X}",
+                "flags": {
+                    "initialized": bool(flags & 0x80),
+                    "bmp_present": bool(flags & 0x40),
+                    "bmp_sample_valid": bool(flags & 0x20),
+                    "aht_initialized": bool(flags & 0x10),
+                    "aht_sample_valid": bool(flags & 0x08),
+                    "busy_timeout": bool(flags & 0x04),
+                    "i2c_timeout": bool(flags & 0x02),
+                    "init_error": bool(flags & 0x01),
+                },
+                "bmp_calibration_raw": raw[3:27].hex(" "),
+                "bmp_sample_raw": raw[27:33].hex(" "),
+                "aht_sample_raw": raw[33:39].hex(" "),
+            }, None
+        finally:
+            self.sensor_query_lock.release()
+
+    def _capture_sensor_chunk(self, packet: bytes):
+        if len(packet) != 8:
+            return
+        sequence, index = packet[0], packet[1]
+        if index >= 7:
+            return
+        with self.sensor_condition:
+            if not self.sensor_waiting:
+                return
+            if self.sensor_active_sequence is None:
+                self.sensor_active_sequence = sequence
+            elif sequence != self.sensor_active_sequence:
+                return
+            self.sensor_chunks[index] = packet[2:8]
+            if all(chunk in self.sensor_chunks for chunk in range(7)):
+                payload = b"".join(self.sensor_chunks[chunk] for chunk in range(7))
+                self.sensor_result = (payload, sequence)
+                self.sensor_waiting = False
+                self.sensor_condition.notify_all()
+
     def send_subtitle(self, value: str):
         if self.sock is None:
             return "以太网未连接"
@@ -869,6 +1061,24 @@ class EthTransport:
         sequence = self._next_display_sequence()
         self._send_display(control_packet(0x0048, bytes((sequence,))))
         return self._wait_display(0x0048, timeout, lambda body: len(body) == 16)
+
+    def query_display_idle(self) -> bool:
+        """Ask the display directly; serialize with PC image transactions."""
+        if not self.is_open() or not self.image_upload_lock.acquire(blocking=False):
+            return False
+        try:
+            import socket
+            self.upload_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.upload_sock.bind((self.LOCAL_IP, 0))
+            body = self._refresh_display_view(0.8)
+            return not decode_view(body)["busy"]
+        except (OSError, TimeoutError, RuntimeError, ValueError):
+            return False
+        finally:
+            if self.upload_sock is not None:
+                self.upload_sock.close()
+                self.upload_sock = None
+            self.image_upload_lock.release()
 
     def upload_image(self, rgb_top_down: bytes, width: int, height: int,
                      pcm: bytes = b"") -> dict:
@@ -1187,6 +1397,10 @@ class EthTransport:
                     if kind == 0x48:
                         publish_view(body, self.broadcast)
                     continue
+            if (n == 16 and data[:4] == b"\xAA\xBB\xCC\xDD" and
+                    data[4:8] == b"\x00\x4D\x00\x08"):
+                self._capture_sensor_chunk(bytes(data[8:16]))
+                continue
             if n == 24 and data[:8] == b"\xAA\xBB\xCC\xDD\x00\x03\x00\x10":
                 publish_view(bytes(data[8:24]), self.broadcast)
                 continue
@@ -1251,17 +1465,21 @@ ETH_FRAME_LOCK = threading.Lock()
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", capabilities=PRODUCT_CAPABILITIES,
+                           unavailable_keys=sorted(UNAVAILABLE_KEYS))
 
 
 @app.route("/api/status")
 def api_status():
+    with VIDEO_LOCK:
+        video_status = _video_status_locked()
     return jsonify({"serial_open": link.is_open(),
                     "serial_port": getattr(link, "port", ""),
                     "eth_available": True,
                     "eth_open": eth_link.is_open(),
                     "eth_board": eth_link.board,
                     "eth_local_port": EthTransport.LOCAL_PORT,
+                    "video": video_status,
                     "loopback": isinstance(link, LoopbackLink),
                     "auto_connect": AUTO_CONNECT,
                     "baud": DEFAULT_BAUD, "view": VIEW_STATE})
@@ -1299,7 +1517,8 @@ def api_keys():
               ("调试", ["i", "l"])]
     groups.insert(2, ("\u56fe\u50cf\u6548\u679c", ["r", "g", "b", "e", "h", "w"]))
     groups.insert(1, ("画面布局", ["6", "7", "8"]))
-    return jsonify({"keys": [{"key": k, "label": HELP[k]} for k in order],
+    return jsonify({"keys": [{"key": k, "label": HELP[k], "available": k not in UNAVAILABLE_KEYS} for k in order],
+                    "capabilities": PRODUCT_CAPABILITIES,
                     "groups": [{"name": n, "keys": ks} for n, ks in groups]})
 
 
@@ -1330,6 +1549,7 @@ def api_eth_connect():
 
 @app.route("/api/eth/disconnect", methods=["POST"])
 def api_eth_disconnect():
+    stop_video_sender()
     eth_link.close()
     return jsonify({"ok": True})
 
@@ -1340,6 +1560,11 @@ def api_cmd():
     d = request.get_json(force=True, silent=True) or {}
     mode = d.get("mode", "serial")
     key = d.get("key", "")
+    if key in UNAVAILABLE_KEYS:
+        return jsonify({"ok": False, "error": "首轮视频基线暂不支持 CV 与频谱；后续恢复"}), 409
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"] and key not in ("s", "+", "-"):
+            return jsonify({"ok": False, "error": "视频播放期间仅支持状态和音量；请先停止视频"}), 409
     with VIEW_LOCK:
         state = VIEW_STATE
         if key == "s":
@@ -1356,8 +1581,24 @@ def api_cmd():
     return jsonify({"ok": True})
 
 
+@app.route("/api/sensor/raw", methods=["POST"])
+def api_sensor_raw():
+    """Read a coherent raw BMP280/AHT10 snapshot from the media board."""
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "Sensor query is unavailable while video owns the media link"}), 409
+    result, error = eth_link.read_sensor_snapshot()
+    if error:
+        status = 503 if not eth_link.is_open() else 504 if "Timed out" in error else 409
+        return jsonify({"ok": False, "error": error}), status
+    return jsonify({"ok": True, "raw": result})
+
+
 @app.route("/api/subtitle", methods=["POST"])
 def api_subtitle():
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "首轮视频播放期间不更新字幕；请先停止视频"}), 409
     d = request.get_json(force=True, silent=True) or {}
     mode = d.get("mode", "serial")
     try:
@@ -1373,6 +1614,22 @@ def api_subtitle():
 
 @app.route("/api/eth/upload-image", methods=["POST"])
 def api_eth_upload_image():
+    global VIDEO_IMAGE_REQUEST_ACTIVE
+    with VIDEO_LOCK:
+        if VIDEO_IMAGE_REQUEST_ACTIVE or _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "Another image/video transaction is active"}), 409
+        VIDEO_IMAGE_REQUEST_ACTIVE = True
+    try:
+        return _upload_image_request()
+    finally:
+        with VIDEO_LOCK:
+            VIDEO_IMAGE_REQUEST_ACTIVE = False
+
+
+def _upload_image_request():
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"]:
+            return jsonify({"ok": False, "error": "video is active; stop video before sending a still image"}), 409
     """Convert browser-decoded RGB and send a normal 0x21..0x33 frame to .2."""
     if not eth_link.is_open():
         return jsonify({"ok": False, "error": "请先连接以太网"}), 400
@@ -1410,6 +1667,105 @@ def api_eth_upload_image():
         return jsonify({"ok": False, "error": str(exc)}), 409
     except OSError as exc:
         return jsonify({"ok": False, "error": f"以太网图像发送失败：{exc}"}), 502
+
+
+@app.route("/api/eth/video/status")
+def api_eth_video_status():
+    global VIDEO_RELEASE_PENDING
+    with VIDEO_LOCK:
+        status = _video_status_locked()
+        pending = VIDEO_RELEASE_PENDING
+    if pending and eth_link.query_display_idle():
+        with VIDEO_LOCK:
+            if VIDEO_PROCESS is None:
+                VIDEO_RELEASE_PENDING = False
+            status = _video_status_locked()
+    return jsonify(status)
+
+
+@app.route("/api/eth/video/start", methods=["POST"])
+def api_eth_video_start():
+    global VIDEO_PROCESS, VIDEO_PATH, VIDEO_NAME, VIDEO_LAST_EXIT
+    global VIDEO_STATUS_PATH, VIDEO_LOG_PATH, VIDEO_USER_STOPPED
+    if not eth_link.is_open():
+        return jsonify({"ok": False, "error": "Ethernet is not connected"}), 400
+    if eth_link.image_upload_active:
+        return jsonify({"ok": False, "error": "An image upload is still active"}), 409
+    video_file = request.files.get("video")
+    if video_file is None or not video_file.filename:
+        return jsonify({"ok": False, "error": "Choose a video file first"}), 400
+    safe_name = os.path.basename(video_file.filename.replace("\\", "/"))
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in {".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv"}:
+        return jsonify({"ok": False, "error": "Supported: MP4, MOV, MKV, AVI, WebM, WMV"}), 400
+    try:
+        video_width=int(os.environ.get("VIDEO_WIDTH", str(PRODUCT_PROFILE.get("width", 640))))
+        video_height=int(os.environ.get("VIDEO_HEIGHT", str(PRODUCT_PROFILE.get("height", 360))))
+        video_window=int(os.environ.get("VIDEO_WINDOW", str(PRODUCT_PROFILE.get("window", 512))))
+        video_prefetch=int(os.environ.get("VIDEO_PREFETCH", "16"))
+        if not (2<=video_width<=720 and video_width%2==0 and 1<=video_height<=360 and video_window in (32,64,128,256,512) and video_window>=video_height and 0<=video_prefetch<=16):
+            raise ValueError("invalid video profile")
+    except ValueError:
+        return jsonify({"ok":False,"error":"Invalid VIDEO_WIDTH/VIDEO_HEIGHT/VIDEO_WINDOW; must match display bit"}),400
+    ffmpeg_setting = os.environ.get("VIDEO_FFMPEG")
+    try:
+        ffmpeg = ((shutil.which(ffmpeg_setting) or
+                   (ffmpeg_setting if Path(ffmpeg_setting).is_file() else None))
+                  if ffmpeg_setting else resolve_ffmpeg())
+        if not ffmpeg:
+            raise ValueError(f"ffmpeg not found: {ffmpeg_setting}")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not VIDEO_SCRIPT.is_file():
+        return jsonify({"ok": False, "error": "scripts/direct_video_sender.py is missing"}), 500
+
+    with VIDEO_LOCK:
+        if _video_status_locked()["active"] or VIDEO_IMAGE_REQUEST_ACTIVE or eth_link.image_upload_active:
+            return jsonify({"ok": False, "error": "An image/video transaction is already active"}), 409
+        VIDEO_CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix="video_", suffix=suffix, dir=VIDEO_CAPTURE_DIR)
+        os.close(fd)
+        try:
+            video_file.save(temp_name)
+            VIDEO_STATUS_PATH = temp_name + ".status.json"
+            VIDEO_LOG_PATH = temp_name + ".log"
+            VIDEO_USER_STOPPED = False
+            # Decode ahead off the time-critical UDP send loop. At 640x360
+            # RGB565, 16 queued frames use about 7 MiB of PC RAM.
+            command = [sys.executable, str(VIDEO_SCRIPT), "--input", temp_name,
+                       "--frames", "0", "--once", "--quiet", "--ffmpeg", ffmpeg,
+                       "--prefetch", str(video_prefetch),
+                       "--status-file", VIDEO_STATUS_PATH,
+                       "--width", str(video_width), "--height", str(video_height),"--window",str(video_window),"--require-ready"]
+            if request.form.get("audio", "1").lower() not in ("0","false","off"):
+                command.append("--audio")
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            with open(VIDEO_LOG_PATH, "wb") as log:
+                VIDEO_PROCESS = subprocess.Popen(command, cwd=VIDEO_SCRIPT.parents[1],
+                                                 stdin=subprocess.DEVNULL,
+                                                 stdout=log, stderr=subprocess.STDOUT,
+                                                 creationflags=creationflags,
+                                                 start_new_session=(os.name != "nt"))
+            VIDEO_PATH = temp_name
+            VIDEO_NAME = safe_name
+            VIDEO_LAST_EXIT = None
+        except Exception as exc:
+            try:
+                Path(temp_name).unlink(missing_ok=True)
+            except OSError:
+                pass
+            VIDEO_PROCESS = None
+            VIDEO_PATH = None
+            VIDEO_NAME = ""
+            return jsonify({"ok": False, "error": f"Could not start video sender: {exc}"}), 502
+        return jsonify({"ok": True, "active": True, "state": "starting", "name": VIDEO_NAME,
+                        "target": "192.168.137.2:1", "format": f"{video_width}x{video_height} RGB565 (target 2000/33 fps)"})
+
+
+@app.route("/api/eth/video/stop", methods=["POST"])
+def api_eth_video_stop():
+    stop_video_sender()
+    return jsonify({"ok": True, "active": VIDEO_RELEASE_PENDING, "state": "releasing" if VIDEO_RELEASE_PENDING else "idle"})
 
 
 @app.route("/api/stream")

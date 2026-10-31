@@ -1,0 +1,585 @@
+﻿{
+    "built_at":  "2026-10-31T18:48:29.8651763+08:00",
+    "product_baseline":  "dual-V3-beta",
+    "cleanroom_reference":  "ba1f949",
+    "strategy":  "area",
+    "bit":  "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.bit",
+    "bit_sha256":  "010EE1BBE108ED1BBF9519C1D9C1302688E6A5841B95BA13E25422AF776FA0AE",
+    "profile":  {
+                    "width":  640,
+                    "height":  360,
+                    "cv_enabled":  true,
+                    "link_diagnostics":  0,
+                    "audio":  "24k_u8_mono",
+                    "statistics":  0,
+                    "spectrum_enabled":  true,
+                    "cv_neighborhood_enabled":  true,
+                    "window":  512,
+                    "head_rows":  4
+                },
+    "gate_overrides":  [
+                           "opt_area=high",
+                           "pack_effort=high",
+                           "map_mode=area_prior"
+                       ],
+    "place_overrides":  [
+                            "pr_strategy=2",
+                            "effort=high",
+                            "seed=7"
+                        ],
+    "sdk_flow_sha256":  "D1A5D4291706DAC224CC33008D8945E79ED2EB1ADF8CE86CCA46BE564975BADE",
+    "sources":  [
+                    {
+                        "path":  "board_display/td_project/lab_ex5_i2s_v1.0.al",
+                        "sha256":  "97F909C5A5302583347C2EDB5983F3497A2A385F63BD8E84E1D9688F3A354EA4"
+                    },
+                    {
+                        "path":  "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/lab_ex5_i2s_v1.0.prj",
+                        "sha256":  "7291475568A4EFDF04EE486D633E9FF52E64711013A11926F7C6371D2946C7C1"
+                    },
+                    {
+                        "path":  "board_display/td_project/lab_ex5_i2s_v1.0_Runs/phy_1/settings.cfg",
+                        "sha256":  "3B36FA9740914B1247B0354A6AD1C6F5279D817CBFC6FE28C83C280D03694ADC"
+                    },
+                    {
+                        "path":  "board_display/td_project/lab_ex5_i2s_v1.0_Runs/syn_1/lab_ex5_i2s_v1.0.prj",
+                        "sha256":  "7291475568A4EFDF04EE486D633E9FF52E64711013A11926F7C6371D2946C7C1"
+                    },
+                    {
+                        "path":  "board_display/td_project/lab_ex5_i2s_v1.0_Runs/syn_1/settings.cfg",
+                        "sha256":  "5C67C5833D1D4CA07364800BA3B39403A02D0AAA301D0E27DA2AA3B5E39295E6"
+                    },
+                    {
+                        "path":  "board_display/user_source/assets/gt911_ganyu_cursor.png",
+                        "sha256":  "E984F623AAAD802D84BB6C37F0C779EFF3D9F1F39E2D8FD83C0E5D445FCE2E33"
+                    },
+                    {
+                        "path":  "board_display/user_source/constraints_source/.edid_debug_bak.cwc",
+                        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                    },
+                    {
+                        "path":  "board_display/user_source/constraints_source/edid_debug.cwc",
+                        "sha256":  "6716411E2346DE08976E0AD8ED2E09EB93BDC0F60EFC31BF75BA70E6CEBE1F95"
+                    },
+                    {
+                        "path":  "board_display/user_source/constraints_source/pin.adc",
+                        "sha256":  "55D45F464C043AEFF82A124D32F64ADAB6BC20AD0A259C4D1C83CA33ADBEAB5F"
+                    },
+                    {
+                        "path":  "board_display/user_source/constraints_source/timing.sdc",
+                        "sha256":  "49BACC6AE83E9F8A2C88CFAA4703827F4BC9991A033D832FAC4287178BC79968"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/BUFGMUX.v",
+                        "sha256":  "C78AED520E1126721F61A0DC8AE5166C1EBD3B5B5D18C86FDD820832F123FB91"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/clk_gen_rst_gen.v",
+                        "sha256":  "D4D12ABC65617EB26807A36F88C43178F6A4E5EF1D0FD90B49D1007EA4A84D26"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_audio.v",
+                        "sha256":  "40F553667B141090099A5DD8D2DBAD6E8C0F21187E9B7320230789E6BA8BE279"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_bram_32k_16.v",
+                        "sha256":  "6E9952FC894223C60E4CBC9CFE566A74D152A86705B23696409EB30000E9424D"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_bram_9k_16.v",
+                        "sha256":  "6347C235F06019D58143DF0431C73B595C1C51A27BABE50C00538C3BF77C4A72"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_feedback_tx.v",
+                        "sha256":  "792AA99034038BD6D03F8210B2E949C4F9AA1E727009A79A8E1DA3C28E666DF7"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_packet_demux.v",
+                        "sha256":  "6681D77D2105679143B4CF6B6BAFFFD41BD4300AACBA18B3C6AC21BAB428EBB9"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_region_mux.v",
+                        "sha256":  "5B456980E25F1D8822B41E12228F458F659C9E176C3B3508D1B8ADEAC52C1235"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/direct_video_row_parser.v",
+                        "sha256":  "23E42829D7F3FECA9C9B96DC937EC4ACB7384F7105D13ECF71C1316E3FCCED00"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/display_udp_lite.v",
+                        "sha256":  "7D6C209FFBC9B928E21FD106B4537635E251778BF81A436D2ED54A1E29E40393"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/div_clk_gen.v",
+                        "sha256":  "BB9CA78FEA2DEF93464B44641B32A2491316CF3DE55C361BC81801CFC280B367"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/eth_front.v",
+                        "sha256":  "66C7FAB7A1CB1B549C6D7B1C1F46A5329C203E8FA7BB35745FADAC119423A39D"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/eth_subsys.v",
+                        "sha256":  "3EE65898A6DEAB7F79F1CE5C901566D1B0A14EFD46613CBF38D58B1B675A16D9"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/IDDR.v",
+                        "sha256":  "CBF4C3C34DAFE672AA7CCC010440E01FC7DBDDF428BDE868319D8D0580208F53"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/media_display_control_rx.v",
+                        "sha256":  "3F4C3AB5838A798FF1B1A9A300E5189BD05E6CC5048919AF67114D6CA0594A77"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/media_display_tx.v",
+                        "sha256":  "036810D4F53DB3A872850315F6330FE1C1D198492FD4DB64D590CA143B0C7376"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/media_frame_pad.v",
+                        "sha256":  "B6E2B928B127C07CCEFEE3B1A2A286E3F528058BA20D5DCFD12323675F9A1DF3"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/media_protocol_rx.v",
+                        "sha256":  "FCAD147BB7CD4EABCB78055D595473934E030DB4D9322B5CDBAF3EEC3EFEE2A4"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/media_transaction_writer.v",
+                        "sha256":  "DB4049711A7945466399D6D5579825F383951657848D2C596FBD64FB55459448"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/media_tx_mux.v",
+                        "sha256":  "A07ACFF6A98A868E442862E33C0BBA56E3A9E76C3BB269533BD8056DDB959E1A"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/ODDR.v",
+                        "sha256":  "D3EDB14DAEBDCB028E1CB3A8C6C944556FA28568C04E8A0193C868F654AD3A84"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/pll_gen.v",
+                        "sha256":  "8A75254A88CA4224314666F9D17E5A492AEB22B392FF7976629922B5731233D8"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/RAMB16_S9_S9.v",
+                        "sha256":  "457278A570CF5A9F6E8280A4C2860154A785E7E110D46F5E6F9C2AA263FE4287"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/rgmii_interface.v",
+                        "sha256":  "95BCC4F51E9E6BE685C8F9E53FD49A95ED2ED4995958732D28B5170C593CFE0E"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/rx_client_fifo.v",
+                        "sha256":  "FF1BE590E136905CD36B19B99869EAB8596CADDDB820EBFA63ABD6BC2674C04B"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/temac_block.v",
+                        "sha256":  "889021AD1398400B69A6E407953B4FD5BDF23695268EC29D8D7D0D3425B9C62C"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/temac_clk_gen.v",
+                        "sha256":  "B1B3474B1A97CC96A73297BE56C4D3FC8322891CD3D6F83B3560D2FE95C126D3"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/TEMAC_CORE.ipc",
+                        "sha256":  "01938DBFCEE94C85A96A4A5FB68192138DA4C87F843C980DC75969B966BD3CA8"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/TEMAC_CORE_gate.v",
+                        "sha256":  "710ECF1910800788C3E1315A9F624C712AB481BDD9FFA90A585822D06B0BF1B9"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/tx_client_fifo.v",
+                        "sha256":  "F4A118BA55C737B26B1A1498402A5CE5E710E30AB4FB34CA8FEB49F23C2333BC"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/tx_clk_en_gen.v",
+                        "sha256":  "DA8C09E5308E8BEBBFDFACAAD7D83F5F9371811F54A8F6203E452E40649B02E9"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/udp_ip_protocol_stack_merge.enc.v",
+                        "sha256":  "983DA722CAEB6303DC6E9F610C0D3A5D93509317B3A06AED972899D3903FFDC7"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/video_head_cache.v",
+                        "sha256":  "C8FA0316574438D0E1BB6C1310328EF90CAC7723F1160EE9F81FC41146D4824E"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/video_hybrid_pipeline.v",
+                        "sha256":  "86B4421DE5755A133AF819A6AA9F15EA5BA2BD78ACC8D86D17FB2A4B57D8D768"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/video_memory_lease.v",
+                        "sha256":  "91997A1E2129C73AEC6B064C3F65ACD4A3F550024523CCC2BB8107FA9071189B"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/video_row_ingress.v",
+                        "sha256":  "41E858ECA69CC3D2CADE317912F684E2A94013E1BAE29644E1A6A2D71A4B01FC"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/video_row_tags.v",
+                        "sha256":  "481A0CA0DBD58F52AD5B7429DCDE549E59EDC764DC5F43287E270B3CEB61816C"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/video_sdram_port.v",
+                        "sha256":  "3A0F16B2E4A723E7BDE69F33B8220AD00E1CFE9BBB57E4D99E3640EE7F6A94B4"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_bilinear_shrink.v",
+                        "sha256":  "07A56D2907E804878D1A5D300278647EE6326336CC13ADF45694FDF5916628D7"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_black_mask.v",
+                        "sha256":  "B418D6C0AC7BCF0536C5C15B4EE55A7AD64FEB18B5CFBE240E8A007FB943740A"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_image_pipeline.v",
+                        "sha256":  "BBB4B04BB00C8C85077708D95FAFB62C9BAA168AAC99803497382F6DDC80BD32"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_nearest_shrink.v",
+                        "sha256":  "8B20A3F34C6B01FBB0A1E2AB2499B3539BB1334DA287664DAD6E4E604B9BBB85"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_protocol_rx.v",
+                        "sha256":  "67855F5A8A34A37C0D68D74AD00926904C5D72338236F43F8880BAA862B5C9DA"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_scale_geometry.v",
+                        "sha256":  "161F4AE9C2BE65EB8A8B591CAEF3BE39FF4B53908922E4F51E2246652FEAB683"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_scan_address.v",
+                        "sha256":  "F609E64FEB98A3D085BBB48A51F0419C9D2F40DFDBC76E04E4AC8E34F93B834C"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_session_manager.v",
+                        "sha256":  "194CA441EBA6D885380593BD14F19A920A4D5BD19014391B24B33733766F4F0D"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_video_config.v",
+                        "sha256":  "68AFA9AA8FF330289F9780E3FA408CCB5BAE8D992B983620D88D314C3B4D579F"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/ETH/view_write_address.v",
+                        "sha256":  "631A861C1C49FA1DDC3206554691214137C5D5ECB4F31650D779FF896D6EA28A"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/hdmi_phy_warpper.v",
+                        "sha256":  "A9A35C71EEC277A136FA436F58904B3EE90B1C0E29206B77256B29820D185B8D"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/hdmi1.4b_transmitter_core/hdmi_1_4b_transmitter_core_wrapper.enc.v",
+                        "sha256":  "867E0B0BDD874BC383D00918C9E1BE3FE01EDF41F343B6A0D73E262776596A63"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/include/global_def.v",
+                        "sha256":  "13388DF3E0A753F928FD394F41B931A7E372ADECE20C7F79C07C0B19B589067F"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/include/sdr_as_ram.enc.v",
+                        "sha256":  "767DBDFBD83D42223B77DFA7DEAB42CE8216A8FD6F6CB41B7E7593D9A345BA57"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/include/sdr_init_ref.enc.v",
+                        "sha256":  "6DA5945F4AF793610D0D64C65C7E5D2D1C86ED4C11BC5FDEACD27EB03178B9F6"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/include/sdr_wrrd.enc.v",
+                        "sha256":  "C7D7FE07D75F66AA88D9F986B3006319C995162434F104F9990664B374CDFDD2"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_256.tcl",
+                        "sha256":  "5807155B00F2F749328339E01A85B4BB836F91598286DD167513836B60AF33DB"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_256.v",
+                        "sha256":  "DAB43A76A35E21DF4064A25EDB940699B041427D70BAE89CC03C5280B7BF4BF8"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_256.vhd",
+                        "sha256":  "50D6D10017B63E1CE5A77BAD4A80E9A3DE81402909D30CA0818674A1887EB46D"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_256_sim.v",
+                        "sha256":  "55B81AB3AA699902B6F11FE766658B852E0740844879A942DCA81CD57B40F729"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_32_256.ipc",
+                        "sha256":  "9DF57C0B914F2F6222F88E356528947224FDDB866BE2468F1391C26D4E60D371"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_32_256.tcl",
+                        "sha256":  "5807155B00F2F749328339E01A85B4BB836F91598286DD167513836B60AF33DB"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_16_32_256.v",
+                        "sha256":  "3D29B06655482184A9AD157B9BD71B79032DEBE3199168D3B4D9570FDAC31835"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_32_16_256.ipc",
+                        "sha256":  "A74955DC68A02BBFB36780127008C4737EC80E0888A4648E98E6EAC9F5D2C349"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_32_16_256.tcl",
+                        "sha256":  "5807155B00F2F749328339E01A85B4BB836F91598286DD167513836B60AF33DB"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/afifo_32_16_256.v",
+                        "sha256":  "7C3EE41F30BE75AE686C9ABFF3A840FC5439209CDA077E4AA275EAC0DAB9F564"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/sdram.ipc",
+                        "sha256":  "C3092876D4A66739DFC52CBDA4FE84EAB75099218F65DB7E7D922C41DEE1C201"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/sdram.v",
+                        "sha256":  "1487E8583BBF52FE6D079A2854C10EBFF2E569A3872A9088C1C9717BA14D17FE"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/sdram.vhd",
+                        "sha256":  "853170E99291FB6B2B1BF3F5F20CD1DD0CC723052864147810B674E18CD70705"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/sys_pll.ipc",
+                        "sha256":  "595FF66C4DFC31D71E6DED5C487871FE984C9B6EE96C5DC0D400FB04266FF719"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/sys_pll.v",
+                        "sha256":  "957DE113F26B6024077C6E8B48571FF86E3DBF9ABCC7CD4575131699EBE2AFAF"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/sys_pll.vhd",
+                        "sha256":  "27A8265CDC70070B63B252EF3736393AA9045115AA446A5AA00BD208F18AD308"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/video_pll.ipc",
+                        "sha256":  "9D3D89D133DF1C99F1D8C7D6ADF88309CA83544220D722228AE13209054D56A7"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/video_pll.v",
+                        "sha256":  "605FAD3234E96F6B69DF9106C5A7B4C969840C4735352684E0566603CE20AFE0"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/IP/video_pll.vhd",
+                        "sha256":  "4315939B2C1617DA9D7A058861BC77CD376C0BA563C56A8D263F616EBF28FA3E"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/key_remove_shakes.v",
+                        "sha256":  "8832F59E7BA94BFB8CF31E4F5A772EF7177D5257A5A2532D53CBFA1D9B7F5CD9"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/lane_lvds_10_1.v",
+                        "sha256":  "DE9529321354F04837E051D0EC1681CF44783D4BE3284703A788E081147500BC"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/led_matrix/audio_to_15ch.v",
+                        "sha256":  "1B723A53DD8FE8DE46B5922735F7C2213E812C192C3B747AEAAB817EF02D8BFC"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/led_matrix/is31fl3731_i2c_master.v",
+                        "sha256":  "041AFF1380E9C174E5D04ADAE0DB49E627059B28954FD32C31210D177C0833A4"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/led_matrix/matrix_core_mapper.v",
+                        "sha256":  "08E44C56768CCDF1224F554626040B7C4460EB58EF8C18B40F63141B64D84835"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/led_matrix/matrix_transition_animator.v",
+                        "sha256":  "1B841BB34AEFC6D8122DBBAA9A547BDF1B285AD76B894B6A897C979CA9DC25BA"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/led_matrix/matrix_transition_arbiter.v",
+                        "sha256":  "F8AE2C1D42A13BA8D0A3D2BC7D37DB43824D9CF5585E8B6DE09A4E687AB8F430"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/ax_debounce.v",
+                        "sha256":  "93AA6DD38051250CC7F777C88466AC180AFE9BCDCE7838B9EA506455D8CBC9B8"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/bmp_read.v",
+                        "sha256":  "CA3F998FC71B06C9409D2F21F47136BB2DCFE9BF56DCB033DA63B431FCBE68F1"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/color_bar.v",
+                        "sha256":  "AFE1F56714EC58D2477BA1717E5A36C5A0DA5FE5C07D70D11AA5ACE710C4B152"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/ctrl_core.v",
+                        "sha256":  "22D5B96024BF5001D3794D715DC49548B6FCE57495071D5A786ECF578FDDB488"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/cv_pixel_effects.v",
+                        "sha256":  "9B6736EA8C17A9642260ACF3152CED9D3C46C374B11C85951EC3AEDD05078483"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/display_levels_rgb.v",
+                        "sha256":  "9352EA162CD269EC91E995C61DEDD61E66D5E5E2B85E1C2E3137F44F0ADDD86B"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/font.mem",
+                        "sha256":  "66C385E60F02AE997B5E9B9B974DB17CB5CA1BAC8EA3F248B8E3E6C9EFD60F4B"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/font_rom.v",
+                        "sha256":  "E2368B023CFE2B2C00AFAF1F8AF29754B8ED1E1745BB06702EBE83437D170E76"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/frame_fifo_read.v",
+                        "sha256":  "626F10AEA749791F8A39742B3462A10BDFFC02D2ACE2700A67D20509536B2223"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/frame_fifo_write.v",
+                        "sha256":  "5003383D712E338BD194FBFF5508135B9B9331D1D83789A8EC62E8237EA5B1A8"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/frame_read_write.v",
+                        "sha256":  "DFC2FF86E6195E83300D8B815E91F753724986149E8C3F2DFE7A4E7E16B51294"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/gt911_cursor_overlay.v",
+                        "sha256":  "52941AD1D056B1B7A6A832A485C5217DD42BEFD372D55FF5B1D0087C0502BC30"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/gt911_ganyu_cursor.mem",
+                        "sha256":  "A3ECD3DC281805A9C3DABD0C52D71F9E60D54DDB96B10C483D899176A74AF013"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/gt911_i2c_byte.v",
+                        "sha256":  "F9ABA65130695F165BB143C4B1089D5D106F05142D43B59CC0E81C401275F04C"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/gt911_trackpad.v",
+                        "sha256":  "8309D79A20A29EAE6B8B15E5E1E24579B11A97902A44D8DCE720B577457B9052"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/media_audio_playback.v",
+                        "sha256":  "E92067AC77E247FE2C7BA76F1D0C234ECDA5CA8D947E1D89402CB0CFBA107850"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/osd_composite.v",
+                        "sha256":  "F5069DC3D70310768AE3381DA8A9075C53100E7660CE8EF65568FEB5AFDF59FB"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/osd_panel_levels.v",
+                        "sha256":  "4A89C88682B5BB84528E106E8C4C1772D240DA53B1153D4585CD4803C84FA943"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/osd_visibility.v",
+                        "sha256":  "D9B7AF5A7C4963B747234ECE2F77EA4F5475988B19995777BD31E711227E605A"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/pulse_bar.v",
+                        "sha256":  "A7750A5194F000A97BA826F21D04D714493125C2A635DBFD085524C754B8EB56"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/sdram.v",
+                        "sha256":  "2D985C2477384E677C25714241E1A50206DEF8916AA03189A5B313B2D22DFC99"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/seg_decoder.v",
+                        "sha256":  "62A2664BE7DB6D0DACE31FC97A8FAEF0C43F44B639B1D5A6A2C49773812A3B5E"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/seg_scan.v",
+                        "sha256":  "C61D6B6808E06DD0EDC6DB2D8F214426A1FB96D546556ECD1F74EA9CA6889F52"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/spectrum_dft.v",
+                        "sha256":  "6DB30D8EB4AB6DAB9A9BE64E1143AFACF371BBD9B217235B68DD6EC8C4EBC9C6"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/spectrum_overlay.v",
+                        "sha256":  "1A1801D85C561113CED24C5DBAF99393B05B268F5D20F081E62DD7130AA303F5"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/spectrum_sample_buf.v",
+                        "sha256":  "E384E6064DC66BBCA8CEC4DAFD09EDBA031B2C60C0B1D2708E478EAB4EB4E3B6"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/spectrum_twiddle_512.mem",
+                        "sha256":  "E1B119ECBC41A24A794FFA2795837CD387AAB64CFB174126321758E33E36F833"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/subtitle_cmd.v",
+                        "sha256":  "611E9EB471B867F0F07A6690377A33C2229208335DA28FDCD4B4FA1DE3E36110"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/subtitle_scroll.v",
+                        "sha256":  "BCAE495EBB85095E183D07BC75A15FBE771D564EA841FF77979FA41FAD9AFF4A"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/subtitle_store.v",
+                        "sha256":  "B021315B6270FBA18F1BA48724043F8156797C9A84D14B72010426C69CDB1A95"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/subtitle_text_renderer.v",
+                        "sha256":  "78E86A83F32BBABB8FB1693425D3D8A2BC2C1DE4E808C5527F9350BD10C6C936"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/transition_blender.v",
+                        "sha256":  "A032B43D807DF5B4313E8C1D7AEB2C98F3EA217D11646B5171133A77AD85943A"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/transition_ctrl.v",
+                        "sha256":  "39D000071807231ACD2CE248C43A15C2FC0F3E1B3D47512DEADFC720E6403410"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/transition_line_buf.v",
+                        "sha256":  "1826D5E147285AC795786029AD59B65E4CB6D0438DF81CC19CB5D0770053EE60"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/transition_line_read.v",
+                        "sha256":  "4A222A38DB1479A73B717AB31935F2CCF0513099A8471F19DDB1379DD2CC2E5B"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/uart_link.v",
+                        "sha256":  "5710847D7ED5BB7C8080852EF07F1A5D5D5D5CD4457FD3DDDA8A5ED78A648639"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/video_define.v",
+                        "sha256":  "48CBB478AE9CFDF8D50C410B10CD3E4C1BC1A4229F503D48BDF0647930AAEBA7"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/video_delay.v",
+                        "sha256":  "A058C6F5B98EC0FC8C8AF27E45F0578519C853D881CE35B598B7653336511359"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/SD/video_timing_data.v",
+                        "sha256":  "C6F75501E98DD5995F687AAFB40455BEFFE45B426137B5089A73AC3A036F7282"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/startup_pulse.v",
+                        "sha256":  "396E1E56FEBB8028339E646BC2F06B83E07AB11EF840E447422FB941956741C9"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/top_tf_hdmi_audio.v",
+                        "sha256":  "3EE859130AB00A05EE3724BD9A54468CFF0DB2710D58708A1C7374A52B547384"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/video_rgb_to_axis_640x480.v",
+                        "sha256":  "E1732F0ABAD17EDF8D0EA3F135BF994536EA43F0CF160609AFE8117E6E602C32"
+                    },
+                    {
+                        "path":  "board_display/user_source/hdl_source/video_source_test.v",
+                        "sha256":  "39CC05C9684A594D4254D11E66E97344053AB75BDB00F3F5A301643FD7AADBFC"
+                    },
+                    {
+                        "path":  "board_display/user_source/ip_source/pll.ipc",
+                        "sha256":  "5D632BAD332785258C35CA41CE2B4A2A550E6BFD75BE0B63A3F72403CA2CE11E"
+                    },
+                    {
+                        "path":  "board_display/user_source/ip_source/pll.v",
+                        "sha256":  "202799F886F12CFC1D837AFA932328B636C6C3DEE70167BE68C084133647B39C"
+                    },
+                    {
+                        "path":  "board_display/user_source/ip_source/pll.vhd",
+                        "sha256":  "A8166865B5AEF9CAAEE525D4633AA1DEC4172244A7BBFF239E0D658C0CA775E4"
+                    },
+                    {
+                        "path":  "scripts/build_display_video.ps1",
+                        "sha256":  "A87082FC206F75B8DC53CD055DB57936ECB52E2DDDD5BF19B6303D4AAC0876B8"
+                    },
+                    {
+                        "path":  "scripts/direct_video_profile.json",
+                        "sha256":  "8EA56D9EF4A51944D7F4C2C67C6774E2B4867D83B405E4433F151BB44177B4B0"
+                    }
+                ]
+}

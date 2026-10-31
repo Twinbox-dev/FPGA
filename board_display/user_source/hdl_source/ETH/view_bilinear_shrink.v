@@ -18,7 +18,7 @@ module view_bilinear_shrink (
 );
     localparam IDLE=0, GEOMETRY=1, FILL=2, READ0=3, READ1=4,
                HORIZONTAL=5, VERTICAL=6, EMIT=7, DRAIN=8, FLUSH=9, PASS=10,HORIZONTAL1=11,
-               MULTIPLY=12,ACCUMULATE=13,STORE=14;
+               MULTIPLY=12,ACCUMULATE=13,STORE=14,FILL_PREP=15;
     reg [3:0] state;
     wire geometry_done, geometry_error;
     wire [11:0] dw, dh;
@@ -53,6 +53,9 @@ module view_bilinear_shrink (
     wire [11:0] x1 = x0+1'b1<sw ? x0+1'b1 : x0;
     wire [11:0] y0 = dh>1 && dest_y==dh-1 ? sh-1'b1 : y_position[27:16];
     wire [11:0] y1 = y0+1'b1<sh ? y0+1'b1 : y0;
+    // Compute the row needed by FILL before accepting source pixels. This
+    // breaks the destination-height -> y0 -> y1 -> state timing path.
+    reg [11:0] fill_target_y;
     wire [7:0] fx = dw>1 && dest_x==dw-1 ? 8'd0 : x_position[15:8];
     wire [7:0] fy = dh>1 && dest_y==dh-1 ? 8'd0 : y_position[15:8];
 
@@ -138,7 +141,7 @@ module view_bilinear_shrink (
             output_word<=0;output_valid<=0;a0<=0;a1<=0;
             h0<=0;h1<=0;result_pixel<=0;channel<=0;
             row0_odd<=0;row1_odd<=0;weight_x<=0;weight_y<=0;
-            base_reg<=0;mixed<=0;operation<=0;
+            base_reg<=0;mixed<=0;operation<=0;fill_target_y<=0;
         end else begin
             done<=0;out_frame_begin<=0;
             if(frame_end)input_ended<=1;
@@ -163,8 +166,9 @@ module view_bilinear_shrink (
                 GEOMETRY:if(geometry_done)begin
                     error<=geometry_error;out_width<=dw;out_height<=dh;
                     out_frame_begin<=1;x_position<=origin_x;y_position<=origin_y;
-                    state<=geometry_error ? FLUSH : ((dw==sw && dh==sh) ? PASS : FILL);
+                    state<=geometry_error ? FLUSH : ((dw==sw && dh==sh) ? PASS : FILL_PREP);
                 end
+                FILL_PREP:begin fill_target_y<=y1;state<=FILL;end
                 PASS:if(out_valid && out_ready)begin
                     if(pixels_consumed+20'd2>=pixel_total)begin
                         pixels_consumed<=pixel_total;state<=FLUSH;
@@ -173,7 +177,7 @@ module view_bilinear_shrink (
                 FILL:if(pixel_take)begin
                     if(source_x==sw-1)begin
                         source_x<=0;source_y<=source_y+1'b1;
-                        if({2'd0,source_y}>=y1)state<=READ0;
+                        if({2'd0,source_y}>=fill_target_y)state<=READ0;
                     end else source_x<=source_x+1'b1;
                 end
                 READ0:if(output_room)begin
@@ -205,7 +209,7 @@ module view_bilinear_shrink (
                     if(dest_x==dw-1)begin
                         dest_x<=0;x_position<=origin_x;
                         if(dest_y==dh-1)state<=pixels_consumed>=pixel_total ? FLUSH : DRAIN;
-                        else begin dest_y<=dest_y+1'b1;y_position<=y_position+step_y;state<=FILL;end
+                        else begin dest_y<=dest_y+1'b1;y_position<=y_position+step_y;state<=FILL_PREP;end
                     end else begin dest_x<=dest_x+1'b1;x_position<=x_position+step_x;state<=READ0;end
                 end
                 DRAIN:if(pixels_consumed>=pixel_total || (pixel_take && pixels_consumed+1'b1>=pixel_total))state<=FLUSH;

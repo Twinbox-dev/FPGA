@@ -1,0 +1,1179 @@
+Created by          : Tang Dynasty v6.2.168116
+                    : Copyright (c) 2012-2025 Anlogic Inc.
+Generated           : Sat Oct 31 06:37:50 2026
+
+Top Model           : top
+Device              : EG4S20BG256
+Speed               : NA
+STA coverage        : 93.41%
+Constraint File     : C:/Users/23506/Desktop/anlogic/boardtest/diagnostics/led_matrix_minimal/user_source/constraints_source/timing.sdc;
+Confidence          : Placed
+Check Corner        : Both (Slow and Fast)
+CRPR Enabled        : Yes
+Report Scheme       : 10 end point(s) per path group, 1 path(s) per end point
+
+
+Check Status
+-------------
+
+Corner   | Max      Min     
+------------------------------------
+Slow     | yes      yes     
+Fast     | yes      yes     
+
+
+Timing Status
+--------------------
+	SWNS: 13.992ns, STNS: 0.000ns
+	HWNS: 0.243ns, HTNS: 0.000ns
+	Period Check WNS: 0.000ns
+
+
+Clock Summary
+--------------------
+
+       Clock-Id:       C-Freq       Fanout   Clock-Name
+--------------------------------------------------------------------------------
+           clk0:       50.000           61   clk
+--------------------------------------------------------------------------------
+
+       Name            Type         Rise(ns)   Fall(ns)          C-Period(ns)     C-Freq(MHz)          R-Period(ns)     R-Freq(MHz)         SWNS(ns)   STNS(ns)         HWNS(ns)   HTNS(ns)         Skew(ns)           Fanout        Max-Level        CC-From    CC-To
+       clk0           local            0.000     10.000                20.000          50.000                 6.008         166.445           13.992      0.000            0.243      0.000            0.000               61                8             no       no
+
+Notes
+----------
+C-Period  :  constraint period
+C-Freq    :  constraint freq
+R-Period  :  report min period
+R-Freq    :  report fmax
+CC-From   :  has path(s) from cross-domain clock
+CC-To     :  has path(s) to cross-domain clock
+
+
+*   Clock R-Period data only takes intra-clock timing. SWNS/STNS/HWNS/HTNS take both intra-clock and inter-clock timing.
+*   If there is mismatch between R-Period and SWNS, check inter-clock timing of this clock as capture clock.
+*   SWNS/STNS/HWNS/HTNS of timing exception (SMCP/SMD) only counted in global Timing Status, not counted in Clock Summary.
+
+Intra clock domain timing
+--------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+Path Group     :     clk -> clk
+Type           :     Self
+From Clock     :     clk
+To Clock       :     clk
+Min Period     :     6.008ns
+Fmax           :     166.445MHz
+
+Statistics:
+Max            : SWNS     13.992ns, STNS      0.000ns,         0 Viol Endpoints,       115 Total Endpoints,      1679 Paths Analyzed
+Min            : HWNS      0.243ns, HTNS      0.000ns,         0 Viol Endpoints,       115 Total Endpoints,      1679 Paths Analyzed
+----------------------------------------------------------------------------------------------------
+
+Max Paths
+----------------------------------------------------------------------------------------------------
+Slack               : 13.992ns
+Begin Point         : u_matrix/mux72_syn_275.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/mux72_syn_273.a[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.892ns (cell 4.542ns (77%), net 1.350ns (23%))
+Clock Skew          : 0.000ns
+Logic Level         : 7 ( LUT5=3  ADDER=2  LUT4=1  LUT2=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_275.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x018y031z0          0.146    r     0.146          pin: u_matrix/mux72_syn_275.q[0]
+net (fo=5)                              0.200          0.346          net: u_matrix/sub_step[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(90)
+                                                                      pin: u_matrix/add10_syn_50.b[0]
+ADDER               x020y031z2          1.157    f     1.503       1  pin: u_matrix/add10_syn_50.fx[1]
+net (fo=2)                              0.200          1.703          net: u_matrix/next_sub_step[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(201)
+                                                                      pin: u_matrix/sub12_syn_65.a[0]
+ADDER               x019y030z1          0.823    f     2.526       2  pin: u_matrix/sub12_syn_65.f[1]
+net (fo=3)                              0.200          2.726          net: u_matrix/sub12_syn_2[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(239)
+                                                                      pin: u_matrix/mux72_syn_275.a[1]
+LUT2                x018y031z0          0.408    f     3.134       3  pin: u_matrix/mux72_syn_275.f[1]
+net (fo=2)                              0.100          3.234          net: u_matrix/mux72_syn_210,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_269.a[1]
+LUT5                x018y031z2          0.424    f     3.658       4  pin: u_matrix/mux72_syn_269.f[1]
+net (fo=6)                              0.150          3.808          net: u_matrix/mux72_syn_212,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_259.a[0]
+LUT5                x019y031z3          0.424    f     4.232       5  pin: u_matrix/mux72_syn_259.f[0]
+net (fo=5)                              0.250          4.482          net: u_matrix/mux72_syn_221,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_264.a[1]
+LUT5                x020y033z0          0.618    f     5.100       6  pin: u_matrix/mux72_syn_264.fx[0]
+net (fo=1)                              0.250          5.350          net: u_matrix/mux72_syn_228,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_273.a[0]
+LUT4 (reg)          x018y032z2          0.542    f     5.892       7  net: u_matrix/shift_reg[4],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(260)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.892               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_273.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 13.992               
+
+Slack               : 14.300ns
+Begin Point         : u_matrix/mux72_syn_275.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/mux72_syn_271.d[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.584ns (cell 4.184ns (74%), net 1.400ns (26%))
+Clock Skew          : 0.000ns
+Logic Level         : 7 ( LUT3=3  ADDER=2  LUT5=1  LUT2=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_275.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x018y031z0          0.146    r     0.146          pin: u_matrix/mux72_syn_275.q[0]
+net (fo=5)                              0.200          0.346          net: u_matrix/sub_step[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(90)
+                                                                      pin: u_matrix/add10_syn_50.b[0]
+ADDER               x020y031z2          1.157    f     1.503       1  pin: u_matrix/add10_syn_50.fx[1]
+net (fo=2)                              0.200          1.703          net: u_matrix/next_sub_step[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(201)
+                                                                      pin: u_matrix/sub12_syn_65.a[0]
+ADDER               x019y030z1          0.823    f     2.526       2  pin: u_matrix/sub12_syn_65.f[1]
+net (fo=3)                              0.200          2.726          net: u_matrix/sub12_syn_2[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(239)
+                                                                      pin: u_matrix/mux72_syn_275.a[1]
+LUT2                x018y031z0          0.408    f     3.134       3  pin: u_matrix/mux72_syn_275.f[1]
+net (fo=2)                              0.100          3.234          net: u_matrix/mux72_syn_210,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_269.a[1]
+LUT5                x018y031z2          0.424    f     3.658       4  pin: u_matrix/mux72_syn_269.f[1]
+net (fo=6)                              0.300          3.958          net: u_matrix/mux72_syn_212,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_271.a[1]
+LUT3                x021y032z3          0.424    f     4.382       5  pin: u_matrix/mux72_syn_271.f[1]
+net (fo=1)                              0.200          4.582          net: u_matrix/mux72_syn_236,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_280.b[1]
+LUT3                x020y033z2          0.431    f     5.013       6  pin: u_matrix/mux72_syn_280.f[1]
+net (fo=1)                              0.200          5.213          net: u_matrix/mux72_syn_238,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_271.d[0]
+LUT3 (reg)          x021y032z3          0.371    r     5.584       7  net: u_matrix/shift_reg[3],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(260)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.584               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_271.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.300               
+
+Slack               : 14.548ns
+Begin Point         : u_matrix/mux72_syn_275.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/shift_reg_reg[2]_syn_4.a[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.336ns (cell 4.186ns (78%), net 1.150ns (22%))
+Clock Skew          : 0.000ns
+Logic Level         : 7 ( LUT5=3  ADDER=2  LUT4=1  LUT2=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_275.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x018y031z0          0.146    r     0.146          pin: u_matrix/mux72_syn_275.q[0]
+net (fo=5)                              0.200          0.346          net: u_matrix/sub_step[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(90)
+                                                                      pin: u_matrix/add10_syn_50.b[0]
+ADDER               x020y031z2          1.157    f     1.503       1  pin: u_matrix/add10_syn_50.fx[1]
+net (fo=2)                              0.200          1.703          net: u_matrix/next_sub_step[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(201)
+                                                                      pin: u_matrix/sub12_syn_65.a[0]
+ADDER               x019y030z1          0.823    f     2.526       2  pin: u_matrix/sub12_syn_65.f[1]
+net (fo=3)                              0.200          2.726          net: u_matrix/sub12_syn_2[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(239)
+                                                                      pin: u_matrix/mux72_syn_275.a[1]
+LUT2                x018y031z0          0.408    f     3.134       3  pin: u_matrix/mux72_syn_275.f[1]
+net (fo=2)                              0.100          3.234          net: u_matrix/mux72_syn_210,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_269.a[1]
+LUT5                x018y031z2          0.424    f     3.658       4  pin: u_matrix/mux72_syn_269.f[1]
+net (fo=6)                              0.150          3.808          net: u_matrix/mux72_syn_212,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_259.a[0]
+LUT5                x019y031z3          0.424    f     4.232       5  pin: u_matrix/mux72_syn_259.f[0]
+net (fo=5)                              0.200          4.432          net: u_matrix/mux72_syn_221,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_273.d[1]
+LUT4                x018y032z2          0.262    r     4.694       6  pin: u_matrix/mux72_syn_273.f[1]
+net (fo=2)                              0.100          4.794          net: u_matrix/mux72_syn_225,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/shift_reg_reg[2]_syn_4.a[0]
+LUT5 (reg)          x018y032z3          0.542    f     5.336       7  net: u_matrix/shift_reg[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(260)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.336               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/shift_reg_reg[2]_syn_4.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.548               
+
+Slack               : 14.548ns
+Begin Point         : u_matrix/mux72_syn_275.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/shift_reg_reg[2]_syn_4.a[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.336ns (cell 4.186ns (78%), net 1.150ns (22%))
+Clock Skew          : 0.000ns
+Logic Level         : 7 ( LUT5=3  ADDER=2  LUT4=1  LUT2=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_275.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x018y031z0          0.146    r     0.146          pin: u_matrix/mux72_syn_275.q[0]
+net (fo=5)                              0.200          0.346          net: u_matrix/sub_step[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(90)
+                                                                      pin: u_matrix/add10_syn_50.b[0]
+ADDER               x020y031z2          1.157    f     1.503       1  pin: u_matrix/add10_syn_50.fx[1]
+net (fo=2)                              0.200          1.703          net: u_matrix/next_sub_step[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(201)
+                                                                      pin: u_matrix/sub12_syn_65.a[0]
+ADDER               x019y030z1          0.823    f     2.526       2  pin: u_matrix/sub12_syn_65.f[1]
+net (fo=3)                              0.200          2.726          net: u_matrix/sub12_syn_2[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(239)
+                                                                      pin: u_matrix/mux72_syn_275.a[1]
+LUT2                x018y031z0          0.408    f     3.134       3  pin: u_matrix/mux72_syn_275.f[1]
+net (fo=2)                              0.100          3.234          net: u_matrix/mux72_syn_210,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_269.a[1]
+LUT5                x018y031z2          0.424    f     3.658       4  pin: u_matrix/mux72_syn_269.f[1]
+net (fo=6)                              0.150          3.808          net: u_matrix/mux72_syn_212,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_259.a[0]
+LUT5                x019y031z3          0.424    f     4.232       5  pin: u_matrix/mux72_syn_259.f[0]
+net (fo=5)                              0.200          4.432          net: u_matrix/mux72_syn_221,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_273.d[1]
+LUT4                x018y032z2          0.262    r     4.694       6  pin: u_matrix/mux72_syn_273.f[1]
+net (fo=2)                              0.100          4.794          net: u_matrix/mux72_syn_225,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/shift_reg_reg[2]_syn_4.a[1]
+LUT5 (reg)          x018y032z3          0.542    f     5.336       7  net: u_matrix/shift_reg[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(260)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.336               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/shift_reg_reg[2]_syn_4.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.548               
+
+Slack               : 14.584ns
+Begin Point         : u_matrix/add6_syn_74.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/cmd_idx_reg[2]_syn_7.a[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.300ns (cell 3.600ns (67%), net 1.700ns (33%))
+Clock Skew          : 0.000ns
+Logic Level         : 8 ( LUT5=4  LUT4=2  LUT3=1  LUT2=1 )
+Max Fanout          : 13
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add6_syn_74.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x015y031z2          0.146    r     0.146          pin: u_matrix/add6_syn_74.q[0]
+net (fo=4)                              0.250          0.396          net: u_matrix/i2c_div[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(33)
+                                                                      pin: u_matrix/state_reg[0]_syn_70.b[1]
+LUT5                x014y033z2          0.431    f     0.827       1  pin: u_matrix/state_reg[0]_syn_70.f[1]
+net (fo=1)                              0.150          0.977          net: u_matrix/state_reg[0]_syn_11,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/i2c_scl_i_syn_49.b[0]
+LUT3                x015y033z3          0.431    f     1.408       2  pin: u_matrix/i2c_scl_i_syn_49.f[0]
+net (fo=13)                             0.250          1.658          net: u_matrix/tick_20us,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(38)
+                                                                      pin: u_matrix/state_reg[0]_syn_85.d[0]
+LUT2                x017y032z0          0.205    r     1.863       3  pin: u_matrix/state_reg[0]_syn_85.f[0]
+net (fo=7)                              0.300          2.163          net: u_matrix/tick_1ms,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(41)
+                                                                      pin: u_matrix/state_reg[0]_syn_78.d[1]
+LUT4                x018y035z0          0.205    r     2.368       4  pin: u_matrix/state_reg[0]_syn_78.f[1]
+net (fo=8)                              0.150          2.518          net: u_matrix/mux85_syn_2[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(68)
+                                                                      pin: u_matrix/state_reg[0]_syn_67.a[0]
+LUT5                x019y035z0          0.618    f     3.136       5  pin: u_matrix/state_reg[0]_syn_67.fx[0]
+net (fo=5)                              0.200          3.336          net: u_matrix/state_reg[0]_syn_34,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_19.a[1]
+LUT5                x018y034z3          0.424    f     3.760       6  pin: u_matrix/cmd_idx_reg[4]_syn_19.f[1]
+net (fo=2)                              0.200          3.960          net: u_matrix/reinit_pending_n2,  NOFILE(0)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_28.a[0]
+LUT4                x019y035z1          0.408    f     4.368       7  pin: u_matrix/cmd_idx_reg[4]_syn_28.f[0]
+net (fo=7)                              0.200          4.568          net: u_matrix/cmd_idx_reg[4]_syn_6,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[2]_syn_7.a[1]
+LUT5 (reg)          x020y034z1          0.732    f     5.300       8  net: u_matrix/cmd_idx[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(89)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.300               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/cmd_idx_reg[2]_syn_7.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.584               
+
+Slack               : 14.634ns
+Begin Point         : u_matrix/add6_syn_74.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/cmd_idx_reg[4]_syn_21.a[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.250ns (cell 3.600ns (68%), net 1.650ns (32%))
+Clock Skew          : 0.000ns
+Logic Level         : 8 ( LUT5=4  LUT4=2  LUT3=1  LUT2=1 )
+Max Fanout          : 13
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add6_syn_74.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x015y031z2          0.146    r     0.146          pin: u_matrix/add6_syn_74.q[0]
+net (fo=4)                              0.250          0.396          net: u_matrix/i2c_div[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(33)
+                                                                      pin: u_matrix/state_reg[0]_syn_70.b[1]
+LUT5                x014y033z2          0.431    f     0.827       1  pin: u_matrix/state_reg[0]_syn_70.f[1]
+net (fo=1)                              0.150          0.977          net: u_matrix/state_reg[0]_syn_11,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/i2c_scl_i_syn_49.b[0]
+LUT3                x015y033z3          0.431    f     1.408       2  pin: u_matrix/i2c_scl_i_syn_49.f[0]
+net (fo=13)                             0.250          1.658          net: u_matrix/tick_20us,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(38)
+                                                                      pin: u_matrix/state_reg[0]_syn_85.d[0]
+LUT2                x017y032z0          0.205    r     1.863       3  pin: u_matrix/state_reg[0]_syn_85.f[0]
+net (fo=7)                              0.300          2.163          net: u_matrix/tick_1ms,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(41)
+                                                                      pin: u_matrix/state_reg[0]_syn_78.d[1]
+LUT4                x018y035z0          0.205    r     2.368       4  pin: u_matrix/state_reg[0]_syn_78.f[1]
+net (fo=8)                              0.150          2.518          net: u_matrix/mux85_syn_2[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(68)
+                                                                      pin: u_matrix/state_reg[0]_syn_67.a[0]
+LUT5                x019y035z0          0.618    f     3.136       5  pin: u_matrix/state_reg[0]_syn_67.fx[0]
+net (fo=5)                              0.200          3.336          net: u_matrix/state_reg[0]_syn_34,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_19.a[1]
+LUT5                x018y034z3          0.424    f     3.760       6  pin: u_matrix/cmd_idx_reg[4]_syn_19.f[1]
+net (fo=2)                              0.200          3.960          net: u_matrix/reinit_pending_n2,  NOFILE(0)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_28.a[0]
+LUT4                x019y035z1          0.408    f     4.368       7  pin: u_matrix/cmd_idx_reg[4]_syn_28.f[0]
+net (fo=7)                              0.150          4.518          net: u_matrix/cmd_idx_reg[4]_syn_6,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_21.a[1]
+LUT5 (reg)          x020y035z1          0.732    f     5.250       8  net: u_matrix/cmd_idx[4],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(89)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.250               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_21.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.634               
+
+Slack               : 14.776ns
+Begin Point         : u_matrix/mux72_syn_275.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/shift_reg_reg[0]_syn_4.a[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.108ns (cell 3.908ns (76%), net 1.200ns (24%))
+Clock Skew          : 0.000ns
+Logic Level         : 6 ( LUT5=2  ADDER=2  LUT4=1  LUT2=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux72_syn_275.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x018y031z0          0.146    r     0.146          pin: u_matrix/mux72_syn_275.q[0]
+net (fo=5)                              0.200          0.346          net: u_matrix/sub_step[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(90)
+                                                                      pin: u_matrix/add10_syn_50.b[0]
+ADDER               x020y031z2          1.157    f     1.503       1  pin: u_matrix/add10_syn_50.fx[1]
+net (fo=2)                              0.200          1.703          net: u_matrix/next_sub_step[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(201)
+                                                                      pin: u_matrix/sub12_syn_65.a[0]
+ADDER               x019y030z1          0.823    f     2.526       2  pin: u_matrix/sub12_syn_65.f[1]
+net (fo=3)                              0.200          2.726          net: u_matrix/sub12_syn_2[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(239)
+                                                                      pin: u_matrix/mux72_syn_275.a[1]
+LUT2                x018y031z0          0.408    f     3.134       3  pin: u_matrix/mux72_syn_275.f[1]
+net (fo=2)                              0.100          3.234          net: u_matrix/mux72_syn_210,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_269.a[1]
+LUT5                x018y031z2          0.424    f     3.658       4  pin: u_matrix/mux72_syn_269.f[1]
+net (fo=6)                              0.300          3.958          net: u_matrix/mux72_syn_212,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/mux72_syn_262.a[0]
+LUT5                x020y033z3          0.424    f     4.382       5  pin: u_matrix/mux72_syn_262.f[0]
+net (fo=1)                              0.200          4.582          net: u_matrix/mux72_syn_231,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(329)
+                                                                      pin: u_matrix/shift_reg_reg[0]_syn_4.a[1]
+LUT4 (reg)          x019y032z1          0.526    f     5.108       6  net: u_matrix/shift_reg[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(260)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.108               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/shift_reg_reg[0]_syn_4.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.776               
+
+Slack               : 14.824ns
+Begin Point         : u_matrix/add6_syn_74.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/cmd_idx_reg[3]_syn_7.a[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.060ns (cell 3.410ns (67%), net 1.650ns (33%))
+Clock Skew          : 0.000ns
+Logic Level         : 8 ( LUT5=3  LUT4=3  LUT3=1  LUT2=1 )
+Max Fanout          : 13
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add6_syn_74.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x015y031z2          0.146    r     0.146          pin: u_matrix/add6_syn_74.q[0]
+net (fo=4)                              0.250          0.396          net: u_matrix/i2c_div[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(33)
+                                                                      pin: u_matrix/state_reg[0]_syn_70.b[1]
+LUT5                x014y033z2          0.431    f     0.827       1  pin: u_matrix/state_reg[0]_syn_70.f[1]
+net (fo=1)                              0.150          0.977          net: u_matrix/state_reg[0]_syn_11,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/i2c_scl_i_syn_49.b[0]
+LUT3                x015y033z3          0.431    f     1.408       2  pin: u_matrix/i2c_scl_i_syn_49.f[0]
+net (fo=13)                             0.250          1.658          net: u_matrix/tick_20us,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(38)
+                                                                      pin: u_matrix/state_reg[0]_syn_85.d[0]
+LUT2                x017y032z0          0.205    r     1.863       3  pin: u_matrix/state_reg[0]_syn_85.f[0]
+net (fo=7)                              0.300          2.163          net: u_matrix/tick_1ms,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(41)
+                                                                      pin: u_matrix/state_reg[0]_syn_78.d[1]
+LUT4                x018y035z0          0.205    r     2.368       4  pin: u_matrix/state_reg[0]_syn_78.f[1]
+net (fo=8)                              0.150          2.518          net: u_matrix/mux85_syn_2[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(68)
+                                                                      pin: u_matrix/state_reg[0]_syn_67.a[0]
+LUT5                x019y035z0          0.618    f     3.136       5  pin: u_matrix/state_reg[0]_syn_67.fx[0]
+net (fo=5)                              0.200          3.336          net: u_matrix/state_reg[0]_syn_34,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_19.a[1]
+LUT5                x018y034z3          0.424    f     3.760       6  pin: u_matrix/cmd_idx_reg[4]_syn_19.f[1]
+net (fo=2)                              0.200          3.960          net: u_matrix/reinit_pending_n2,  NOFILE(0)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_28.a[0]
+LUT4                x019y035z1          0.408    f     4.368       7  pin: u_matrix/cmd_idx_reg[4]_syn_28.f[0]
+net (fo=7)                              0.150          4.518          net: u_matrix/cmd_idx_reg[4]_syn_6,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[3]_syn_7.a[0]
+LUT4 (reg)          x020y035z3          0.542    f     5.060       8  net: u_matrix/cmd_idx[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(89)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.060               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/cmd_idx_reg[3]_syn_7.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.824               
+
+Slack               : 14.824ns
+Begin Point         : u_matrix/add6_syn_74.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/cmd_idx_reg[3]_syn_7.a[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 5.060ns (cell 3.410ns (67%), net 1.650ns (33%))
+Clock Skew          : 0.000ns
+Logic Level         : 8 ( LUT5=3  LUT4=3  LUT3=1  LUT2=1 )
+Max Fanout          : 13
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add6_syn_74.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x015y031z2          0.146    r     0.146          pin: u_matrix/add6_syn_74.q[0]
+net (fo=4)                              0.250          0.396          net: u_matrix/i2c_div[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(33)
+                                                                      pin: u_matrix/state_reg[0]_syn_70.b[1]
+LUT5                x014y033z2          0.431    f     0.827       1  pin: u_matrix/state_reg[0]_syn_70.f[1]
+net (fo=1)                              0.150          0.977          net: u_matrix/state_reg[0]_syn_11,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/i2c_scl_i_syn_49.b[0]
+LUT3                x015y033z3          0.431    f     1.408       2  pin: u_matrix/i2c_scl_i_syn_49.f[0]
+net (fo=13)                             0.250          1.658          net: u_matrix/tick_20us,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(38)
+                                                                      pin: u_matrix/state_reg[0]_syn_85.d[0]
+LUT2                x017y032z0          0.205    r     1.863       3  pin: u_matrix/state_reg[0]_syn_85.f[0]
+net (fo=7)                              0.300          2.163          net: u_matrix/tick_1ms,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(41)
+                                                                      pin: u_matrix/state_reg[0]_syn_78.d[1]
+LUT4                x018y035z0          0.205    r     2.368       4  pin: u_matrix/state_reg[0]_syn_78.f[1]
+net (fo=8)                              0.150          2.518          net: u_matrix/mux85_syn_2[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(68)
+                                                                      pin: u_matrix/state_reg[0]_syn_67.a[0]
+LUT5                x019y035z0          0.618    f     3.136       5  pin: u_matrix/state_reg[0]_syn_67.fx[0]
+net (fo=5)                              0.200          3.336          net: u_matrix/state_reg[0]_syn_34,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_19.a[1]
+LUT5                x018y034z3          0.424    f     3.760       6  pin: u_matrix/cmd_idx_reg[4]_syn_19.f[1]
+net (fo=2)                              0.200          3.960          net: u_matrix/reinit_pending_n2,  NOFILE(0)
+                                                                      pin: u_matrix/cmd_idx_reg[4]_syn_28.a[0]
+LUT4                x019y035z1          0.408    f     4.368       7  pin: u_matrix/cmd_idx_reg[4]_syn_28.f[0]
+net (fo=7)                              0.150          4.518          net: u_matrix/cmd_idx_reg[4]_syn_6,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/cmd_idx_reg[3]_syn_7.a[1]
+LUT4 (reg)          x020y035z3          0.542    f     5.060       8  net: u_matrix/cmd_idx[3],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(89)
+--------------------------------------------------------------------  ---------------
+Arrival                                                5.060               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/cmd_idx_reg[3]_syn_7.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.824               
+
+Slack               : 14.927ns
+Begin Point         : u_matrix/add6_syn_74.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/mux79_syn_43.ce (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : setup
+Process             : slow
+Budget              : 20.000ns { clk rising@20.000ns - clk rising@0.000ns }
+Data Path Delay     : 4.957ns (cell 2.957ns (59%), net 2.000ns (41%))
+Clock Skew          : 0.000ns
+Logic Level         : 8 ( LUT3=3  LUT5=2  LUT4=2  LUT2=1 )
+Max Fanout          : 13
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add6_syn_74.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x015y031z2          0.146    r     0.146          pin: u_matrix/add6_syn_74.q[0]
+net (fo=4)                              0.250          0.396          net: u_matrix/i2c_div[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(33)
+                                                                      pin: u_matrix/state_reg[0]_syn_70.b[1]
+LUT5                x014y033z2          0.431    f     0.827       1  pin: u_matrix/state_reg[0]_syn_70.f[1]
+net (fo=1)                              0.150          0.977          net: u_matrix/state_reg[0]_syn_11,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/i2c_scl_i_syn_49.b[0]
+LUT3                x015y033z3          0.431    f     1.408       2  pin: u_matrix/i2c_scl_i_syn_49.f[0]
+net (fo=13)                             0.250          1.658          net: u_matrix/tick_20us,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(38)
+                                                                      pin: u_matrix/state_reg[0]_syn_85.d[0]
+LUT2                x017y032z0          0.205    r     1.863       3  pin: u_matrix/state_reg[0]_syn_85.f[0]
+net (fo=7)                              0.300          2.163          net: u_matrix/tick_1ms,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(41)
+                                                                      pin: u_matrix/state_reg[0]_syn_78.d[1]
+LUT4                x018y035z0          0.205    r     2.368       4  pin: u_matrix/state_reg[0]_syn_78.f[1]
+net (fo=8)                              0.150          2.518          net: u_matrix/mux85_syn_2[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(68)
+                                                                      pin: u_matrix/state_reg[0]_syn_67.a[0]
+LUT5                x019y035z0          0.618    f     3.136       5  pin: u_matrix/state_reg[0]_syn_67.fx[0]
+net (fo=5)                              0.200          3.336          net: u_matrix/state_reg[0]_syn_34,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/mux2_syn_111.d[0]
+LUT3                x019y033z0          0.205    r     3.541       6  pin: u_matrix/mux2_syn_111.f[0]
+net (fo=2)                              0.200          3.741          net: u_matrix/mux41_syn_19,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(333)
+                                                                      pin: u_matrix/state_reg[1]_syn_11.d[1]
+LUT3                x018y034z1          0.205    r     3.946       7  pin: u_matrix/state_reg[1]_syn_11.f[1]
+net (fo=2)                              0.200          4.146          net: u_matrix/state_reg[1]_syn_4,  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/mux72_syn_277.a[0]
+LUT4                x019y033z2          0.424    f     4.570       8  pin: u_matrix/mux72_syn_277.f[0]
+net (fo=5)                              0.300          4.870          net: u_matrix/mux79_syn_2[7],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(328)
+                                                                      pin: u_matrix/mux79_syn_43.ce
+reg                 x021y031z0          0.087    r     4.957               
+--------------------------------------------------------------------  ---------------
+Arrival                                                4.957               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/mux79_syn_43.clk
+capture edge                           20.000    r    20.000               
+--------------------------------------------------------------------  ---------------
+setup                                  -0.116         19.884               
+clock uncertainty                       0.000         19.884               
+clock pessimism                         0.000         19.884               
+--------------------------------------------------------------------  ---------------
+Required                                              19.884               
+--------------------------------------------------------------------  ---------------
+Slack                                                 14.927               
+
+
+
+Min Paths
+----------------------------------------------------------------------------------------------------
+Slack               : 0.243ns
+Begin Point         : u_matrix/current_pwm_reg[1]_syn_3.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/active_pwm_reg[5]_syn_4.mi[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.304ns (cell 0.204ns (67%), net 0.100ns (33%))
+Clock Skew          : 0.000ns
+Logic Level         : 0
+Max Fanout          : 5
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/current_pwm_reg[1]_syn_3.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x019y029z0          0.109    f     0.109          pin: u_matrix/current_pwm_reg[1]_syn_3.q[0]
+net (fo=5)                              0.100          0.209          net: u_matrix/current_pwm[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/active_pwm_reg[5]_syn_4.mi[0]
+reg                 x019y029z2          0.095    f     0.304          net: u_matrix/active_pwm[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(93)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.304               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/active_pwm_reg[5]_syn_4.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.243               
+
+Slack               : 0.293ns
+Begin Point         : u_matrix/add3_syn_50.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/active_pwm_reg[6]_syn_4.mi[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.354ns (cell 0.204ns (57%), net 0.150ns (43%))
+Clock Skew          : 0.000ns
+Logic Level         : 0
+Max Fanout          : 5
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add3_syn_50.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x020y028z2          0.109    f     0.109          pin: u_matrix/add3_syn_50.q[1]
+net (fo=5)                              0.150          0.259          net: u_matrix/current_pwm[6],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/active_pwm_reg[6]_syn_4.mi[0]
+reg                 x020y029z3          0.095    f     0.354          net: u_matrix/active_pwm[6],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(93)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.354               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/active_pwm_reg[6]_syn_4.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.293               
+
+Slack               : 0.293ns
+Begin Point         : u_matrix/current_pwm_reg[3]_syn_4.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/active_pwm_reg[7]_syn_4.mi[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.354ns (cell 0.204ns (57%), net 0.150ns (43%))
+Clock Skew          : 0.000ns
+Logic Level         : 0
+Max Fanout          : 5
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/current_pwm_reg[3]_syn_4.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x021y030z0          0.109    f     0.109          pin: u_matrix/current_pwm_reg[3]_syn_4.q[1]
+net (fo=5)                              0.150          0.259          net: u_matrix/current_pwm[3],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/active_pwm_reg[7]_syn_4.mi[0]
+reg                 x021y031z3          0.095    f     0.354          net: u_matrix/active_pwm[3],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(93)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.354               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/active_pwm_reg[7]_syn_4.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.293               
+
+Slack               : 0.293ns
+Begin Point         : u_matrix/current_pwm_reg[3]_syn_4.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/active_pwm_reg[7]_syn_4.mi[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.354ns (cell 0.204ns (57%), net 0.150ns (43%))
+Clock Skew          : 0.000ns
+Logic Level         : 0
+Max Fanout          : 5
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/current_pwm_reg[3]_syn_4.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x021y030z0          0.109    f     0.109          pin: u_matrix/current_pwm_reg[3]_syn_4.q[0]
+net (fo=5)                              0.150          0.259          net: u_matrix/current_pwm[7],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/active_pwm_reg[7]_syn_4.mi[1]
+reg                 x021y031z3          0.095    f     0.354          net: u_matrix/active_pwm[7],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(93)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.354               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/active_pwm_reg[7]_syn_4.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.293               
+
+Slack               : 0.343ns
+Begin Point         : u_matrix/lt15_syn_32.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/sub12_syn_62.mi[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.404ns (cell 0.204ns (50%), net 0.200ns (50%))
+Clock Skew          : 0.000ns
+Logic Level         : 0
+Max Fanout          : 5
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/lt15_syn_32.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x020y029z0          0.109    f     0.109          pin: u_matrix/lt15_syn_32.q[0]
+net (fo=5)                              0.200          0.309          net: u_matrix/current_pwm[4],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/sub12_syn_62.mi[0]
+ADDER (reg)         x019y030z0          0.095    f     0.404          net: u_matrix/active_pwm[4],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(93)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.404               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/sub12_syn_62.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.343               
+
+Slack               : 0.343ns
+Begin Point         : u_matrix/add3_syn_50.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/active_pwm_reg[5]_syn_4.mi[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.404ns (cell 0.204ns (50%), net 0.200ns (50%))
+Clock Skew          : 0.000ns
+Logic Level         : 0
+Max Fanout          : 5
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/add3_syn_50.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+ADDER (clk2q)       x020y028z2          0.109    f     0.109          pin: u_matrix/add3_syn_50.q[0]
+net (fo=5)                              0.200          0.309          net: u_matrix/current_pwm[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/active_pwm_reg[5]_syn_4.mi[1]
+reg                 x019y029z2          0.095    f     0.404          net: u_matrix/active_pwm[5],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(93)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.404               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/active_pwm_reg[5]_syn_4.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.343               
+
+Slack               : 0.364ns
+Begin Point         : u_matrix/bit_idx_reg[2]_syn_26.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/bit_idx_reg[2]_syn_26.d[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.425ns (cell 0.325ns (76%), net 0.100ns (24%))
+Clock Skew          : 0.000ns
+Logic Level         : 1 ( LUT4=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/bit_idx_reg[2]_syn_26.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x017y034z0          0.109    f     0.109          pin: u_matrix/bit_idx_reg[2]_syn_26.q[0]
+net (fo=6)                              0.100          0.209          net: u_matrix/state_reg_syn_1[4],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+                                                                      pin: u_matrix/bit_idx_reg[2]_syn_26.d[0]
+LUT4 (reg)          x017y034z0          0.216    f     0.425       1  net: u_matrix/state_reg_syn_1[4],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(319)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.425               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/bit_idx_reg[2]_syn_26.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.364               
+
+Slack               : 0.364ns
+Begin Point         : u_matrix/bit_idx_reg[2]_syn_26.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/bit_idx_reg[2]_syn_26.d[1] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.425ns (cell 0.325ns (76%), net 0.100ns (24%))
+Clock Skew          : 0.000ns
+Logic Level         : 1 ( LUT4=1 )
+Max Fanout          : 4
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/bit_idx_reg[2]_syn_26.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x017y034z0          0.109    f     0.109          pin: u_matrix/bit_idx_reg[2]_syn_26.q[1]
+net (fo=4)                              0.100          0.209          net: u_matrix/bit_idx[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(261)
+                                                                      pin: u_matrix/bit_idx_reg[2]_syn_26.d[1]
+LUT4 (reg)          x017y034z0          0.216    f     0.425       1  net: u_matrix/bit_idx[2],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(261)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.425               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/bit_idx_reg[2]_syn_26.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.364               
+
+Slack               : 0.364ns
+Begin Point         : u_matrix/current_pwm_reg[0]_syn_4.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/current_pwm_reg[0]_syn_4.d[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.425ns (cell 0.325ns (76%), net 0.100ns (24%))
+Clock Skew          : 0.000ns
+Logic Level         : 1 ( LUT1=1 )
+Max Fanout          : 6
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/current_pwm_reg[0]_syn_4.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x020y028z1          0.109    f     0.109          pin: u_matrix/current_pwm_reg[0]_syn_4.q[0]
+net (fo=6)                              0.100          0.209          net: u_matrix/current_pwm[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+                                                                      pin: u_matrix/current_pwm_reg[0]_syn_4.d[0]
+LUT1 (reg)          x020y028z1          0.216    f     0.425       1  net: u_matrix/current_pwm[0],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(266)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.425               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/current_pwm_reg[0]_syn_4.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.364               
+
+Slack               : 0.364ns
+Begin Point         : u_matrix/ms_sub_cnt_reg[3]_syn_7.clk (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+End Point           : u_matrix/ms_sub_cnt_reg[3]_syn_7.d[0] (rising edge triggered by clock clk  { rise@0.000000ns  fall@10.000000ns  period=20.000000 })
+Check Type          : hold
+Process             : fast
+Budget              : 0.000ns { clk rising@0.000ns - clk rising@0.000ns }
+Data Path Delay     : 0.425ns (cell 0.325ns (76%), net 0.100ns (24%))
+Clock Skew          : 0.000ns
+Logic Level         : 1 ( LUT4=1 )
+Max Fanout          : 3
+Clock Uncertainty   : 0.000ns (sdc uncertainty: 0.000ns, default uncertainty: 0.000ns)
+
+Delay Type          Location             Incr           Path   Level  Netlist Info
+--------------------------------------------------------------------  ---------------
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/ms_sub_cnt_reg[3]_syn_7.clk
+launch edge                             0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+clk2q               x015y031z0          0.109    f     0.109          pin: u_matrix/ms_sub_cnt_reg[3]_syn_7.q[0]
+net (fo=3)                              0.100          0.209          net: u_matrix/ms_sub_cnt[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(40)
+                                                                      pin: u_matrix/ms_sub_cnt_reg[3]_syn_7.d[0]
+LUT4 (reg)          x015y031z0          0.216    f     0.425       1  net: u_matrix/ms_sub_cnt[1],  ../../../user_source/hdl_source/is31fl3731_i2c_master.v(40)
+--------------------------------------------------------------------  ---------------
+Arrival                                                0.425               
+
+source latency                          0.000          0.000               
+port                R7                  0.000          0.000          pin: clk
+hierarchy                               0.000          0.000          pin: clk_syn_2.ipad
+PAD                 x020y071            0.000          0.000          pin: clk_syn_2.di
+net (fo=61)                             0.000          0.000          net: clk_dup_1,  ../../../user_source/hdl_source/top.v(5)
+                                                                      pin: u_matrix/ms_sub_cnt_reg[3]_syn_7.clk
+capture edge                            0.000    r     0.000               
+--------------------------------------------------------------------  ---------------
+hold                                    0.061          0.061               
+clock uncertainty                       0.000          0.061               
+clock pessimism                         0.000          0.061               
+--------------------------------------------------------------------  ---------------
+Required                                               0.061               
+--------------------------------------------------------------------  ---------------
+Slack                                                  0.364               
+
+
+Inter clock domain timing
+--------------------------------------------------
+
+IP timing
+--------------------------------------------------

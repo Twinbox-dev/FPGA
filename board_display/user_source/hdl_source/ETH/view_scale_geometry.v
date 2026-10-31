@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 // Once-per-image aspect fit and Q16 bilinear coordinates. One iterative
 // divider is shared by dimension fitting and the two sample steps.
-module view_scale_geometry (
+module view_scale_geometry #(parameter COORDINATES_ENABLED=1) (
     input wire clk, rst, start,
     input wire [11:0] source_width, source_height,
     input wire [1:0] layout,
@@ -54,7 +54,7 @@ module view_scale_geometry (
                 end
                 FIT:begin
                     if(sw<=limit_w && sh<=limit_h) begin
-                        dest_width<=sw;dest_height<=sh;state<=X_SETUP;
+                        dest_width<=sw;dest_height<=sh;state<=COORDINATES_ENABLED ? X_SETUP : FINISH;
                     end else if(cross_w>=cross_h) begin
                         dest_width<=limit_w;begin_divide({8'd0,cross_h},{20'd0,sw},0);
                     end else begin
@@ -69,8 +69,8 @@ module view_scale_geometry (
                     if(remaining==1)state<=DIV_DONE;
                 end
                 DIV_DONE:case(after_div)
-                    0:begin dest_height<=quotient==0 ? 12'd1 : quotient[11:0];state<=X_SETUP;end
-                    1:begin dest_width<=quotient==0 ? 12'd1 : quotient[11:0];state<=X_SETUP;end
+                    0:begin dest_height<=quotient==0 ? 12'd1 : quotient[11:0];state<=COORDINATES_ENABLED ? X_SETUP : FINISH;end
+                    1:begin dest_width<=quotient==0 ? 12'd1 : quotient[11:0];state<=COORDINATES_ENABLED ? X_SETUP : FINISH;end
                     2:begin x_step<={4'd0,quotient};state<=Y_SETUP;end
                     3:begin y_step<={4'd0,quotient};state<=FINISH;end
                 endcase

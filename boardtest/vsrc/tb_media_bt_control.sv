@@ -67,6 +67,8 @@ module tb_media_bt_control;
     );
     media_control_core #(.CLK_HZ(CLK_HZ)) u_core (
         .view_busy(1'b0),.uart_cmd_was_busy(1'b0),.layout_request(),.requested_layout(),.image_touch_request(),
+        .sensor_snapshot_request(),.sensor_snapshot_release_toggle(),
+        .sensor_snapshot_ready(1'b0),.sensor_snapshot_data(336'd0),
         .clk(clk),.rst(rst),.cmd(eth_cmd),.cmd_pending(eth_cmd_pending),.cmd_ack_t(eth_cmd_ack),
         .uart_cmd(serial_cmd),.uart_cmd_valid(serial_valid),.uart_cmd_source(serial_source),
         .uart_cmd_ready(serial_ready),.uart_source_lock(serial_source_lock),
@@ -84,7 +86,7 @@ module tb_media_bt_control;
         .paired_wav(paired_wav),.fat_state(fat_state),.fat_error(fat_error),.media_state(media_state),
         .debug_request(debug_request),.pc_snapshot_request(pc_snapshot_request),
         .auto_on(auto_on),.auto_period_s(auto_period),.volume(volume),.brightness(brightness),
-        .contrast(contrast),.effect(effect),.osd_mode(osd_mode),.spectrum_on(spectrum_on),
+        .contrast(contrast),.effect(effect),.cv_mode(),.osd_mode(osd_mode),.spectrum_on(spectrum_on),
         .spectrum_sensitivity(spectrum_sensitivity),.last_control_error(control_error)
     );
 

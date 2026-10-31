@@ -538,7 +538,7 @@
                     <Attr Name="CompileOrder" Val="72"/>
                 </FileInfo>
             </File>
-            <File Path="../user_source/hdl_source/ETH/view_bilinear_shrink.v">
+            <File Path="../user_source/hdl_source/ETH/view_nearest_shrink.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -616,6 +616,150 @@
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
                     <Attr Name="CompileOrder" Val="82"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_bram_32k_16.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="83"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_bram_9k_16.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="84"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_packet_demux.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="85"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_row_parser.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="86"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_feedback_tx.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="87"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_region_mux.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="88"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/direct_video_audio.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="89"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/video_row_ingress.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="90"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/video_row_tags.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="91"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/video_head_cache.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="92"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/video_hybrid_pipeline.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="93"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/video_sdram_port.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="94"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/ETH/video_memory_lease.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="95"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/led_matrix/audio_to_15ch.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="96"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/led_matrix/matrix_core_mapper.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="97"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/led_matrix/is31fl3731_i2c_master.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="98"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/led_matrix/matrix_transition_arbiter.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="99"/>
+                </FileInfo>
+            </File>
+            <File Path="../user_source/hdl_source/led_matrix/matrix_transition_animator.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="100"/>
                 </FileInfo>
             </File>
         </Verilog>
@@ -721,12 +865,22 @@
     <Runs>
         <Run Name="syn_1" Type="Synthesis" ConstraintSet="constraint_1" Description="" Active="true">
             <Strategy Name="Default_Synthesis_Strategy">
+                <GateProperty>
+                    <map_mode>area_prior</map_mode>
+                    <opt_area>high</opt_area>
+                    <pack_effort>high</pack_effort>
+                </GateProperty>
             </Strategy>
             <UserParams>
             </UserParams>
         </Run>
         <Run Name="phy_1" Type="PhysicalDesign" ConstraintSet="constraint_1" Description="" SynRun="syn_1" Active="true">
             <Strategy Name="Default_PhysicalDesign_Strategy">
+                <PlaceProperty>
+                    <effort>high</effort>
+                    <pr_strategy>2</pr_strategy>
+                    <seed>7</seed>
+                </PlaceProperty>
             </Strategy>
             <UserParams>
             </UserParams>

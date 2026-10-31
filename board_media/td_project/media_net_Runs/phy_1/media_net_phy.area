@@ -2,83 +2,93 @@ standard
 ***Report Model: top Device: EG4S20BG256***
 
 IO Statistics
-#IO                        27   out of    188   14.36%
-  #input                   17
-  #output                   9
-  #inout                    1
+#IO                        35   out of    188   18.62%
+  #input                   19
+  #output                  13
+  #inout                    3
 #virtual IO                 1
   #input                    0
   #output                   0
   #inout                    0
 
 Utilization Statistics
-#lut                    14164   out of  19600   72.27%
-#reg                     8897   out of  19600   45.39%
-#le                     15103
-  #lut only              6206   out of  15103   41.09%
-  #reg only               939   out of  15103    6.22%
-  #lut&reg               7958   out of  15103   52.69%
+#lut                    16188   out of  19600   82.59%
+#reg                    10090   out of  19600   51.48%
+#le                     17202
+  #lut only              7112   out of  17202   41.34%
+  #reg only              1014   out of  17202    5.89%
+  #lut&reg               9076   out of  17202   52.76%
 #bram                      19   out of     64   29.69%
   #bram9k                  19
   #fifo9k                   0
 #bram32k                    2   out of     16   12.50%
 #dsp                        5   out of     29   17.24%
-#pad                       27   out of    188   14.36%
-  #ireg                    14
-  #oreg                     9
-  #treg                     0
+#pad                       35   out of    188   18.62%
+  #ireg                    18
+  #oreg                    12
+  #treg                     2
 #pll                        3   out of      4   75.00%
 #gclk                       3   out of     16   18.75%
 
 
 Detailed IO Report
 
-        Name          Direction    Location    IOStandard    IOType    DriveStrength    PullType    PackReg  
-       bt_rx            INPUT        M15        LVCMOS33      PAD           N/A          PULLUP      IREG    
-        clk             INPUT         R7        LVCMOS33      PAD           N/A           NONE       NONE    
-  eth_rgmii_rx_ctl      INPUT        T13        LVCMOS33      PAD           N/A           NONE       DDRX1   
-   eth_rgmii_rxc        INPUT        T14        LVCMOS33      PAD           N/A           NONE       NONE    
-  eth_rgmii_rxd[3]      INPUT         N9        LVCMOS33      PAD           N/A           NONE       DDRX1   
-  eth_rgmii_rxd[2]      INPUT         T9        LVCMOS33      PAD           N/A           NONE       DDRX1   
-  eth_rgmii_rxd[1]      INPUT         M6        LVCMOS33      PAD           N/A           NONE       DDRX1   
-  eth_rgmii_rxd[0]      INPUT         P6        LVCMOS33      PAD           N/A           NONE       DDRX1   
-        key1            INPUT         B2        LVCMOS33      PAD           N/A          PULLUP      IREG    
-        key2            INPUT         C1        LVCMOS33      PAD           N/A          PULLUP      IREG    
-        key3            INPUT         B1        LVCMOS33      PAD           N/A          PULLUP      IREG    
-       rst_n            INPUT         A2        LVCMOS33      PAD           N/A          PULLUP      NONE    
-     sd_dat[3]          INPUT        A12        LVCMOS33      PAD           N/A          PULLUP      IREG    
-     sd_dat[2]          INPUT        A11        LVCMOS33      PAD           N/A          PULLUP      IREG    
-     sd_dat[1]          INPUT        B15        LVCMOS33      PAD           N/A          PULLUP      IREG    
-     sd_dat[0]          INPUT        B14        LVCMOS33      PAD           N/A          PULLUP      IREG    
-      uart_rx           INPUT        F12        LVCMOS33      PAD           N/A          PULLUP      IREG    
-       bt_tx           OUTPUT        L16        LVCMOS33      PAD            8            NONE       OREG    
-  eth_rgmii_tx_ctl     OUTPUT         T7        LVCMOS33      PAD           16            NONE       DDRX1   
-   eth_rgmii_txc       OUTPUT        T12        LVCMOS33      PAD           16            NONE       DDRX1   
-  eth_rgmii_txd[3]     OUTPUT         T8        LVCMOS33      PAD           16            NONE       DDRX1   
-  eth_rgmii_txd[2]     OUTPUT         M7        LVCMOS33      PAD           16            NONE       DDRX1   
-  eth_rgmii_txd[1]     OUTPUT         T6        LVCMOS33      PAD           16            NONE       DDRX1   
-  eth_rgmii_txd[0]     OUTPUT         T4        LVCMOS33      PAD           16            NONE       DDRX1   
-       sd_clk          OUTPUT        A14        LVCMOS33      PAD            8            NONE       OREG    
-      uart_tx          OUTPUT        D12        LVCMOS33      PAD            8            NONE       OREG    
-       sd_cmd           INOUT        A13        LVCMOS33      PAD            8           PULLUP      NONE    
+        Name          Direction    Location    IOStandard    IOType    DriveStrength    PullType     PackReg   
+       bt_rx            INPUT        M15        LVCMOS33      PAD           N/A          PULLUP       IREG     
+        clk             INPUT         R7        LVCMOS33      PAD           N/A           NONE        NONE     
+  eth_rgmii_rx_ctl      INPUT        T13        LVCMOS33      PAD           N/A           NONE        DDRX1    
+   eth_rgmii_rxc        INPUT        T14        LVCMOS33      PAD           N/A           NONE        NONE     
+  eth_rgmii_rxd[3]      INPUT         N9        LVCMOS33      PAD           N/A           NONE        DDRX1    
+  eth_rgmii_rxd[2]      INPUT         T9        LVCMOS33      PAD           N/A           NONE        DDRX1    
+  eth_rgmii_rxd[1]      INPUT         M6        LVCMOS33      PAD           N/A           NONE        DDRX1    
+  eth_rgmii_rxd[0]      INPUT         P6        LVCMOS33      PAD           N/A           NONE        DDRX1    
+        key1            INPUT         B2        LVCMOS33      PAD           N/A          PULLUP       IREG     
+        key2            INPUT         C1        LVCMOS33      PAD           N/A          PULLUP       IREG     
+        key3            INPUT         B1        LVCMOS33      PAD           N/A          PULLUP       IREG     
+   laser_left_rx        INPUT         J4        LVCMOS33      PAD           N/A          PULLUP       IREG     
+   laser_right_rx       INPUT         H4        LVCMOS33      PAD           N/A          PULLUP       IREG     
+       rst_n            INPUT         A2        LVCMOS33      PAD           N/A          PULLUP       NONE     
+     sd_dat[3]          INPUT        A12        LVCMOS33      PAD           N/A          PULLUP       IREG     
+     sd_dat[2]          INPUT        A11        LVCMOS33      PAD           N/A          PULLUP       IREG     
+     sd_dat[1]          INPUT        B15        LVCMOS33      PAD           N/A          PULLUP       IREG     
+     sd_dat[0]          INPUT        B14        LVCMOS33      PAD           N/A          PULLUP       IREG     
+      uart_rx           INPUT        F12        LVCMOS33      PAD           N/A          PULLUP       IREG     
+       bt_tx           OUTPUT        L16        LVCMOS33      PAD            8            NONE        OREG     
+  eth_rgmii_tx_ctl     OUTPUT         T7        LVCMOS33      PAD           16            NONE        DDRX1    
+   eth_rgmii_txc       OUTPUT        T12        LVCMOS33      PAD           16            NONE        DDRX1    
+  eth_rgmii_txd[3]     OUTPUT         T8        LVCMOS33      PAD           16            NONE        DDRX1    
+  eth_rgmii_txd[2]     OUTPUT         M7        LVCMOS33      PAD           16            NONE        DDRX1    
+  eth_rgmii_txd[1]     OUTPUT         T6        LVCMOS33      PAD           16            NONE        DDRX1    
+  eth_rgmii_txd[0]     OUTPUT         T4        LVCMOS33      PAD           16            NONE        DDRX1    
+       led[3]          OUTPUT        B12        LVCMOS33      PAD            8            NONE        NONE     
+       led[2]          OUTPUT        C10        LVCMOS33      PAD            8            NONE        OREG     
+       led[1]          OUTPUT         A3        LVCMOS33      PAD            8            NONE        OREG     
+       led[0]          OUTPUT         A4        LVCMOS33      PAD            8            NONE        OREG     
+       sd_clk          OUTPUT        A14        LVCMOS33      PAD            8            NONE        OREG     
+      uart_tx          OUTPUT        D12        LVCMOS33      PAD            8            NONE        OREG     
+       sd_cmd           INOUT        A13        LVCMOS33      PAD            8           PULLUP       NONE     
+     sensor_scl         INOUT        K12        LVCMOS33      PAD            8           PULLUP     IREG;TREG  
+     sensor_sda         INOUT        L14        LVCMOS33      PAD            8           PULLUP     IREG;TREG  
 
 Report Clock Domain Luts:
 
 -----------------------------------------------------------------------------------------------------------------------------------------------
   Index   |  Name                                      |  Frequency   |  LUT As Logic   |  LUT As Shifter   |  LUT As Dram   |  BRAM   |  DSP
 -----------------------------------------------------------------------------------------------------------------------------------------------
-  #1      |  clk                                       |  50MHz       |  1643           |  0                |  194           |  8      |  2
-  #2      |  u_eth/g_gig$u_rx_pll.clkc[1]              |  125MHz      |  203            |  0                |  0             |  4      |  0
-  #3      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  125MHz      |  4435           |  0                |  16            |  17     |  3
-  #4      |  u_sd_host_pll/u_pll.clkc[0]               |  100MHz      |  727            |  0                |  0             |  1      |  0
+  #1      |  clk                                       |  50MHz       |  1924           |  0                |  194           |  8      |  2
+  #2      |  u_eth/g_gig$u_rx_pll.clkc[1]              |  125MHz      |  193            |  0                |  0             |  4      |  0
+  #3      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[1]  |  125MHz      |  5160           |  0                |  16            |  17     |  3
+  #4      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[3]  |  25MHz       |  1              |  0                |  0             |  0      |  0
+  #5      |  u_eth/u_clk_gen/u_pll_0/pll_inst.clkc[4]  |  125MHz      |  2              |  0                |  0             |  0      |  0
+  #6      |  u_sd_host_pll/u_pll.clkc[0]               |  100MHz      |  737            |  0                |  0             |  1      |  0
 -----------------------------------------------------------------------------------------------------------------------------------------------
 
 Clock Resource Statistics
 Index     ClockNet                                                    Type               DriverType         Driver                                    Fanout
-#1        u_eth/u_temac_block/trimac_core/tx_mac_clk                  Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc1    3428
-#2        clk_dup_4                                                   Global             io                 clk_syn_5.di                              1504
-#3        u_sd_host_pll/clk0_unbuffered                               Global             pll                u_sd_host_pll/u_pll.clkc0                 440
-#4        u_eth/u_temac_block/trimac_core/rx_mac_clk                  Global             pll                u_eth/g_gig$u_rx_pll.clkc1                259
+#1        u_eth/u_temac_block/trimac_core/tx_mac_clk                  Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc1    3624
+#2        clk_dup_4                                                   Global             io                 clk_syn_5.di                              1976
+#3        u_sd_host_pll/clk0_unbuffered                               Global             pll                u_sd_host_pll/u_pll.clkc0                 467
+#4        u_eth/u_temac_block/trimac_core/rx_mac_clk                  Global             pll                u_eth/g_gig$u_rx_pll.clkc1                266
 #5        u_eth/clk_25_out                                            Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc3    5
 #6        eth_rgmii_rxc_dup_1                                         GeneralRouting     io                 eth_rgmii_rxc_syn_2.di                    1
 #7        u_eth/u_temac_block/u1_rgmii_interface/rgmii_txc_ddr/clk    Global             pll                u_eth/u_clk_gen/u_pll_0/pll_inst.clkc4    1
@@ -89,65 +99,72 @@ Report Hierarchy Area:
 +---------------------------------------------------------------------------------------------------------------------+
 |Instance                                |Module                |le      |lut     |ripple  |seq     |bram    |dsp     |
 +---------------------------------------------------------------------------------------------------------------------+
-|top                                     |top                   |15103   |12579   |1585    |8920    |21      |5       |
-|  u_autoplay_timer                      |media_autoplay_timer  |70      |60      |10      |38      |0       |0       |
-|  u_control                             |media_control_core    |1441    |1337    |103     |617     |1       |0       |
-|    u_subtitle_cmd                      |subtitle_cmd          |186     |151     |35      |66      |0       |0       |
-|  u_eth                                 |eth_subsys            |3860    |3196    |501     |2095    |12      |0       |
-|    g_media_udp_lite$u_udp_stack        |media_udp_lite        |1400    |1114    |262     |705     |1       |0       |
+|top                                     |top                   |17202   |14286   |1902    |10122   |21      |5       |
+|  u_autoplay_timer                      |media_autoplay_timer  |54      |44      |10      |34      |0       |0       |
+|  u_control                             |media_control_core    |1668    |1535    |108     |706     |1       |0       |
+|    u_subtitle_cmd                      |subtitle_cmd          |161     |126     |35      |71      |0       |0       |
+|  u_eth                                 |eth_subsys            |3799    |3154    |492     |2071    |12      |0       |
+|    g_media_udp_lite$u_udp_stack        |media_udp_lite        |1404    |1104    |262     |696     |1       |0       |
 |    u_clk_gen                           |clk_gen_rst_gen       |0       |0       |0       |0       |0       |0       |
 |      u_pll_0                           |pll_gen               |0       |0       |0       |0       |0       |0       |
-|    u_eth_front                         |eth_front             |644     |503     |124     |341     |3       |0       |
-|      u_tap_afifo                       |tap_afifo             |98      |66      |18      |90      |2       |0       |
-|    u_production_mux                    |media_udp_mux         |292     |272     |14      |99      |0       |0       |
-|    u_rx_fifo                           |rx_client_fifo        |209     |157     |26      |158     |4       |0       |
+|    u_eth_front                         |eth_front             |706     |558     |115     |310     |3       |0       |
+|      u_tap_afifo                       |tap_afifo             |101     |72      |9       |84      |2       |0       |
+|    u_production_mux                    |media_udp_mux         |224     |210     |14      |76      |0       |0       |
+|    u_rx_fifo                           |rx_client_fifo        |229     |195     |26      |165     |4       |0       |
+|      ramgen_l                          |RAMB16_S9_S9          |0       |0       |0       |0       |2       |0       |
+|      ramgen_u                          |RAMB16_S9_S9          |2       |2       |0       |1       |2       |0       |
+|    u_temac_block                       |temac_block           |756     |675     |34      |570     |0       |0       |
+|      trimac_core                       |TEMAC_CORE            |703     |635     |26      |540     |0       |0       |
+|      u1_rgmii_interface                |rgmii_interface       |7       |7       |0       |1       |0       |0       |
+|        ctl_output                      |ODDR                  |2       |2       |0       |0       |0       |0       |
+|        txdata_out_bus[0]$rgmii_txd_out |ODDR                  |1       |1       |0       |0       |0       |0       |
+|        txdata_out_bus[1]$rgmii_txd_out |ODDR                  |2       |2       |0       |0       |0       |0       |
+|        txdata_out_bus[3]$rgmii_txd_out |ODDR                  |2       |2       |0       |1       |0       |0       |
+|      u_tx_clk_en_gen                   |tx_clk_en_gen         |33      |25      |8       |18      |0       |0       |
+|    u_tx_fifo                           |tx_client_fifo        |416     |363     |26      |223     |4       |0       |
 |      ramgen_l                          |RAMB16_S9_S9          |0       |0       |0       |0       |2       |0       |
 |      ramgen_u                          |RAMB16_S9_S9          |0       |0       |0       |0       |2       |0       |
-|    u_temac_block                       |temac_block           |873     |784     |34      |569     |0       |0       |
-|      trimac_core                       |TEMAC_CORE            |797     |718     |26      |532     |0       |0       |
-|      u1_rgmii_interface                |rgmii_interface       |5       |5       |0       |0       |0       |0       |
-|        txdata_out_bus[0]$rgmii_txd_out |ODDR                  |2       |2       |0       |0       |0       |0       |
-|        txdata_out_bus[2]$rgmii_txd_out |ODDR                  |2       |2       |0       |0       |0       |0       |
-|        txdata_out_bus[3]$rgmii_txd_out |ODDR                  |1       |1       |0       |0       |0       |0       |
-|      u_tx_clk_en_gen                   |tx_clk_en_gen         |62      |54      |8       |29      |0       |0       |
-|    u_tx_fifo                           |tx_client_fifo        |377     |316     |26      |191     |4       |0       |
-|      ramgen_l                          |RAMB16_S9_S9          |0       |0       |0       |0       |2       |0       |
-|      ramgen_u                          |RAMB16_S9_S9          |1       |1       |0       |0       |2       |0       |
-|    u_media_udp_route                   |media_udp_route       |31      |31      |0       |15      |0       |0       |
-|  u_formal_tx                           |media_image_tx        |1484    |1022    |357     |682     |2       |3       |
-|  u_key_auto                            |media_button_debounce |66      |47      |18      |29      |0       |0       |
-|  u_key_next                            |media_button_debounce |63      |44      |18      |26      |0       |0       |
-|  u_key_prev                            |media_button_debounce |61      |43      |18      |24      |0       |0       |
-|  u_production_fifo                     |tap_afifo             |115     |94      |18      |87      |2       |0       |
+|    u_media_udp_route                   |media_udp_route       |30      |30      |0       |15      |0       |0       |
+|  u_formal_tx                           |media_image_tx        |1477    |1067    |354     |667     |2       |3       |
+|  u_gesture                             |gesture_cmd_gen       |714     |440     |224     |233     |0       |0       |
+|  u_key_auto                            |media_button_debounce |61      |43      |18      |27      |0       |0       |
+|  u_key_next                            |media_button_debounce |62      |44      |18      |25      |0       |0       |
+|  u_key_prev                            |media_button_debounce |61      |43      |18      |27      |0       |0       |
+|  u_laser_left                          |mf168_link            |192     |133     |35      |117     |0       |0       |
+|  u_laser_right                         |mf168_link            |209     |151     |35      |115     |0       |0       |
+|  u_production_fifo                     |tap_afifo             |125     |103     |15      |93      |2       |0       |
 |  u_sd_host_pll                         |sd_host_pll           |0       |0       |0       |0       |0       |0       |
-|  u_source                              |media_image_source    |5126    |4508    |451     |2885    |4       |2       |
-|    u_bmp_dec                           |bmp_dec               |392     |315     |67      |217     |0       |0       |
-|    u_fat32                             |fat32_ro              |2098    |1804    |186     |1140    |2       |2       |
-|    u_format                            |media_frame_format    |181     |138     |43      |114     |1       |0       |
-|    u_sd_card                           |sd_native_adapter     |1575    |1496    |67      |844     |1       |0       |
-|      u_host                            |sd_native_host        |1422    |1364    |56      |709     |1       |0       |
-|        u_cmd                           |sd_native_cmd         |456     |438     |18      |234     |0       |0       |
-|    u_wav_reader                        |wav_reader            |451     |355     |75      |259     |0       |0       |
-|  u_uart_arbiter                        |media_uart_arbiter    |58      |58      |0       |23      |0       |0       |
-|  u_uart_bt                             |uart_link             |240     |186     |10      |160     |0       |0       |
-|    u_tx                                |uart_tx_byte          |80      |75      |5       |43      |0       |0       |
-|  u_uart_usb                            |uart_link             |290     |254     |10      |229     |0       |0       |
-|    u_tx                                |uart_tx_byte          |72      |67      |5       |47      |0       |0       |
-|  u_usb_view                            |media_usb_view_tx     |257     |212     |0       |248     |0       |0       |
-|  u_view_packet_arbiter                 |media_packet_arbiter  |44      |33      |11      |23      |0       |0       |
-|  u_view_scheduler                      |media_view_scheduler  |892     |754     |60      |716     |0       |0       |
+|  u_sensor_capture                      |media_sensor_capture  |846     |786     |33      |654     |0       |0       |
+|    u_i2c                               |sensor_i2c_transfer   |361     |344     |15      |280     |0       |0       |
+|      engine                            |sensor_i2c_byte       |91      |86      |5       |69      |0       |0       |
+|  u_source                              |media_image_source    |5198    |4526    |451     |2915    |4       |2       |
+|    u_bmp_dec                           |bmp_dec               |399     |315     |67      |214     |0       |0       |
+|    u_fat32                             |fat32_ro              |2032    |1698    |186     |1158    |2       |2       |
+|    u_format                            |media_frame_format    |177     |131     |43      |115     |1       |0       |
+|    u_sd_card                           |sd_native_adapter     |1759    |1678    |67      |848     |1       |0       |
+|      u_host                            |sd_native_host        |1602    |1542    |56      |712     |1       |0       |
+|        u_cmd                           |sd_native_cmd         |535     |517     |18      |272     |0       |0       |
+|    u_wav_reader                        |wav_reader            |455     |375     |75      |270     |0       |0       |
+|  u_uart_arbiter                        |media_uart_arbiter    |58      |58      |0       |19      |0       |0       |
+|  u_uart_bt                             |uart_link             |204     |178     |10      |156     |0       |0       |
+|    u_tx                                |uart_tx_byte          |45      |40      |5       |35      |0       |0       |
+|  u_uart_usb                            |uart_link             |267     |218     |10      |231     |0       |0       |
+|    u_tx                                |uart_tx_byte          |63      |58      |5       |40      |0       |0       |
+|  u_usb_view                            |media_usb_view_tx     |251     |194     |0       |249     |0       |0       |
+|  u_view_packet_arbiter                 |media_packet_arbiter  |43      |32      |11      |20      |0       |0       |
+|  u_view_scheduler                      |media_view_scheduler  |896     |775     |60      |734     |0       |0       |
 +---------------------------------------------------------------------------------------------------------------------+
 
 
 DataNet Average Fanout:
 
    Index     Fanout     Nets   
-    #1          1       10944  
-    #2          2       4230   
-    #3          3       1387   
-    #4          4        795   
-    #5        5-10      1349   
-    #6        11-50      728   
-    #7       51-100      90    
-    #8       101-500      9    
-  Average     3.01             
+    #1          1       12616  
+    #2          2       4726   
+    #3          3       1677   
+    #4          4        838   
+    #5        5-10      1601   
+    #6        11-50      754   
+    #7       51-100      104   
+    #8       101-500     15    
+  Average     2.99             

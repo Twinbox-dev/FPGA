@@ -343,7 +343,8 @@ endmodule
 // without changing the HDMI raster phase.
 module cv_point_line_delay #(
     parameter integer H_TOTAL = 1650,
-    parameter integer SYNC_DEPTH = 2048
+    parameter integer SYNC_DEPTH = 2048,
+    parameter integer SYNC_FROM_PIXEL = 0
 )(
     input wire clk, rst,
     input wire [23:0] rgb_in,
@@ -358,9 +359,11 @@ module cv_point_line_delay #(
     localparam integer PTR_WIDTH = $clog2(SYNC_DEPTH);
     localparam integer RD_INIT = SYNC_DEPTH - PIXEL_DELAY;
     reg [15:0] point_mem [0:SYNC_DEPTH-1]; /* fehdl force_ram=1, ram_style="bram_32k" */
+    reg [1:0] sync_mem [0:SYNC_DEPTH-1]; /* fehdl force_ram=1, ram_style="bram_9k" */
     reg [PTR_WIDTH-1:0] wr_ptr, rd_ptr;
     reg [15:0] pixel_q;
     reg de_sync_q, vs_sync_q;
+    reg [1:0] sync_pixel_q;
 
     function [15:0] pack565(input [23:0] rgb);
         begin pack565 = {rgb[23:19], rgb[15:10], rgb[7:3]}; end
@@ -374,19 +377,23 @@ module cv_point_line_delay #(
     // One synchronous read and one write at distinct addresses. The pointer
     // offset is exactly PIXEL_DELAY, matching the convolution DE/VS ring.
     // The RAM is intentionally not reset; output is masked by delayed DE.
-    always @(posedge clk)
-        if (!rst)
+    always @(posedge clk) begin
+        if (!rst) begin
             point_mem[wr_ptr] <= pack565(rgb_in);
+            if(SYNC_FROM_PIXEL)sync_mem[wr_ptr]<={vs_sync,de_sync};
+        end
+    end
     always @(posedge clk)
         pixel_q <= point_mem[rd_ptr];
-
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             wr_ptr <= {PTR_WIDTH{1'b0}};
             rd_ptr <= RD_INIT[PTR_WIDTH-1:0];
             de_sync_q <= 1'b0;
             vs_sync_q <= 1'b0;
+            sync_pixel_q<=0;
         end else begin
+            if(SYNC_FROM_PIXEL)sync_pixel_q<=sync_mem[rd_ptr];
             wr_ptr <= (wr_ptr == SYNC_DEPTH - 1) ? {PTR_WIDTH{1'b0}} : wr_ptr + 1'b1;
             rd_ptr <= (rd_ptr == SYNC_DEPTH - 1) ? {PTR_WIDTH{1'b0}} : rd_ptr + 1'b1;
             de_sync_q <= de_sync;
@@ -394,9 +401,9 @@ module cv_point_line_delay #(
         end
     end
 
-    assign de_out = de_sync_q;
-    assign vs_out = vs_sync_q;
-    assign rgb_out = de_sync_q ? expand565(pixel_q) : 24'd0;
+    assign de_out = SYNC_FROM_PIXEL ? sync_pixel_q[0] : de_sync_q;
+    assign vs_out = SYNC_FROM_PIXEL ? sync_pixel_q[1] : vs_sync_q;
+    assign rgb_out = (SYNC_FROM_PIXEL ? sync_pixel_q[0] : de_sync_q) ? expand565(pixel_q) : 24'd0;
 endmodule
 
 
@@ -409,7 +416,8 @@ module cv_pixel_effects_runtime #(
     parameter integer H_TOTAL = 1650,
     parameter integer V_ACTIVE = 720,
     parameter integer SYNC_DEPTH = 2048,
-    parameter [2:0] MODE_DEFAULT = 3'd0
+    parameter [2:0] MODE_DEFAULT = 3'd0,
+    parameter integer NEIGHBORHOOD_ENABLED = 1
 )(
     input  wire        clk,
     input  wire        rst,
@@ -442,7 +450,7 @@ module cv_pixel_effects_runtime #(
             vs_conv_d <= vs_conv;
             rgb_conv_d <= rgb_conv;
             if (vs_in && !vs_input_d)
-                mode_active <= (mode_raw <= 5) ? mode_raw : MODE_DEFAULT;
+            mode_active <= (mode_raw <= 5 && (NEIGHBORHOOD_ENABLED || (mode_raw!=3 && mode_raw!=4))) ? mode_raw : MODE_DEFAULT;
             // rgb_conv and point RGB are both delayed by one final register.
             // Capture the selected mode on the matching delayed frame edge.
             if (vs_conv && !vs_conv_d)
@@ -453,16 +461,20 @@ module cv_pixel_effects_runtime #(
     cv_pixel_effects #(.MODE(7), .H_ACTIVE(H_ACTIVE), .H_TOTAL(H_TOTAL), .V_ACTIVE(V_ACTIVE), .SYNC_DEPTH(SYNC_DEPTH)) u_point_effects
         (.clk(clk), .rst(rst), .rgb_in(rgb_in), .de_in(de_in), .vs_in(vs_in), .mode_in(mode_active),
          .rgb_out(rgb_point), .de_out(de_point), .vs_out(vs_point));
-    cv_point_line_delay #(.H_TOTAL(H_TOTAL), .SYNC_DEPTH(SYNC_DEPTH)) u_point_line_delay
+    cv_point_line_delay #(.H_TOTAL(H_TOTAL), .SYNC_DEPTH(SYNC_DEPTH),.SYNC_FROM_PIXEL(!NEIGHBORHOOD_ENABLED)) u_point_line_delay
         (.clk(clk), .rst(rst), .rgb_in(rgb_point),
-         .de_sync(de_conv), .vs_sync(vs_conv),
+         .de_sync(NEIGHBORHOOD_ENABLED ? de_conv : de_point), .vs_sync(NEIGHBORHOOD_ENABLED ? vs_conv : vs_point),
          .rgb_out(rgb_point_aligned), .de_out(de_point_aligned), .vs_out(vs_point_aligned));
-    cv_pixel_effects #(.MODE(6), .H_ACTIVE(H_ACTIVE), .H_TOTAL(H_TOTAL), .V_ACTIVE(V_ACTIVE), .SYNC_DEPTH(SYNC_DEPTH)) u_convolution
-        (.clk(clk), .rst(rst), .rgb_in(rgb_in), .de_in(de_in), .vs_in(vs_in), .mode_in(mode_active),
-         .rgb_out(rgb_conv), .de_out(de_conv), .vs_out(vs_conv));
+    generate if(NEIGHBORHOOD_ENABLED)begin:g_neighborhood_effects
+        cv_pixel_effects #(.MODE(6), .H_ACTIVE(H_ACTIVE), .H_TOTAL(H_TOTAL), .V_ACTIVE(V_ACTIVE), .SYNC_DEPTH(SYNC_DEPTH)) u_convolution
+            (.clk(clk), .rst(rst), .rgb_in(rgb_in), .de_in(de_in), .vs_in(vs_in), .mode_in(mode_active),
+             .rgb_out(rgb_conv), .de_out(de_conv), .vs_out(vs_conv));
+    end else begin:g_point_only
+        assign rgb_conv=rgb_point_aligned;assign de_conv=de_point_aligned;assign vs_conv=vs_point_aligned;
+    end endgenerate
 
     always @* begin
-        if ((mode_output == 3'd3) || (mode_output == 3'd4))
+        if (NEIGHBORHOOD_ENABLED && ((mode_output == 3'd3) || (mode_output == 3'd4)))
             rgb_out = rgb_conv_d;
         else
             rgb_out = rgb_point_aligned;

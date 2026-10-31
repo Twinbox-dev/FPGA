@@ -124,6 +124,7 @@ module tb_view_bilinear_shrink #(parameter PIPELINE=0);
         check(504,720,1,504*720);
         check(333,217,2,333*217);
         check(1,1,2,1);
+        check(1,720,2,720);
         check(3,720,2,3*720);
         check(1280,1,2,1280);
         check(640,480,2,640*480-3);

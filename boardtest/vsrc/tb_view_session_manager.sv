@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 module tb_view_session_manager;
     reg clk=0,rst=1;always #4 clk=~clk;
+    reg external_busy=0;
     reg prep=0,status_req=0,local_step=0,begin_frame=0,wr_valid=0,drained=0;
     reg [63:0] request=0;
     reg [10:0] cx=0;reg [9:0] cy=0;
@@ -34,7 +35,7 @@ module tb_view_session_manager;
     wire [8:0] transition_alpha;
     wire [10:0] transition_wipe;
     wire transition_view_active;
-    view_session_manager #(.CLK_HZ(1000)) dut(.clk(clk),.rst(rst),
+    view_session_manager #(.CLK_HZ(1000),.EXTERNAL_BUSY_ENABLED(1)) dut(.clk(clk),.rst(rst),.external_busy(external_busy),.transaction_busy(),
         .prepare_valid(prep),.prepare_body(request),.status_request(status_req),
         .cursor_x(cx),.cursor_y(cy),.local_step(local_step),
         .frame_begin(begin_frame),.frame_id(fid),.frame_generation(gen),
@@ -120,8 +121,12 @@ module tb_view_session_manager;
     integer i;
     initial begin
         repeat(5)@(negedge clk);rst=0;
-        request_prepare(0,0,255,0);expect_reply(0);send_begin(1);
+        external_busy=1;request_prepare(0,0,255,0);expect_reply(1);
+        if(!busy || dut.state!=0)$fatal(1,"external video did not reserve idle manager");
+        external_busy=0;request_prepare(0,0,255,0);expect_reply(0);
+        external_busy=1;send_begin(1);
         writer_reply(0);expect_result(0);sb=tb;writer_reply(2);expect_result(2);
+        external_busy=0;#1;
         if(busy || layout!=0 || mask!=1)$fatal(1,"single commit");
         request_prepare(0,2,255,0);expect_reply(0);
         for(i=0;i<4;i=i+1)begin
@@ -178,7 +183,14 @@ module tb_view_session_manager;
             $fatal(1,"soft-wipe window commit/release failed");
         effect_mode=0;
         cx=900;cy=550;repeat(3)@(negedge clk);
-        request_prepare(0,0,255,1);expect_reply(0);
+        // Several windows now show the nominal opposite full-page bank.
+        // Returning to single must revoke those readers before admitting writes.
+        allow_drain=0;
+        request_prepare(0,0,255,1);
+        repeat(12)begin @(negedge clk);if(prep_valid)$fatal(1,"single writer admitted before conflicting window drain");end
+        if((cm & dut.active_window_buffers)!=0 || dut.state!=6)
+            $fatal(1,"opposite-page windows not hidden before single load");
+        allow_drain=1;expect_reply(0);
         if(reply[55:48]!=9)$fatal(1,"return single chose wrong image");
         send_begin(9);writer_reply(0);expect_result(0);sb=tb;writer_reply(2);expect_result(2);
         if(layout!=0 || ag!=2 || dut.indices[0]!=9)$fatal(1,"return single commit");

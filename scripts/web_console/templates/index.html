@@ -550,6 +550,14 @@
         <span class="hint">覆盖、像素差异和黑边差异会分别统计。</span>
       </div>
       <div class="pc-upload" id="pcUploadPanel" hidden>
+        <div style="flex-basis:100%;border-top:1px solid #26384e;margin:2px 0"></div>
+        <label for="pcVideoFile">HDMI 视频播放</label>
+        <input type="file" id="pcVideoFile" accept="video/*,.mp4,.m4v,.mov,.mkv,.avi,.webm,.wmv">
+        <label><input type="checkbox" id="pcVideoAudio" checked> 播放音轨</label>
+        <button type="button" id="btnVideoStart" disabled>开始播放</button>
+        <button type="button" id="btnVideoStop" disabled>停止视频</button>
+        <span class="hint" id="videoPlaybackStatus">选择视频后由 PC 解码，按当前显示板视频配置发送 RGB565 行包；停止后等待板卡释放资源。</span>
+        <span class="hint">640×360 RGB565（四宫格单窗尺寸），约 60.6 帧/秒；可播放视频音轨（24 kHz 单声道）。当前画面位于左上区域，其他区域为黑色。</span>
         <label for="pcImageFile">发送图片到显示板</label>
         <input type="file" id="pcImageFile" accept="image/*">
         <label><input type="checkbox" id="pcImageAudio"> 同时发送音频</label>
@@ -571,7 +579,10 @@ window.addEventListener("unhandledrejection", e => window.__errs.push("rej:" + S
 let mode = "serial";            // serial | eth
 let boardView = null, viewPending = false, viewSawBusy = false, viewRecovery = false, viewTimer = null;
 const IMAGE_KEYS = ["n", "p", "d", "6", "7", "8"];
+const PRODUCT_CAPABILITIES = {{ capabilities|tojson }};
+const UNAVAILABLE_KEYS = new Set({{ unavailable_keys|tojson }});
 let connected = false, count = 0, pollTimer = null, uploadBusy = false;
+let videoActive = false, videoStarting = false, videoPollTimer = null;
 let briShown = "–", ctShown = "–";   // 亮度/对比度合并瓦片的两个数
 const connState = {serial: false, eth: false};   // 两条链路各自独立的连接态
 const CV_KEY_BY_NAME = {raw:"r", gray:"g", binary:"b", sobel:"e", sharpen:"h", snow:"w"};
@@ -586,10 +597,15 @@ const RANGE = {"播放":"", "切换特效":"约 1 秒", "音量":"0–8", "轮�
 RANGE["\u56fe\u50cf\u6548\u679c"] = "HDMI image mode";
 RANGE["\u8c03\u8bd5"] = "SD 状态 / 辅助调试";
 RANGE["画面布局"] = "双图 / 四图需先回单图互切";
+if (!PRODUCT_CAPABILITIES.cv) RANGE["\u56fe\u50cf\u6548\u679c"] = "首轮暂仅支持原图";
+if (PRODUCT_CAPABILITIES.cv && !PRODUCT_CAPABILITIES.cv_neighborhood)
+  RANGE["\u56fe\u50cf\u6548\u679c"] = "Sobel 与锐化暂不可用";
+if (!PRODUCT_CAPABILITIES.spectrum) RANGE["音频频谱"] = "首轮暂不可用，后续恢复";
 Object.assign(ICON, {"6":"▣", "7":"◫", "8":"▦"});
 
 function updateViewControls() {
   const busy = uploadBusy || viewPending || !!(boardView && boardView.busy);
+  const videoBusy = videoActive || videoStarting;
   const audioToggle = document.getElementById("pcImageAudio");
   const audioFile = document.getElementById("pcAudioFile");
   const singleLayout = !!boardView && boardView.layout === 0;
@@ -600,17 +616,23 @@ function updateViewControls() {
     const key = button.dataset.k;
     const illegal = boardView && ((boardView.layout === 1 && key === "8") ||
                                  (boardView.layout === 2 && key === "7"));
-    button.disabled = !connected || (key !== "s" && busy) || illegal ||
+    button.disabled = UNAVAILABLE_KEYS.has(key) || !connected || (videoBusy ? !["s", "+", "-"].includes(key) : (key !== "s" && busy)) || illegal ||
                       (!boardView && IMAGE_KEYS.includes(key));
     if (["6", "7", "8"].includes(key))
       button.classList.toggle("on", !!boardView && +key === boardView.layout + 6);
   });
-  document.getElementById("btnSnapshot").disabled = !connected || busy || !boardView;
+  document.getElementById("btnSnapshot").disabled = !connected || busy || videoBusy || !boardView;
   document.getElementById("btnPcUpload").disabled = mode !== "eth" || !connState.eth || busy ||
+    videoActive ||
     !document.getElementById("pcImageFile").files.length ||
     (audioToggle.checked && !audioFile.files.length);
+  document.getElementById("pcVideoFile").disabled = mode !== "eth" || !connState.eth || videoActive || videoStarting || busy;
+  document.getElementById("btnVideoStart").disabled = mode !== "eth" || !connState.eth || videoActive || videoStarting || busy ||
+    !document.getElementById("pcVideoFile").files.length;
+  document.getElementById("btnVideoStop").disabled = !videoActive && !videoStarting;
+  document.getElementById("pcVideoAudio").disabled = videoActive || videoStarting;
   for (const id of ["btnSubtitle", "btnSubtitleClear", "subtitleText"])
-    document.getElementById(id).disabled = !connected || busy;
+    document.getElementById(id).disabled = !connected || busy || videoBusy;
 }
 function scheduleViewRecovery() {
   if (viewTimer || !viewPending) return;
@@ -687,6 +709,8 @@ function slide() {
   t.style.width = (btn.offsetWidth) + "px";
 }
 function setMode(m, announce=true) {
+  if (mode === "eth" && m !== "eth" && videoActive)
+    fetch("/api/eth/video/stop", {method:"POST"}).then(syncVideoStatus).catch(()=>{});
   mode = m;
   try { localStorage.setItem("fpga-web-mode", m); } catch (_) {}
   document.getElementById("mSerial").className = (m === "serial") ? "on" : "";
@@ -728,7 +752,7 @@ function selectFrameView(view) {
 document.getElementById("pcImageAudio").addEventListener("change", () => {
   updateViewControls();
 });
-for (const id of ["pcImageFile", "pcAudioFile"])
+for (const id of ["pcImageFile", "pcAudioFile", "pcVideoFile"])
   document.getElementById(id).addEventListener("change", updateViewControls);
 document.getElementById("btnPcUpload").onclick = async () => {
   const imageFile = document.getElementById("pcImageFile").files[0];
@@ -781,6 +805,79 @@ document.getElementById("btnPcUpload").onclick = async () => {
 };
 
 /* ---------- 命令面板：后端下发键表，按语义分组渲染 ---------- */
+async function syncVideoStatus() {
+  try {
+    const response = await fetch("/api/eth/video/status", {cache:"no-store"});
+    const state = await response.json();
+    const wasActive = videoActive;
+    videoActive = !!state.active;
+    const status = document.getElementById("videoPlaybackStatus");
+    const progress = `${state.frames || 0} 帧 · ${state.rows || 0} 行 · ${state.credits || 0} 次反馈`;
+    status.textContent = videoActive ?
+      (state.state === "releasing" ? "等待显示板释放视频资源并恢复图片…" :
+       state.state === "starting" ? `正在启动解码：${state.name || "视频"}` :
+       state.state === "waiting" ? `等待显示板行反馈 · ${progress}` :
+       `正在发送：${state.name || "视频"} · ${progress}`) :
+      (state.exit_code === null || state.exit_code === undefined ?
+        "选择视频后由 PC 解码，按当前显示板视频配置发送 RGB565 行包；停止后等待板卡释放资源。" :
+        state.state === "stopped" ? "视频已停止，显示板已恢复空闲。" :
+        `视频发送失败：${state.error || `进程退出 ${state.exit_code}`}`);
+    if (wasActive && !videoActive) {
+      if (connState.eth) sendKey("s");
+      addLog(state.state === "stopped" ? "sys" : "err", "VIDEO",
+             status.textContent + (state.details ? `\n${state.details}` : ""));
+    }
+    updateViewControls();
+  } catch (_) {}
+}
+
+document.getElementById("btnVideoStart").onclick = async () => {
+  const file = document.getElementById("pcVideoFile").files[0];
+  if (!file || mode !== "eth" || !connState.eth) return;
+  const status = document.getElementById("videoPlaybackStatus");
+  const form = new FormData();
+  form.append("video", file, file.name);
+  form.append("audio", document.getElementById("pcVideoAudio").checked ? "1" : "0");
+  videoStarting = true;
+  status.textContent = `正在上传并启动：${file.name}`;
+  updateViewControls();
+  try {
+    const response = await fetch("/api/eth/video/start", {method:"POST", body:form});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    videoActive = true;
+    addLog("ack", "VIDEO", `${result.name} → ${result.target} · ${result.format}`);
+    toast("发送进程已启动，等待显示板反馈");
+  } catch (error) {
+    status.textContent = `启动失败：${error.message}`;
+    addLog("err", "VIDEO", error.message);
+    toast(error.message, true);
+  } finally {
+    videoStarting = false;
+    await syncVideoStatus();
+    updateViewControls();
+  }
+};
+
+document.getElementById("btnVideoStop").onclick = async () => {
+  videoStarting = true;
+  updateViewControls();
+  try {
+    const response = await fetch("/api/eth/video/stop", {method:"POST"});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    addLog("sys", "VIDEO", "已停止发送，等待显示板释放视频资源");
+    toast("正在恢复图片显示");
+  } catch (error) {
+    addLog("err", "VIDEO", error.message);
+    toast(error.message, true);
+  } finally {
+    videoStarting = false;
+    await syncVideoStatus();
+    updateViewControls();
+  }
+};
+
 async function buildPad(){
   let d;
   try { d = await (await fetch("/api/keys")).json(); }
@@ -941,7 +1038,8 @@ document.getElementById("btnRefresh").onclick = () => loadPorts(false);
 /* ---------- 命令发送 ---------- */
 async function sendKey(k) {
   if (!connected) return;
-  if (k !== "s" && (viewPending || (boardView && boardView.busy))) return;
+  const videoVolume = videoActive && (k === "+" || k === "-");
+  if (k !== "s" && !videoVolume && (viewPending || (boardView && boardView.busy))) return;
   if (k === "s" && viewPending) viewRecovery = true;
   if (IMAGE_KEYS.includes(k)) {
     viewPending = true;viewSawBusy = false;viewRecovery = false;
@@ -1317,6 +1415,8 @@ document.getElementById("bmpFile").addEventListener("change", async e => {
   setMode(initialMode, false);
   listen();
   slide();
+  await syncVideoStatus();
+  if (!videoPollTimer) videoPollTimer = setInterval(syncVideoStatus, 1500);
   await loadPorts(!st.serial_open);
   if (connected) setTimeout(() => sendKey("s"), 250);
 })();

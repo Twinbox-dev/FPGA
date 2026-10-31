@@ -14,9 +14,9 @@ Ethernet 控制页现在可以把本地图片直接发送给显示板 `.2:1`。�
 
 ## 音频选项
 
-Ethernet 页勾选“同时发送音频”后，必须选择未压缩 24 kHz、8-bit unsigned、单声道 WAV。后端剥除 WAV 文件头，只发送 PCM 样本。未勾选时仍发送 0 样本音频事务，使显示板按现有协议提交静音。
+当前 Ethernet 页仅在单图模式允许勾选音频，支持既有 24 kHz、8-bit unsigned、单声道 WAV，或由本机 FFmpeg 从 MP4 等文件提取音轨；PC 限制最多 60 秒。后端只发送 PCM 样本。未勾选时发送零样本事务。后续段落保留首版逐步演进的记录，音轨细节见“MP4 音轨输入”。
 
-PC 上传的图片索引使用 31，宽高写入 BEGIN；校验成功后显示板返回图像 RESULT、音频 RESULT 和最终 RESULT=2。D 快照仍由媒体板从 SD 重读源图，因此它不代表 PC 上传的图像，也不会把 PC 图片保存到媒体板索引。
+首版曾使用伪索引 31，现已改为保留 PREPARE 返回的 SD 索引，具体见“多窗口更新与状态同步”；图片仍为临时显示内容，不进入 SD 列表。校验成功后按布局返回相应 RESULT，最终 RESULT=2 才表示提交。D 仍从媒体板 SD 重读源图，不代表 PC 上传图片。
 
 ## 发送节奏与事务超时
 
@@ -24,7 +24,7 @@ PC 上传的图片索引使用 31，宽高写入 BEGIN；校验成功后显示�
 
 这个传输方式用于静态图片，不是视频流。未来 PC 直传视频可以复用显示板的 PC 对端回包路由，但需要单独设计持续帧的接收/显示节奏；不能直接沿用本次为可靠图片提交设置的 4 ms 间隔。
 
-## 验证记录
+## 验证记录（首版历史）
 
 - Python 验证 RGB565 打包方向、校验和、奇数像素补零、WAV 格式检查、Flask multipart 接口和协议往返；`test_media_upload.py`、`test_view_status.py`、`test_frame_view.js` 均通过。
 - Verilator：`display-udp-lite`、`media-tx`、`media-display-path`、`view-control-path`、`media-display-full-frame` 均通过。UDP 仿真覆盖 PC ARP 应答、PC 源 MAC/IP/端口学习及动态目的 MAC 回包。

@@ -12,7 +12,11 @@ module display_udp_lite #(
     parameter [31:0] PEER_IP   = 32'hc0a88903,
     parameter [47:0] PEER_MAC  = 48'h020000000003,
     parameter [15:0] LOCAL_PORT = 16'h0001,
-    parameter [15:0] MAX_TX_PAYLOAD = 16'd32
+    parameter [15:0] MAX_TX_PAYLOAD = 16'd32,
+    parameter [31:0] PC_IP = 32'hc0a88901,
+    // Control ACKs must not follow the latest VD/AD producer packet.
+    // Keep generic UDP source metadata semantics unless explicitly enabled.
+    parameter ISOLATE_VIDEO_PEER = 0
 )(
     input  wire        clk,
     input  wire        reset,
@@ -30,10 +34,14 @@ module display_udp_lite #(
     output reg         app_rx_data_valid,
     output reg  [7:0]  app_rx_data,
     output reg  [15:0] app_rx_data_length,
+    output reg         app_rx_packet_start,
+    output reg         app_rx_packet_end,
     output reg  [15:0] app_rx_port_num,
     output reg  [47:0] app_rx_source_mac,
     output reg  [31:0] app_rx_source_ip,
     output reg  [15:0] app_rx_source_port,
+    output wire [47:0] pc_peer_mac_out,
+    output wire        pc_peer_valid_out,
 
     output wire        temac_rx_ready,
     input  wire        temac_rx_valid,
@@ -69,15 +77,22 @@ module display_udp_lite #(
     reg [23:0] rx_dest_ip;
     reg [15:0] rx_ip_length, rx_fragment;
     reg [7:0] rx_ip_version, rx_ip_protocol;
-    reg [31:0] rx_ip_sum;
+    reg [19:0] rx_ip_sum;
     reg [7:0] rx_ip_word_hi;
     reg rx_ip_valid;
     reg [15:0] rx_udp_src_port, rx_udp_dst_port, rx_udp_length;
     reg [47:0] rx_source_mac;
     reg [31:0] rx_source_ip;
+    reg [47:0] pc_peer_mac;
+    reg pc_peer_valid;
+    assign pc_peer_mac_out=pc_peer_mac;
+    assign pc_peer_valid_out=pc_peer_valid;
     reg [7:0] rx_udp_port_hi, rx_udp_len_hi;
     reg [15:0] rx_payload_left;
     reg rx_payload_active;
+    reg rx_first_payload;
+    reg rx_peer_probe;
+    reg [7:0] rx_magic_first;
 
     reg arp_pending;
     // The ARP reply targets the sender that requested our LOCAL_IP. Keep the
@@ -92,14 +107,11 @@ module display_udp_lite #(
     assign arp_request_no_reply_error = 1'b0;
 
     /* verilator lint_off BLKSEQ */
+    // Ten 16-bit IPv4 words fit in 20 bits. Avoid two carry-fold adders
+    // in the final RX header check (same validated implementation as cleanroom).
     function ip_checksum_ok;
-        input [31:0] sum;
-        reg [31:0] folded;
-        begin
-            folded = {16'd0,sum[15:0]} + {16'd0,sum[31:16]};
-            folded = {16'd0,folded[15:0]} + {16'd0,folded[31:16]};
-            ip_checksum_ok = folded[15:0] == 16'hffff;
-        end
+        input [19:0] sum;
+        begin ip_checksum_ok=(&sum[15:4]) && (sum[3:0]==~sum[19:16]);end
     endfunction
 
     function [15:0] make_ip_checksum;
@@ -220,7 +232,7 @@ module display_udp_lite #(
     end
 
     always @(posedge clk or posedge reset) begin : p_protocol
-        reg [31:0] ip_sum_next;
+        reg [19:0] ip_sum_next;
         reg [31:0] dest_ip_next;
         reg [15:0] fragment_next;
         reg [15:0] udp_len_next;
@@ -236,18 +248,24 @@ module display_udp_lite #(
             rx_ip_word_hi <= 0; rx_ip_valid <= 0;
             rx_udp_src_port <= 0; rx_udp_dst_port <= 0; rx_udp_length <= 0;
             rx_source_mac <= 0; rx_source_ip <= 0;
+            pc_peer_mac <= 0; pc_peer_valid <= 1'b0;
             rx_udp_port_hi <= 0; rx_udp_len_hi <= 0; rx_payload_left <= 0;
             rx_payload_active <= 0;
+            rx_first_payload <= 0;
+            rx_peer_probe <= 0; rx_magic_first <= 0;
             arp_pending <= 0;
             arp_header_valid <= 0; arp_target_ip_match <= 0;
             app_rx_data_valid <= 0; app_rx_data <= 0;
             app_rx_data_length <= 0; app_rx_port_num <= 0;
+            app_rx_packet_start <= 0; app_rx_packet_end <= 0;
             app_rx_source_mac <= 0; app_rx_source_ip <= 0; app_rx_source_port <= 0;
             arp_reply_mac <= PEER_MAC; arp_reply_ip <= PEER_IP;
             ip_rx_error <= 0;
         end else begin
             udp2app_tx_ack <= 1'b0;
             app_rx_data_valid <= 1'b0;
+            app_rx_packet_start <= 1'b0;
+            app_rx_packet_end <= 1'b0;
             ip_rx_error <= 1'b0;
 
             if (temac_rx_valid) begin
@@ -260,6 +278,8 @@ module display_udp_lite #(
                     rx_udp_src_port <= 0; rx_udp_dst_port <= 0; rx_udp_length <= 0;
                     rx_source_mac <= 0; rx_source_ip <= 0;
                     rx_payload_left <= 0; rx_payload_active <= 0;
+                    rx_first_payload <= 0;
+                    rx_peer_probe <= 0;
                     arp_header_valid <= 1'b1;
                     arp_target_ip_match <= 1'b1;
                 end else if (rx_active) begin
@@ -284,7 +304,7 @@ module display_udp_lite #(
                             33: begin
                                 dest_ip_next = {rx_dest_ip[23:0],temac_rx_data};
                                 fragment_next = rx_fragment;
-                                ip_sum_next = rx_ip_sum + {16'd0,rx_ip_word_hi,temac_rx_data};
+                                ip_sum_next = rx_ip_sum + {4'd0,rx_ip_word_hi,temac_rx_data};
                                 if ((rx_ip_version == 8'h45) && (rx_ip_protocol == 8'd17) &&
                                     (dest_ip_next == LOCAL_IP) && (rx_ip_length >= 16'd28) &&
                                     ((fragment_next & 16'h3fff) == 0) && ip_checksum_ok(ip_sum_next))
@@ -323,7 +343,7 @@ module display_udp_lite #(
                         rx_ip_word_hi <= temac_rx_data;
                     if (rx_ethertype == 16'h0800 && rx_index[0] == 1'b1 &&
                         rx_index >= 11'd14 && rx_index <= 11'd33)
-                        rx_ip_sum <= rx_ip_sum + {16'd0,rx_ip_word_hi,temac_rx_data};
+                        rx_ip_sum <= rx_ip_sum + {4'd0,rx_ip_word_hi,temac_rx_data};
 
                     if (rx_index == 11'd41 && rx_ethertype == 16'h0806) begin
                         if (arp_header_valid && arp_target_ip_match &&
@@ -331,9 +351,11 @@ module display_udp_lite #(
                             arp_pending <= 1'b1;
                             arp_reply_mac <= rx_source_mac;
                             arp_reply_ip <= rx_source_ip;
-                            app_rx_source_mac <= rx_source_mac;
-                            app_rx_source_ip <= rx_source_ip;
-                            app_rx_source_port <= 16'd0;
+                            if (!ISOLATE_VIDEO_PEER) begin
+                                app_rx_source_mac <= rx_source_mac;
+                                app_rx_source_ip <= rx_source_ip;
+                                app_rx_source_port <= 16'd0;
+                            end
                         end
                     end else if (rx_index == 11'd41 && rx_ethertype == 16'h0800) begin
                         udp_len_next = rx_udp_length;
@@ -341,23 +363,52 @@ module display_udp_lite #(
                             udp_len_next <= rx_ip_length-16'd20) begin
                             app_rx_data_length <= udp_len_next-16'd8;
                             app_rx_port_num <= rx_udp_src_port;
-                            app_rx_source_mac <= rx_source_mac;
-                            app_rx_source_ip <= rx_source_ip;
-                            app_rx_source_port <= rx_udp_src_port;
+                            if (!ISOLATE_VIDEO_PEER) begin
+                                app_rx_source_mac <= rx_source_mac;
+                                app_rx_source_ip <= rx_source_ip;
+                                app_rx_source_port <= rx_udp_src_port;
+                            end
+                            if(rx_source_ip==PC_IP)begin
+                                pc_peer_mac<=rx_source_mac;pc_peer_valid<=1'b1;
+                            end
                             rx_payload_left <= udp_len_next-16'd8;
                             rx_payload_active <= (udp_len_next > 16'd8);
+                            rx_first_payload <= (udp_len_next > 16'd8);
+                            rx_peer_probe <= (udp_len_next > 16'd8);
                         end
                     end else if (rx_index >= 11'd42 && rx_payload_active && rx_payload_left != 0) begin
                         app_rx_data <= temac_rx_data;
                         app_rx_data_valid <= 1'b1;
+                        app_rx_packet_start <= rx_first_payload;
+                        if (ISOLATE_VIDEO_PEER && rx_peer_probe) begin
+                            if (rx_first_payload && rx_payload_left != 1)
+                                rx_magic_first <= temac_rx_data;
+                            else begin
+                                rx_peer_probe <= 0;
+                                // Match the application demux's VD/AD magic.
+                                // Keep the ordinary control source tuple, while
+                                // pc_peer_mac is still learned from every PC UDP.
+                                if (rx_first_payload || !((rx_magic_first == 8'h56 || rx_magic_first == 8'h41) && temac_rx_data == 8'h44)) begin
+                                    app_rx_source_mac <= rx_source_mac;
+                                    app_rx_source_ip <= rx_source_ip;
+                                    app_rx_source_port <= rx_udp_src_port;
+                                end
+                            end
+                        end
+                        rx_first_payload <= 1'b0;
                         rx_payload_left <= rx_payload_left-1'b1;
-                        if (rx_payload_left == 1) rx_payload_active <= 1'b0;
+                        if (rx_payload_left == 1) begin
+                            rx_payload_active <= 1'b0;
+                            app_rx_packet_end <= 1'b1;
+                        end
                     end
 
                     rx_index <= rx_index+1'b1;
                     if (temac_rx_eof == 1'b0) begin
                         rx_active <= 1'b0;
                         rx_payload_active <= 1'b0;
+                        rx_first_payload <= 1'b0;
+                        rx_peer_probe <= 1'b0;
                     end
                 end
             end
@@ -371,6 +422,8 @@ module display_udp_lite #(
                         udp2app_tx_ack <= 1'b1;
                         tx_count <= 0; tx_length <= 0;
                         tx_dst_port <= app_tx_dst_port; tx_dst_ip <= ip_tx_dst_address;
+                        // The integration layer resolves the reply route from
+                        // the transaction owner/source and cached PC peer.
                         tx_dst_mac <= ip_tx_dst_mac;
                         tx_state <= TX_COLLECT;
                     end

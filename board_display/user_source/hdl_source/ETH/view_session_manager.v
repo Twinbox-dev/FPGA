@@ -3,9 +3,10 @@
 // old window visible while its opposite page is written, then commit that
 // window's relative page bit at VS and wait for the memory-reader drain ACK.
 module view_session_manager #(
-    parameter integer CLK_HZ=125000000
+    parameter integer CLK_HZ=125000000,parameter EXTERNAL_BUSY_ENABLED=0
 )(
     input wire clk,rst,
+    input wire external_busy,output wire transaction_busy,
     input wire prepare_valid,
     input wire [63:0] prepare_body,
     input wire status_request,
@@ -54,7 +55,7 @@ module view_session_manager #(
     output reg view_transition_release_toggle,
     output reg view_transition_active
 );
-    localparam IDLE=0,TRANSFER=1,SHOW_WAIT=2,SNAPSHOT=3,CANCEL_DRAIN=4,VIEW_TRANSITION=5;
+    localparam IDLE=0,TRANSFER=1,SHOW_WAIT=2,SNAPSHOT=3,CANCEL_DRAIN=4,VIEW_TRANSITION=5,HIDE_WAIT=6;
     reg [2:0] state;
     reg active_buffer,active_valid,page_build,owned;
     reg [3:0] staged_mask,active_window_buffers;
@@ -108,7 +109,8 @@ module view_session_manager #(
     wire legal_request=req_layout<=2 && !(active_layout!=0 && req_layout!=0 && req_layout!=active_layout) &&
                        prepare_body[63:48]==0 && (req_window>=8'hfe || req_window<4) &&
                        !(active_layout==1 && chosen_window>1) && req_action<=5;
-    assign busy=state!=IDLE;
+    assign transaction_busy=state!=IDLE;
+    assign busy=transaction_busy||(EXTERNAL_BUSY_ENABLED&&external_busy);
     assign image_owned=owned;
     assign owned_frame_id=accepted_id;
     assign accepted_begin=frame_begin && state==TRANSFER && !owned &&
@@ -141,11 +143,12 @@ module view_session_manager #(
             view_status_body[127:120]<=result_code;
         end
     endtask
+    reg external_busy_d;
     reg publish_pending;
     integer i;
     always @(posedge clk or posedge rst)begin
         if(rst)begin
-            state<=IDLE;active_layout<=0;active_mask<=0;active_generation<=0;
+            external_busy_d<=0;state<=IDLE;active_layout<=0;active_mask<=0;active_generation<=0;
             active_buffer<=0;active_window_buffers<=0;active_valid<=0;page_build<=0;owned<=0;staged_mask<=0;
             target_buffer<=0;target_layout<=0;target_window<=0;target_generation<=0;
             config_epoch<=0;config_buffer<=0;config_layout<=0;config_mask<=0;
@@ -169,12 +172,14 @@ module view_session_manager #(
             focus_tag<={selected_pages[cursor_window],cursor_window};
             focus_width<=active_valid && focus_tag_matches ? focus_dimensions[11:0] : 12'd0;
             focus_height<=active_valid && focus_tag_matches ? focus_dimensions[23:12] : 12'd0;
+            external_busy_d<=external_busy;
+            if(EXTERNAL_BUSY_ENABLED&&external_busy_d!=external_busy)publish_pending<=1;
             if(local_step && !busy)begin local_target<=cursor_window;local_target_valid<=1;end
             if(status_request || focus_window!=cursor_window)publish_pending<=1;
             if(publish_pending && (!active_valid || focus_tag_matches))begin
                 status_event(last_result);publish_pending<=0;
             end
-            if(busy)watchdog<=watchdog+1'b1;else watchdog<=0;
+            if(transaction_busy)watchdog<=watchdog+1'b1;else watchdog<=0;
             // Timeout aborts the producer into deterministic padding first; it
             // does not unlock a bank while its old write request still exists.
             if(owned && watchdog>=CLK_HZ*16-1 && state==TRANSFER)begin
@@ -191,9 +196,12 @@ module view_session_manager #(
                 image_result_valid<=1;image_result<=8'h11;image_result_frame<=frame_id;
             end
             if(prepare_valid)begin
-                if(req_action==3 || req_action==5)begin
+                if(EXTERNAL_BUSY_ENABLED&&external_busy&&state==IDLE)begin
+                    prepare_reply_valid<=1;publish_pending<=1;last_result<=1;
+                    prepare_reply_body<={16'd0,active_generation,6'd0,active_layout,6'd0,cursor_window,8'd1,prepare_body[7:0]};
+                end else if(req_action==3 || req_action==5)begin
                     if(req_action==5 && state==SNAPSHOT)begin state<=IDLE;publish_pending<=1;end
-                    else if(req_action==3 && !owned && state!=SHOW_WAIT && state!=VIEW_TRANSITION)begin
+                    else if(req_action==3 && !owned && state!=SHOW_WAIT && state!=VIEW_TRANSITION && state!=HIDE_WAIT)begin
                         state<=IDLE;publish_pending<=1;cache_valid<=0;
                     end else if(req_action==3 && owned && state==TRANSFER)begin
                         abort_image<=1;state<=CANCEL_DRAIN;
@@ -225,11 +233,23 @@ module view_session_manager #(
                     transition_commit_wait<=0;
                     watchdog<=0;publish_pending<=1;last_result<=0;
                     if(req_action==4)state<=SNAPSHOT;
-                    else state<=TRANSFER;
+                    else if(active_layout!=0 && req_layout!=active_layout &&
+                            (active_mask & active_window_buffers)!=0)begin
+                        // Window page flips can leave pixels visible in the
+                        // nominal inactive full-page bank. Revoke those readers
+                        // at VS and drain them BEFORE granting the new producer.
+                        config_buffer<=active_buffer;config_layout<=active_layout;
+                        config_window_buffers<=active_window_buffers;
+                        config_mask<=active_mask & ~active_window_buffers;
+                        config_epoch<=~config_epoch;state<=HIDE_WAIT;
+                    end else state<=TRANSFER;
                     cache_valid<=0;
                 end
             end
             // Build the response only after the chosen target registers settle.
+            if(state==HIDE_WAIT && drain_sync[2]==config_epoch)begin
+                active_mask<=config_mask;state<=TRANSFER;publish_pending<=1;
+            end
             if(!cache_valid && (state==TRANSFER || state==SNAPSHOT))begin
                 reply(0,target_window,target_generation,prepare_base_index,active_mask);
                 cached_window<=target_window;cached_mask<=active_mask;

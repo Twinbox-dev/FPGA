@@ -47,6 +47,9 @@ WEB_LOOPBACK=1 python scripts/web_console/app.py
 - `POST /api/eth/upload-image`：接收浏览器 Canvas 解码的 RGB888 与宽高，可附加 WAV；后端转为正式 RGB565 `0x0021–0x0033` 媒体事务并等待显示板提交。
 - `GET /api/stream`：SSE 推送连接状态、ACK、诊断和帧事件。
 - `GET /api/frame`：读取最近的图像帧数据。
+- `POST /api/eth/video/start`：上传视频文件并启动本机 FFmpeg/UDP 发送；HTTP 成功只代表启动，READY 和持续帧状态才表示已播放。
+- `GET /api/eth/video/status`：视频发送进度与状态，停止后主动向显示板确认租约已释放。
+- `POST /api/eth/video/stop`：停止发送；界面在板卡确认恢复空闲后解锁。
 - `POST /api/serial/connect`、`POST /api/serial/disconnect`：串口连接控制。
 - `POST /api/eth/connect`、`POST /api/eth/disconnect`：以太网传输生命周期接口；目标地址由后端固定。
 
@@ -57,10 +60,17 @@ WEB_LOOPBACK=1 python scripts/web_console/app.py
 ```bash
 node test_frame_view.js
 python -m unittest test_console_protocol.py -v
+python -m unittest test_direct_video_api.py -v
 node render_ui_screenshots.cjs
 ```
 
 截图生成器使用本机无头 Chrome，通过本机回环 DevTools 端口验证 1600px 桌面和 390px 窄屏布局、D 按钮、字幕上传及输入文本不发板卡命令。截图保存在 `scripts/web_console/screenshots/console-desktop.png` 和 `console-mobile.png`。
+
+## 全屏视频
+
+仅以太网页提供视频文件选择/发送。后端使用本机 FFmpeg 转成 640×360 RGB565 与 24 kHz unsigned 8-bit 单声道 PCM，显示板按 2×最近邻铺满 1280×720。当前六种图片 CV 均开放，但视频播放强制原图；停止后恢复原设置。
+
+视频期间仅音量、状态和停止可用，图片、D、布局等冲突事务按真实 busy 状态拒绝。停止/自然结束后的页面解锁以 `/api/eth/video/status` 对板卡的释放查询为准，不能只用通用 `/api/status` 或进程退出判断恢复。板级边界见 [视频实现](video_fullscreen_optimization_20261030.md) 和 [完整 CV](video_statistics_full_cv_20261030.md)。
 
 ## 转场特效名称
 

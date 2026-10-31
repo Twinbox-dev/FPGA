@@ -27,7 +27,11 @@ module top(
 
     // GT911 touch panel on J1 pins 31/32 (open-drain I2C)
     inout                       gt911_scl,
-    inout                       gt911_sda
+    inout                       gt911_sda,
+
+    // IS31FL3731 spectrum LED matrix (I2C, display board)
+    output                      matrix_i2c_scl,
+    inout                       matrix_i2c_sda
 );
 
 parameter MEM_DATA_BITS = 32;
@@ -51,6 +55,27 @@ parameter CV_EFFECT_MODE = 0;
 // Set to 1 in an isolated diagnostic build to restore both without removing
 // any historical probe RTL or tests from the repository.
 parameter DISPLAY_DIAGNOSTICS = 0;
+// First product video profile; these values must match the PC sender.
+// HDMI raster remains 1280x720. Video temporarily owns the display.
+parameter DIRECT_VIDEO_WIDTH = 640;
+parameter DIRECT_VIDEO_HEIGHT = 360;
+// Video acceptance counters/readback CRC are optional diagnostics. Product
+// CREDIT/READY/NACK and normal media-board S/ACK control remain enabled.
+parameter DIRECT_VIDEO_STATUS = 0;
+parameter DIRECT_VIDEO_ROWS = 512;
+// Temporary full-product diagnostic: sticky link stages on the existing LEDs.
+// Restore 0 before accepting the normal product baseline.
+parameter VIDEO_LINK_DIAGNOSTICS = 0;
+// Product capabilities. All six CV modes and the audio spectrum are enabled;
+// optional video diagnostic statistics above remain independently disabled.
+parameter PRODUCT_CV_ENABLED = 1;
+parameter PRODUCT_CV_NEIGHBORHOOD_ENABLED = 1;
+parameter PRODUCT_SPECTRUM_ENABLED = 1;
+// E1 diagnostic: enable the LED matrix with a known static level ramp so the
+// I2C/panel/column/row path can be checked independently of the live DFT
+// handoff and the transition animator still runs.
+parameter PRODUCT_LED_MATRIX_ENABLED = 1;
+parameter PRODUCT_LED_TEST_PATTERN = 1;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -125,6 +150,8 @@ wire [3:0]  dbg_underrun;
 wire        video_read_req;
 wire        video_read_req_ack;
 wire        video_read_en;
+wire        video_scaled_read_en;
+wire [23:0] still_unpacked_rgb, video_unpacked_rgb;
 wire [31:0] video_read_data;
 wire [31:0] transition_word;
 wire        de_word, vs_word;
@@ -423,6 +450,60 @@ end
 wire        eth_app_clk;
 wire [7:0]  eth_rx_data;
 wire        eth_rx_valid;
+wire [7:0]  eth_stack_rx_data;
+wire        eth_stack_rx_valid, eth_stack_rx_start, eth_stack_rx_end;
+wire [15:0] eth_stack_rx_length;
+wire [5:0] eth_link_trace;
+wire        video_rx_valid, video_rx_start, video_rx_end;
+wire [7:0]  video_rx_data;
+wire [15:0] video_rx_length;
+wire        video_row_begin, video_row_stream_start, video_session_request;
+wire [15:0] video_row_frame_id, video_row_sequence;
+wire [8:0]  video_row_index;
+wire        video_pixel_write, video_row_commit, video_row_reject;
+wire [9:0]  video_pixel_index;
+wire [15:0] video_pixel_data;
+wire        video_nack_valid, video_credit_update;
+wire [15:0] video_nack_sequence, video_credit_next_sequence;
+wire [7:0]  video_free_row_credits;
+wire [31:0] video_accepted_rows, video_rejected_rows, video_duplicate_rows;
+wire [31:0] video_underflow_lines;
+wire [31:0] video_parser_accepted,video_parser_rejected;
+reg [31:0] video_underflow_gray;
+always @(posedge video_clk or posedge rst_all)begin
+    if(rst_all)video_underflow_gray<=0;
+    else video_underflow_gray<={16'd0,(video_underflow_lines[15:0]^(video_underflow_lines[15:0]>>1))};
+end
+wire        video_stream_active, video_stream_ready;
+wire        video_session_busy;
+wire [15:0] video_active_base_sequence, video_consumed_sequence;
+wire [31:0] video_word_data;
+wire        video_word_valid, video_line_available;
+wire [9:0]  video_scan_y;
+wire [10:0] video_scan_x;
+wire        video_frame_start, video_line_start, video_line_done;
+wire        video_mode_active;
+wire video_memory_grant,video_hold_old,video_memory_active,video_memory_idle;
+wire [20:0] video_scratch_base;
+wire video_wr_en,video_rd_en;wire [20:0] video_wr_addr,video_rd_addr;wire [31:0] video_wr_data;
+wire video_lease_done,video_lease_fault;
+wire video_ready_event;wire [15:0] video_ready_sequence,video_ready_frame;
+wire video_missing, audio_missing;reg [1:0] audio_missing_sync;
+always @(posedge eth_app_clk or posedge rst_all)
+ if(rst_all)audio_missing_sync<=0;else audio_missing_sync<={audio_missing_sync[0],audio_missing};
+wire direct_audio_valid;wire [23:0] direct_audio_sample;wire [95:0] direct_audio_stats;
+wire [15:0] video_crc_seed,video_crc_expected;wire [95:0] video_hybrid_stats,video_readback_stats;
+wire view_transaction_busy;
+reg video_request;reg [2:0] video_done_sync;reg video_done_seen;
+assign video_session_busy=video_request||video_stream_active;
+always @(posedge eth_app_clk or posedge rst_all)begin
+ if(rst_all)begin video_request<=0;video_done_sync<=0;video_done_seen<=0;end
+ else begin
+  video_done_sync<={video_done_sync[1:0],video_lease_done};
+  if(video_done_sync[2]!=video_done_seen)begin video_done_seen<=video_done_sync[2];video_request<=0;end
+  if(video_session_request)video_request<=1;
+ end
+end
 wire        media_packet_request, media_packet_valid, media_packet_ack, media_packet_ready;
 wire [7:0]  media_packet_data;
 wire [15:0] media_packet_length;
@@ -522,8 +603,12 @@ eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT
     .phy1_rgmii_tx_data  (eth_rgmii_txd),
     .phy_reset           (eth_phy_reset),
     .app_clk_out         (eth_app_clk),
-    .app_rx_data_out     (eth_rx_data),
-    .app_rx_data_valid_out(eth_rx_valid),
+    .app_rx_data_out     (eth_stack_rx_data),
+    .app_rx_data_valid_out(eth_stack_rx_valid),
+    .app_rx_data_length_out(eth_stack_rx_length),
+    .app_rx_packet_start_out(eth_stack_rx_start),
+    .app_rx_packet_end_out(eth_stack_rx_end),
+    .link_trace(eth_link_trace),
     .media_packet_request(media_packet_request),
     .media_packet_valid  (media_packet_valid),
     .media_packet_data   (media_packet_data),
@@ -535,6 +620,39 @@ eth_subsys #(.MEDIA_PEER_IP(MEDIA_PEER_IP), .MEDIA_PEER_UDP_PORT(MEDIA_PEER_PORT
     .media_packet_ready  (media_packet_ready),
     .digest_req(digest_req), .digest_valid(digest_valid), .digest_data(digest_data),
     .digest_length(digest_length), .digest_ready(digest_ready), .digest_ack(digest_ack)
+);
+
+direct_video_packet_demux #(.DROP_AUDIO(1)) u_direct_video_packet_demux (
+    .clk (eth_app_clk), .rst (rst_all),
+    .rx_valid (eth_stack_rx_valid), .rx_data (eth_stack_rx_data),
+    .rx_length (eth_stack_rx_length), .rx_packet_start (eth_stack_rx_start),
+    .rx_packet_end (eth_stack_rx_end),
+    .app_valid (eth_rx_valid), .app_data (eth_rx_data), .app_length ( ),
+    .app_packet_start ( ), .app_packet_end ( ),
+    .video_valid (video_rx_valid), .video_data (video_rx_data),
+    .video_length (video_rx_length), .video_packet_start (video_rx_start),
+    .video_packet_end (video_rx_end)
+);
+
+direct_video_row_parser #(.PIXELS_PER_ROW(DIRECT_VIDEO_WIDTH),.ACTIVE_LINES(DIRECT_VIDEO_HEIGHT),.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_row_parser (
+    .clk (eth_app_clk), .rst (rst_all),
+    .packet_start (video_rx_start), .packet_end (video_rx_end),
+    .packet_length (video_rx_length), .rx_valid (video_rx_valid),
+    .rx_data (video_rx_data), .row_begin (video_row_begin),
+    .row_stream_start (video_row_stream_start), .row_frame_id (video_row_frame_id),
+    .row_index (video_row_index), .row_sequence (video_row_sequence),
+    .pixel_write (video_pixel_write), .pixel_index (video_pixel_index),
+    .pixel_data (video_pixel_data), .row_commit (video_row_commit),
+    .row_crc_seed(video_crc_seed),.row_crc_expected(video_crc_expected),
+    .row_reject (video_row_reject), .accepted_rows (video_parser_accepted), .rejected_rows (video_parser_rejected)
+);
+
+direct_video_session_gate u_direct_video_session_gate (
+    .clk (eth_app_clk), .rst (rst_all),
+    .row_stream_start (video_row_stream_start),
+    .row_frame_id (video_row_frame_id), .row_index (video_row_index),
+    .row_commit (video_row_commit), .row_reject (video_row_reject),
+    .request (video_session_request)
 );
 
 always @(posedge eth_app_clk or posedge rst_all) begin
@@ -589,7 +707,7 @@ always @(posedge eth_app_clk or posedge rst_all)begin
 end
 view_protocol_rx u_view_protocol(.clk(eth_app_clk),.rst(rst_all),.data(eth_rx_data),.valid(eth_rx_valid),
     .prepare_valid(view_prepare_valid),.prepare_body(view_prepare_body),.status_request(view_status_request));
-view_session_manager u_view_session(.clk(eth_app_clk),.rst(rst_all),
+view_session_manager #(.EXTERNAL_BUSY_ENABLED(1)) u_view_session(.clk(eth_app_clk),.rst(rst_all),.external_busy(video_session_busy),.transaction_busy(view_transaction_busy),
     .prepare_valid(view_prepare_valid),.prepare_body(view_prepare_body),.status_request(view_status_request),
     .cursor_x(diagnostic_cursor_enabled ? diagnostic_cursor_x : view_cursor_x1),.cursor_y(diagnostic_cursor_enabled ? diagnostic_cursor_y : view_cursor_y1),.local_step(view_local_step),
     .frame_begin(media_frame_begin_valid),.frame_id(media_frame_id),
@@ -663,7 +781,7 @@ view_image_pipeline u_media_frame_pad (
 );
 assign media_raw_stream_ready=view_image_owned ? view_pipeline_ready : 1'b1;
 
-media_display_control_rx u_media_display_control_rx (
+media_display_control_rx #(.CV_ENABLED(PRODUCT_CV_ENABLED),.CV_NEIGHBORHOOD_ENABLED(PRODUCT_CV_NEIGHBORHOOD_ENABLED),.SPECTRUM_ENABLED(PRODUCT_SPECTRUM_ENABLED)) u_media_display_control_rx (
     .clk (eth_app_clk), .rst (rst_all), .rx_data (eth_rx_data), .rx_valid (eth_rx_valid),
     .set_toggle (media_set_toggle_eth), .set_op (media_set_op_eth),
     .set_value (media_set_value_eth),
@@ -887,12 +1005,19 @@ assign dbg_fat_state = 8'd0;
 assign dbg_fat_err = 1'b0;
 assign aud_play_done = 1'b0;
 
-wire signed [23:0] aud_l_s = $signed(aud_l);
-wire signed [23:0] aud_r_s = $signed(aud_r);
+wire signed [23:0] aud_l_s = $signed(video_mode_active ? direct_audio_sample : aud_l);
+wire signed [23:0] aud_r_s = $signed(video_mode_active ? direct_audio_sample : aud_r);
 wire signed [27:0] aud_l_g = (aud_l_s * $signed({1'b0, vol_gain})) >>> 3;
 wire signed [27:0] aud_r_g = (aud_r_s * $signed({1'b0, vol_gain})) >>> 3;
 wire [23:0] aud_l_v = aud_l_g[23:0];
 wire [23:0] aud_r_v = aud_r_g[23:0];
+reg [1:0] video_mode_audio_sync;
+always @(posedge sd_card_clk or posedge rst_all) begin
+    if (rst_all)
+        video_mode_audio_sync <= 2'b00;
+    else
+        video_mode_audio_sync <= {video_mode_audio_sync[0],video_mode_active};
+end
 
 sys_pll sys_pll_m0(
     .refclk(clk), .reset(1'b0), .extlock(sys_pll_lock),
@@ -918,8 +1043,8 @@ always @(posedge ext_mem_clk or posedge rst_all) begin
     else if (frame_write_finish) frame_write_toggle_mem <= ~frame_write_toggle_mem;
 end
 
-media_audio_playback u_media_audio_playback (
-    .clk (sd_card_clk), .rst (rst_all), .source_toggle (audio_source_toggle),
+media_audio_playback #(.PAUSE_ENABLED(1)) u_media_audio_playback (
+    .clk (sd_card_clk), .rst (rst_all),.pause(video_mode_audio_sync[1]), .source_toggle (audio_source_toggle),
     .pair_on (aud_pair_on), .source_buffer (audio_buffer_index),
     .source_length (audio_buffer_length), .source_samples (audio_sample_count_out),
     .read_req (audio_read_req), .read_req_ack_async (audio_read_req_ack),
@@ -934,10 +1059,28 @@ media_audio_playback u_media_audio_playback (
 // 左侧 db 为标记，后四位为错误计数和完整分片计数（各 8 位十六进制）。
 // ETH 域的完成事件以 toggle 同步到 50 MHz，避免跨域传递多位计数器。
 wire [6:0] seg0, seg1, seg2, seg3, seg4, seg5;
-seg_decoder u_seg0 (.bin_data(img_idx_w[3:0]), .seg_data(seg0));
-seg_decoder u_seg1 (.bin_data({3'd0,img_idx_w[4]}), .seg_data(seg1));
-seg_decoder u_seg2 (.bin_data({3'd0,aud_pair_on}), .seg_data(seg2));
-seg_decoder u_seg3 (.bin_data({3'd0,display_valid}), .seg_data(seg3));
+wire [15:0] link_digits;
+generate if(VIDEO_LINK_DIAGNOSTICS)begin:g_link_trace
+    reg [7:0] seen,meta,synced;
+    reg [7:0] live_meta,live_sync;
+    always @(posedge eth_app_clk or posedge rst_all)
+        if(rst_all)seen<=0;
+        else seen<=seen|{eth_link_trace[5],(eth_link_trace[4]|eth_link_trace[2]),eth_link_trace[1],video_ready_event,
+                        video_row_commit,video_rx_valid,eth_stack_rx_valid,eth_link_trace[0]};
+    always @(posedge clk)begin
+        meta<=seen;synced<=meta;
+        live_meta<={sys_pll_lock,video_pll_lock,rst_all,eth_link_trace[3],
+                    Sdr_init_done,video_request,video_memory_grant,video_stream_active};
+        live_sync<=live_meta;
+    end
+    assign link_digits={live_sync,synced};
+end else begin:g_product_digits
+    assign link_digits={{3'd0,display_valid},{3'd0,aud_pair_on},3'd0,img_idx_w};
+end endgenerate
+seg_decoder u_seg0 (.bin_data(link_digits[3:0]), .seg_data(seg0));
+seg_decoder u_seg1 (.bin_data(link_digits[7:4]), .seg_data(seg1));
+seg_decoder u_seg2 (.bin_data(link_digits[11:8]), .seg_data(seg2));
+seg_decoder u_seg3 (.bin_data(link_digits[15:12]), .seg_data(seg3));
 seg_decoder u_seg4 (.bin_data(4'hd), .seg_data(seg4));
 seg_decoder u_seg5 (.bin_data(4'h2), .seg_data(seg5));
 seg_scan seg_scan_m0(
@@ -963,6 +1106,67 @@ video_timing_data video_timing_data_m0(
     .vs                (vs_0),
     .de                (de_0)
 );
+
+// Hybrid queue: complete ingress rows -> SDRAM lookahead -> small BRAM head.
+// The head returns RGB565 pairs to the unchanged video_delay unpacker.
+reg de_raw_d_video, vs_raw_d_video, de_fetch_d_video;
+reg video_word_pop_d_video;
+reg [10:0] video_scan_x_reg;
+reg [9:0] video_scan_y_reg;
+assign video_frame_start = vs_raw_d_video && !vs_0;
+assign video_line_start = de_0 && !de_raw_d_video;
+// Release a repeated row only after the LAST delayed BRAM fetch. Raw DE
+// ends before video_delay's final word request and cannot safely retire it.
+assign video_line_done = !de_word && de_fetch_d_video;
+assign video_scan_x = video_scan_x_reg;
+assign video_scan_y = video_scan_y_reg;
+always @(posedge video_clk or posedge rst_all) begin
+    if (rst_all) begin
+        de_raw_d_video <= 1'b0;
+        de_fetch_d_video <= 1'b0;
+        vs_raw_d_video <= 1'b1;
+        video_word_pop_d_video <= 1'b0;
+        video_scan_x_reg <= 11'd0;
+        video_scan_y_reg <= 10'd0;
+    end else begin
+        de_raw_d_video <= de_0;
+        de_fetch_d_video <= de_word;
+        vs_raw_d_video <= vs_0;
+        video_word_pop_d_video <= video_scaled_read_en;
+        if (video_frame_start)
+            video_scan_y_reg <= 10'd0;
+        else if (video_line_done && video_scan_y_reg < 10'd720)
+            video_scan_y_reg <= video_scan_y_reg + 10'd1;
+
+        if (!de_0)
+            video_scan_x_reg <= 11'd0;
+        else
+            video_scan_x_reg <= video_scan_x_reg + 11'd1;
+
+    end
+end
+
+video_hybrid_pipeline #(.WIDTH(DIRECT_VIDEO_WIDTH),.HEIGHT(DIRECT_VIDEO_HEIGHT),.WINDOW(DIRECT_VIDEO_ROWS),.HEAD_ROWS(4),.INGRESS_PAGES(4),.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_pipeline(
+ .app_clk(eth_app_clk),.mem_clk(ext_mem_clk),.pixel_clk(video_clk),.rst(rst_all),.memory_enable(video_memory_grant),
+ .sdr_init_done(Sdr_init_done),.sdr_busy(Sdr_busy),.sdr_refresh(Sdr_init_ref_vld),.scratch_base(video_scratch_base),
+ .row_begin(video_row_begin),.row_start(video_row_stream_start),.pixel_write(video_pixel_write),.row_commit(video_row_commit),.row_reject(video_row_reject),
+ .row_frame(video_row_frame_id),.row_sequence(video_row_sequence),.pixel_data(video_pixel_data),.crc_seed(video_crc_seed),.crc_expected(video_crc_expected),.row_index(video_row_index),.pixel_index(video_pixel_index),
+ .source_ready(),.credit_sequence(video_credit_next_sequence),.credit_event(video_credit_update),.ready_event(video_ready_event),.ready_sequence(video_ready_sequence),.ready_frame(video_ready_frame),.free_rows(video_free_row_credits),
+ .accepted_rows(video_accepted_rows),.rejected_rows(video_rejected_rows),.duplicate_rows(video_duplicate_rows),.hybrid_stats(video_hybrid_stats),.readback_stats(video_readback_stats),.nack_event(video_nack_valid),.nack_sequence(video_nack_sequence),
+ .frame_start(video_frame_start),.line_start(video_line_start),.line_done(video_line_done && video_scan_y[0]),.word_pop(video_word_pop_d_video),.video_y({1'b0,video_scan_y[9:1]}),
+ .word_data(video_word_data),.word_valid(video_word_valid),.line_available(video_line_available),.video_ready(video_stream_ready),.underflows(video_underflow_lines),
+ .session_live(video_stream_active),.video_missing(video_missing),.memory_active(video_memory_active),.memory_idle(video_memory_idle),
+ .app_wr_en(video_wr_en),.app_wr_addr(video_wr_addr),.app_wr_data(video_wr_data),.app_rd_en(video_rd_en),.app_rd_addr(video_rd_addr),.sdr_rd_en(Sdr_rd_en&&video_memory_grant),.sdr_rd_data(Sdr_rd_dout));
+video_memory_lease u_video_memory_lease(
+ .mem_clk(ext_mem_clk),.pixel_clk(video_clk),.rst(rst_all),.request_async(video_request),.transaction_busy_async(view_transaction_busy),.audio_buffer_async(audio_buffer_index),
+ .frame_start(video_frame_start),.old_rd_en(mux_app_rd_en),.old_wr_en(App_wr_en),.old_rd_valid(Sdr_rd_en&&!video_memory_grant),.old_rd_busy(frame_rd_busy),.old_wr_busy(frame_wr_busy),.old_line_busy(transition_line_hold),
+ .sdr_busy(Sdr_busy),.sdr_refresh(Sdr_init_ref_vld),.stream_active(video_memory_active),.stream_idle(video_memory_idle),
+ .hold_old(video_hold_old),.memory_grant(video_memory_grant),.scratch_base(video_scratch_base),.video_mode(video_mode_active),.release_toggle(video_lease_done),.accounting_error(video_lease_fault));
+direct_video_audio #(.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_audio(.app_clk(eth_app_clk),.pixel_clk(video_clk),.rst(rst_all),
+ .rx_valid(eth_stack_rx_valid),.packet_start(eth_stack_rx_start),.packet_end(eth_stack_rx_end),.rx_data(eth_stack_rx_data),.packet_length(eth_stack_rx_length),
+ .session_live(video_stream_active),.session_event(video_ready_event),.session_frame(video_ready_frame),.video_ready(video_stream_ready),.frame_start(video_frame_start),
+ .missing_seen(audio_missing),.audio_valid(direct_audio_valid),.audio_data(direct_audio_sample),.audio_stats(direct_audio_stats));
+assign vout_data_raw = video_mode_active ? video_unpacked_rgb : still_unpacked_rgb;
 
 transition_ctrl #(
     .BUF0_ADDR (BUF0_ADDR[20:0]),
@@ -1009,9 +1213,12 @@ transition_blender transition_blender_m0 (
     .wipe_progress (effect_wipe_progress), .mixed_word (transition_word)
 );
 
+// Keep the established still-image FIFO read enable independent of video mode.
+// The two constant-rate unpackers share identical timing registers in synthesis.
 video_delay #(.MIX_PIPELINE(1)) video_delay_m0(
     .video_clk         (video_clk),
     .rst               (rst_all),
+    .repeat_2x         (1'b0),
     .read_en           (video_read_en),
     .read_data         (transition_word),
     .hs                (hs_0),
@@ -1022,7 +1229,14 @@ video_delay #(.MIX_PIPELINE(1)) video_delay_m0(
     .de_r              (de),
     .de_word           (de_word),
     .vs_word           (vs_word),
-    .vout_data         (vout_data_raw)
+    .vout_data         (still_unpacked_rgb)
+);
+video_delay #(.MIX_PIPELINE(1),.REPEAT_2X_ENABLED(1)) video_zoom_unpack (
+    .video_clk(video_clk),.rst(rst_all),.repeat_2x(1'b1),
+    .read_en(video_scaled_read_en),
+    .read_data(video_stream_ready ? video_word_data : 32'd0),
+    .hs(hs_0),.vs(vs_0),.de(de_0),
+    .hs_r(),.vs_r(),.de_r(),.de_word(),.vs_word(),.vout_data(video_unpacked_rgb)
 );
 
 // 首图提交前黑屏；提交后一直显示当前显示缓冲区内容
@@ -1098,21 +1312,29 @@ wire spectrum_hit;
 // Optional HDMI-only computer-vision effects. Processing precedes brightness,
 // spectrum and OSD so line RAMs can retain exact RGB565 source pixels while
 // the UI and spectrum graphics remain aligned to the processed video timing.
+generate if(PRODUCT_CV_ENABLED)begin:g_cv_enabled
 cv_pixel_effects_runtime #(
     .H_ACTIVE   (1280),
     .H_TOTAL    (1650),
     .V_ACTIVE   (720),
-    .MODE_DEFAULT (CV_EFFECT_MODE)
+    .MODE_DEFAULT (CV_EFFECT_MODE),
+    .NEIGHBORHOOD_ENABLED(PRODUCT_CV_NEIGHBORHOOD_ENABLED)
 ) u_cv_pixel_effects (
     .clk (video_clk), .rst (rst_all),
     .rgb_in (vout_data_raw), .de_in (de), .vs_in (vs),
-    .mode_raw (cv_mode_video),
+    .mode_raw (video_mode_active ? 3'd0 : cv_mode_video),
     .rgb_out (cv_data), .de_out (cv_de), .vs_out (cv_vs)
 );
+end else begin:g_cv_disabled
+    assign cv_data=vout_data_raw;
+    assign cv_de=de;
+    assign cv_vs=vs;
+end endgenerate
 
 wire [23:0] vout_adj;
 display_levels_rgb u_display_levels(.rgb(cv_data),.contrast(ct_bin_v),.brightness(bri_bin_v),.adjusted(vout_adj));
 
+generate if(PRODUCT_SPECTRUM_ENABLED)begin:g_spectrum_enabled
 spectrum_dft u_spectrum_dft (
     .clk (sd_card_clk), .rst (rst_all),
     .aud_tick (aud_tick), .aud_valid (aud_valid),
@@ -1122,15 +1344,97 @@ spectrum_dft u_spectrum_dft (
 );
 spectrum_overlay u_spectrum_overlay (
     .video_clk (video_clk), .rst (rst_all), .de (cv_de), .vs (cv_vs),
-    .enable_raw (bar_en),
+    .enable_raw (bar_en && !video_mode_active),
     .levels_raw (spectrum_levels), .done_toggle_raw (spectrum_done_toggle),
     .ack_toggle (spectrum_ack_toggle),
     .shade (), .bar_hit (spectrum_hit), .bar_rgb (spectrum_rgb)
 );
+end else begin:g_spectrum_disabled
+    assign spectrum_levels=128'd0;
+    assign spectrum_done_toggle=1'b0;
+    assign spectrum_ack_toggle=1'b0;
+    assign spectrum_rgb=24'd0;
+    assign spectrum_hit=1'b0;
+end endgenerate
+
+generate if (PRODUCT_LED_MATRIX_ENABLED) begin : g_led_matrix_enabled
+    // Reuse the HDMI spectrum DFT result for the external LED matrix.
+    wire [149:0] matrix_ch_bus;
+    wire matrix_ch_valid;
+    wire [104:0] matrix_bitmap, matrix_bitmap_selected;
+    wire matrix_audio_frame_ready, matrix_frame_ready;
+    reg matrix_frame_tick_toggle;
+    always @(posedge video_clk or posedge rst_all) begin
+        if (rst_all) matrix_frame_tick_toggle <= 1'b0;
+        else if (video_frame_start) matrix_frame_tick_toggle <= ~matrix_frame_tick_toggle;
+    end
+
+    // E1 test vector: band c = c*8 for c=0..13, band14=112, band15=120.
+    // Expected LED heights: 0,0,0,1,1,2,2,3,3,4,4,5,5,6,6.
+    localparam [127:0] LED_TEST_LEVELS = {
+        8'd120, 8'd112, 8'd104, 8'd96, 8'd88, 8'd80, 8'd72, 8'd64,
+        8'd56, 8'd48, 8'd40, 8'd32, 8'd24, 8'd16, 8'd8, 8'd0
+    };
+    reg [23:0] led_test_div;
+    reg        led_test_toggle;
+    always @(posedge sd_card_clk or posedge rst_all) begin
+        if (rst_all) begin
+            led_test_div <= 24'd0;
+            led_test_toggle <= 1'b0;
+        end else if (led_test_div == 24'hFFFFFF) begin
+            led_test_div <= 24'd0;
+            led_test_toggle <= ~led_test_toggle;
+        end else
+            led_test_div <= led_test_div + 24'd1;
+    end
+    wire [127:0] led_levels = PRODUCT_LED_TEST_PATTERN ? LED_TEST_LEVELS : spectrum_levels;
+    wire         led_done   = PRODUCT_LED_TEST_PATTERN ? led_test_toggle : spectrum_done_toggle;
+
+    audio_to_15ch u_audio_to_15ch (
+        .clk(sd_card_clk), .rst(rst_all), .levels(led_levels),
+        .done_toggle(led_done), .vol_gain(vol_gain),
+        .ch_bus(matrix_ch_bus), .ch_valid(matrix_ch_valid)
+    );
+    matrix_core_mapper #(.CLK_FREQ_HZ(100_000_000)) u_matrix_core_mapper (
+        .clk(sd_card_clk), .rst(rst_all), .ch_bus(matrix_ch_bus),
+        .ch_valid(matrix_ch_valid), .peak_hold_time(10'd250),
+        .matrix_bitmap(matrix_bitmap), .frame_ready(matrix_audio_frame_ready)
+    );
+    matrix_transition_arbiter u_matrix_transition_arbiter (
+        .clk(sd_card_clk), .rst(rst_all),
+        .hard_cut((transition_mode_effective == 2'd0) || video_mode_active),
+        .transition_type_in(transition_mode_effective),
+        .transition_direction_in(transition_direction_effective),
+        .transition_start_toggle(transition_start_effective),
+        .transition_done_toggle(transition_done_toggle),
+        .frame_tick_toggle(matrix_frame_tick_toggle),
+        .transition_duration_frames_in(7'd64),
+        .audio_bitmap(matrix_bitmap), .audio_frame_ready(matrix_audio_frame_ready),
+        .matrix_bitmap_out(matrix_bitmap_selected),
+        .frame_ready_out(matrix_frame_ready)
+    );
+    is31fl3731_i2c_master u_is31fl3731_i2c_master (
+        .clk(sd_card_clk), .rst(rst_all),
+        .visualizer_en(bar_en && !video_mode_active),
+        .vol_gain(vol_gain), .matrix_bitmap(matrix_bitmap_selected),
+        .frame_ready(matrix_frame_ready),
+        .i2c_scl(matrix_i2c_scl), .i2c_sda(matrix_i2c_sda)
+    );
+end else begin : g_led_matrix_disabled
+    assign matrix_i2c_scl = 1'b1;
+    assign matrix_i2c_sda = 1'bz;
+end endgenerate
+
 wire view_pixel_black;
 view_black_mask u_view_black_mask(.clk(video_clk),.rst(rst_all),.de(cv_de),.vs(cv_vs),
     .layout(view_video_layout),.valid_mask(view_video_mask),.black(view_pixel_black));
-wire [23:0] base_video = display_valid && !view_pixel_black ? vout_adj : 24'd0;
+wire [23:0] base_video;
+direct_video_region_mux #(.VIDEO_WIDTH(DIRECT_VIDEO_WIDTH*2),.VIDEO_HEIGHT(DIRECT_VIDEO_HEIGHT*2)) u_direct_video_region_mux (
+    .clk (video_clk), .rst (rst_all), .video_mode (video_mode_active),
+    .de (cv_de), .vs (cv_vs), .video_rgb (cv_data),
+    .still_rgb (display_valid && !view_pixel_black ? vout_adj : 24'd0),
+    .rgb_out (base_video)
+);
 assign vout_data = spectrum_hit ? spectrum_rgb : base_video;
 
 subtitle_store u_subtitle_store (
@@ -1198,12 +1502,13 @@ font_rom_2r u_shared_font (
 osd_composite u_osd_composite (
     .video_clk (video_clk), .rst (rst_all),
     .video_in (vout_data), .de_in (cv_de), .vs_in (cv_vs),
-    .panel_show (panel_show), .panel_text_on (panel_text_on),
+    .panel_show (panel_show && !video_mode_active),
+    .panel_text_on (panel_text_on && !video_mode_active),
     .panel_text_rgb (panel_text_rgb),
-    .panel_band (panel_band),
-    .subtitle_text_on (subtitle_text_on),
+    .panel_band (panel_band && !video_mode_active),
+    .subtitle_text_on (subtitle_text_on && !video_mode_active),
     .subtitle_text_rgb (subtitle_text_rgb),
-    .subtitle_band (subtitle_band),
+    .subtitle_band (subtitle_band && !video_mode_active),
     .video_out (osd_rgb), .de_out (osd_de), .vs_out (osd_vs)
 );
 
@@ -1211,7 +1516,7 @@ osd_composite u_osd_composite (
 gt911_cursor_overlay u_gt911_cursor (
     .video_clk (video_clk), .rst (rst_all),
     .video_in (osd_rgb), .de_in (osd_de), .vs_in (osd_vs),
-    .online_raw (cursor_online),
+    .online_raw (cursor_online && !video_mode_active),
     .cursor_req_toggle (cursor_req_toggle),
     .cursor_mailbox_x (cursor_mailbox_x),
     .cursor_mailbox_y (cursor_mailbox_y),
@@ -1251,14 +1556,14 @@ frame_read_write #(
     .view_window_buffers(view_video_window_buffers),.view_epoch(view_video_epoch),
     .view_drained_epoch(view_drained_epoch),.view_write_layout(view_write_layout),.view_write_window(view_write_window),
     .read_len          (FRAME_WORDS),
-    .read_en           (video_read_en),
+    .read_en           (video_read_en && !video_mode_active),
     .read_data         (video_read_data),
     .o_vid_rd_empty    (vid_rd_empty),
     .o_mem_rd_audio    (mem_rd_audio),
     .o_mem_rd_busy     (frame_rd_busy),
     .o_mem_wr_busy     (frame_wr_busy),
     .o_vid_fifo_words  (vid_fifo_words),
-    .line_hold         (transition_line_hold),
+    .line_hold         (transition_line_hold || video_hold_old),
 
     .App_wr_en         (App_wr_en),
     .App_wr_addr       (App_wr_addr),
@@ -1307,10 +1612,20 @@ display_frame_digest u_acceptance_digest (
     .tx_length(digest_length), .tx_ready(digest_ready), .tx_ack(digest_ack)
 );
 end else begin:g_product_digest
-    assign digest_req=1'b0;
-    assign digest_valid=1'b0;
-    assign digest_data=8'd0;
-    assign digest_length=16'd0;
+    direct_video_feedback_tx #(.HEALTH_FLAGS_ENABLED(1),.AUDIO_STATUS_ENABLED(1),.READY_ENABLED(1),.HYBRID_STATUS_ENABLED(1),.CREDIT_STEP(4),.STATUS_ENABLED(DIRECT_VIDEO_STATUS)) u_direct_video_feedback_tx (
+        .clk (eth_app_clk), .rst (rst_all),.health_flags({5'd0,audio_missing_sync[1],video_missing}),.ready_event(video_ready_event),.ready_sequence(video_ready_sequence),.ready_frame(video_ready_frame),
+        .audio_stats(direct_audio_stats),.hybrid_stats(video_hybrid_stats),.readback_stats(video_readback_stats),.diagnostic_mode(1'b0),.reject_reason_stats(96'd0),.video_output_stats(96'd0),.memory_stats(96'd0),.memory_kind(2'd0),.memory_mode(1'b0),.output_color_mode(3'd0),
+        .nack_event (video_nack_valid), .nack_sequence (video_nack_sequence),
+        .credit_event (video_credit_update),
+        .credit_next_sequence (video_credit_next_sequence),
+        .free_row_credits (video_free_row_credits),
+        .parser_accepted(video_parser_accepted),.parser_rejected(video_parser_rejected),
+        .store_accepted(video_accepted_rows),.store_rejected(video_rejected_rows),
+        .duplicate_rows(video_duplicate_rows),.underflow_gray_async(video_underflow_gray),
+        .digest_req (digest_req), .digest_valid (digest_valid),
+        .digest_data (digest_data), .digest_length (digest_length),
+        .digest_ack (digest_ack)
+    );
 end endgenerate
 transition_line_read transition_line_read_m0 (
     .mem_clk (ext_mem_clk), .rst (rst_all),
@@ -1324,7 +1639,7 @@ transition_line_read transition_line_read_m0 (
     .frame_wr_busy (frame_wr_busy), .video_fifo_words (vid_fifo_words),
     .line_hold (transition_line_hold),
     .app_rd_en (mux_app_rd_en), .app_rd_addr (mux_app_rd_addr),
-    .sdr_rd_valid (Sdr_rd_en), .sdr_rd_data (Sdr_rd_dout),
+    .sdr_rd_valid (Sdr_rd_en && !video_memory_grant), .sdr_rd_data (Sdr_rd_dout),
     .frame_rd_valid (frame_sdr_rd_valid),
     .line_wr_en (line_wr_en), .line_wr_data (line_wr_data),
     .line_wr_addr (line_wr_addr), .line_wr_bank (line_wr_bank)
@@ -1337,12 +1652,12 @@ sdram U3(
     .Sdr_init_done     (Sdr_init_done),
     .Sdr_init_ref_vld  (Sdr_init_ref_vld),
     .Sdr_busy          (Sdr_busy),
-    .App_wr_en         (App_wr_en),
-    .App_wr_addr       (App_wr_addr),
-    .App_wr_dm         (App_wr_dm),
-    .App_wr_din        (App_wr_din),
-    .App_rd_en         (mux_app_rd_en),
-    .App_rd_addr       (mux_app_rd_addr),
+    .App_wr_en         (video_memory_grant ? video_wr_en : App_wr_en),
+    .App_wr_addr       (video_memory_grant ? video_wr_addr : App_wr_addr),
+    .App_wr_dm         (video_memory_grant ? 4'd0 : App_wr_dm),
+    .App_wr_din        (video_memory_grant ? video_wr_data : App_wr_din),
+    .App_rd_en         (video_memory_grant ? video_rd_en : mux_app_rd_en),
+    .App_rd_addr       (video_memory_grant ? video_rd_addr : mux_app_rd_addr),
     .Sdr_rd_en         (Sdr_rd_en),
     .Sdr_rd_dout       (Sdr_rd_dout)
 );
@@ -1392,8 +1707,8 @@ hdmi_1_4b_transmitter_core_wrapper #(
     .I_axis_s_data      (axis_s_data),
     .O_axis_s_ready     (axis_s_ready),
 
-    .I_audio_valid      (aud_valid),
-    .I_audio_left_data  (aud_l_v),     // 经 vol_gain 缩放（8=原始）
+    .I_audio_valid      (video_mode_active ? direct_audio_valid : aud_valid),
+    .I_audio_left_data  (aud_l_v),
     .I_audio_right_data (aud_r_v),
     .I_acr_valid        (1'b1),
     .I_acr_cts          (20'd75000),   // 实际像素时钟 75MHz（PLL 从 50M 整数分频到不了 74.25），

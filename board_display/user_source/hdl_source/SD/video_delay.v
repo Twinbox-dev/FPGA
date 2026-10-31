@@ -1,11 +1,13 @@
 module video_delay
 #(
 	parameter DATA_WIDTH = 24,                      // Video data one clock data width
-	parameter MIX_PIPELINE = 0                      // Registered mixed word before unpacking
+	parameter MIX_PIPELINE = 0,                     // Registered mixed word before unpacking
+    parameter REPEAT_2X_ENABLED = 0
 )
 (
 	input                       video_clk,          // Video pixel clock
 	input                       rst,
+    input                       repeat_2x,
 	output                      read_en,            // Read data enable (FIFO pop)
 	input [31:0]                read_data,          // 读 FIFO 数据（RGB565，2 像素/字）
 	input                      hs,                 // horizontal synchronization
@@ -48,8 +50,10 @@ reg[DATA_WIDTH - 1:0]  vout_data_r;
 
 wire       d18 = de_d[18];
 reg        p, pd, pd_mix;
+reg        pair_phase;
+wire repeat_active=REPEAT_2X_ENABLED && repeat_2x;
 
-assign read_en = d18 & ~p;
+assign read_en = d18 & ~p & (!repeat_active || !pair_phase);
 assign hs_r = hs_d[20 + MIX_PIPELINE];
 assign vs_r = vs_d[20 + MIX_PIPELINE];
 assign de_r = de_d[20 + MIX_PIPELINE];
@@ -81,13 +85,15 @@ always @(posedge video_clk or posedge rst) begin
 		p    <= 1'b0;
 		pd   <= 1'b0;
 		pd_mix <= 1'b0;
+        pair_phase <= 1'b0;
 	end
 	else begin
 		hs_d <= {hs_d[20:0], hs};
 		vs_d <= {vs_d[20:0], vs};
 		de_d <= {de_d[20:0], de};
 		p    <= d18 ? ~p : 1'b0;
-		pd   <= p;
+        pair_phase <= d18 ? (pair_phase ^ p) : 1'b0;
+		pd   <= repeat_active ? pair_phase : p;
 		pd_mix <= pd;
 	end
 end
