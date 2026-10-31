@@ -6,6 +6,8 @@ module top (
     input wire key1,key2,key3,
     input wire uart_rx,output wire uart_tx,
     input wire bt_rx,output wire bt_tx,
+    input wire laser_left_rx,laser_right_rx,
+    output wire [3:0] led,
     input wire eth_rgmii_rxc,eth_rgmii_rx_ctl,input wire [3:0] eth_rgmii_rxd,
     output wire eth_rgmii_txc,eth_rgmii_tx_ctl,output wire [3:0] eth_rgmii_txd,
     output wire eth_phy_reset,
@@ -77,6 +79,16 @@ module top (
     wire media_internal_cmd_pending = cmd_pending && (cmd==8'h4d);
     wire local_next_pulse,local_prev_pulse;
     wire view_busy,view_layout_request,view_touch_request,serial_cmd_was_busy;
+    // Laser gesture front end: two MF168 links, one gesture decoder.
+    wire [15:0] laser_left_mm,laser_right_mm;
+    wire laser_left_val,laser_right_val,laser_left_tgt,laser_right_tgt;
+    wire gesture_next_pulse,gesture_prev_pulse,gesture_cmd_valid,control_idle;
+    wire [7:0] gesture_cmd;
+    // LED1 = left->right swipe, LED2 = right->left, LED3 = brightness step,
+    // LED4 = none of the above (idle). Board LEDs are active high.
+    wire gesture_led_next,gesture_led_prev,gesture_led_level;
+    assign led={~(|{gesture_led_next,gesture_led_prev,gesture_led_level}),
+                gesture_led_level,gesture_led_prev,gesture_led_next};
     wire [1:0] view_requested_layout,view_active_layout;
     wire [3:0] view_active_mask;
     wire [15:0] view_active_generation;
@@ -88,6 +100,19 @@ module top (
     reg sensor_query_toggle,sensor_snapshot_ready,sensor_snapshot_seen;
     reg [2:0] sensor_snapshot_done_sync;
     wire job_start,job_snapshot,job_previous,job_ready,job_done;
+    // media_view_scheduler only samples next_request/prev_request while it is
+    // idle, so a one-cycle gesture pulse that lands mid-job would be dropped.
+    // Hold the request until a job actually starts.
+    reg gesture_next_hold,gesture_prev_hold;
+    always @(posedge app_clk) begin
+        if(media_app_rst) begin gesture_next_hold<=0;gesture_prev_hold<=0;end
+        else begin
+            if(gesture_next_pulse) gesture_next_hold<=1;
+            else if(job_start)     gesture_next_hold<=0;
+            if(gesture_prev_pulse) gesture_prev_hold<=1;
+            else if(job_start)     gesture_prev_hold<=0;
+        end
+    end
     wire [4:0] job_index;
     wire [1:0] job_layout,job_window;
     wire [15:0] job_generation;
@@ -259,7 +284,7 @@ module top (
         .job_start(job_start),.job_snapshot(job_snapshot),.job_previous(job_previous),
         .job_index(job_index),.job_layout(job_layout),.job_window(job_window),.job_generation(job_generation),
         .job_ready(job_ready),.job_done(job_done),.job_result(job_result),
-        .local_next(local_next_pulse || key_next_app_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse),
+        .local_next(local_next_pulse || key_next_app_pulse || gesture_next_pulse),.local_prev(local_prev_pulse || key_prev_app_pulse || gesture_prev_pulse),
         .prepared_toggle(prepared_sync[1]),.done_toggle(done_sync[1]),.source_has_wav_async(source_has_wav),
         .source_wav_index_async(source_wav_index),.audio_prepared_toggle(audio_prepared_toggle),
         .audio_done_toggle(audio_done_toggle),.audio_sample_count_async(audio_sample_count),
@@ -272,9 +297,28 @@ module top (
         .tx_data(formal_data),.tx_length(formal_length),.tx_ack(formal_ack),
         .busy(tx_busy),.committed_index(committed_index),.committed_valid(committed_valid),.committed_wav(committed_wav),.error_code(tx_error),.state_code(tx_state)
     );
+    mf168_link #(.CLK_FREQ_HZ(125000000),.BAUD(115200)) u_laser_left (
+        .clk(app_clk),.rst_n(~media_app_rst),.rx(laser_left_rx),
+        .distance_mm(laser_left_mm),.has_target(laser_left_tgt),
+        .error_code(),.frame_valid(laser_left_val)
+    );
+    mf168_link #(.CLK_FREQ_HZ(125000000),.BAUD(115200)) u_laser_right (
+        .clk(app_clk),.rst_n(~media_app_rst),.rx(laser_right_rx),
+        .distance_mm(laser_right_mm),.has_target(laser_right_tgt),
+        .error_code(),.frame_valid(laser_right_val)
+    );
+    gesture_cmd_gen #(.CLK_FREQ_HZ(125000000)) u_gesture (
+        .clk(app_clk),.rst_n(~media_app_rst),
+        .left_mm(laser_left_mm),.left_val(laser_left_val),.left_tgt(laser_left_tgt),
+        .right_mm(laser_right_mm),.right_val(laser_right_val),.right_tgt(laser_right_tgt),
+        .control_idle(control_idle),
+        .next_pulse(gesture_next_pulse),.prev_pulse(gesture_prev_pulse),
+        .cmd(gesture_cmd),.cmd_valid(gesture_cmd_valid),
+        .led_next(gesture_led_next),.led_prev(gesture_led_prev),.led_level(gesture_led_level)
+    );
     media_view_scheduler u_view_scheduler(.clk(app_clk),.rst(media_app_rst),.link_ready(job_ready),
-        .next_request(local_next_pulse || key_next_app_pulse || auto_next_pulse!=0),
-        .prev_request(local_prev_pulse || key_prev_app_pulse),.snapshot_request(pc_snapshot_request),
+        .next_request(local_next_pulse || key_next_app_pulse || auto_next_pulse!=0 || gesture_next_pulse || gesture_next_hold),
+        .prev_request(local_prev_pulse || key_prev_app_pulse || gesture_prev_pulse || gesture_prev_hold),.snapshot_request(pc_snapshot_request),
         .layout_request(view_layout_request),.requested_layout(view_requested_layout),.touch_request(view_touch_request),
         .first_bmp(first_s1),.bmp_next(next_s1),.bmp_prev(prev_s1),.rx_data(rx_byte),.rx_valid(rx_valid),
         .job_start(job_start),.job_snapshot(job_snapshot),.job_previous(job_previous),.job_index(job_index),
@@ -327,6 +371,7 @@ module top (
         .sd_last_failure_lba(fail_lba_s1),.sd_last_failure_info(fail_info_s1),
         .sd_stream_debug(sd_stream_debug_s1),
         .image_next_pulse(local_next_pulse),.image_prev_pulse(local_prev_pulse),.local_auto_toggle(key_auto_app_pulse),
+        .gesture_cmd(gesture_cmd),.gesture_cmd_valid(gesture_cmd_valid),.control_idle(control_idle),
         .tx_type(tx_type),.tx_payload_len(tx_payload_len),.tx_pkt(tx_pkt),
         .first_bmp(first_s1),.committed_index(view_current_index),.committed_valid(view_current_valid),
         .paired_wav(committed_wav && view_active_layout==0),.fat_state(fat_state_s1),.fat_error(fat_error_s1),

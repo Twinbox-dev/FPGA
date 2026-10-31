@@ -26,6 +26,9 @@ module media_control_core #(
     input wire uart_tx_ready,
     input wire bt_tx_ready,
     input wire local_auto_toggle,
+    input wire [7:0] gesture_cmd, // 0x5D/0x5B from the laser gesture front end
+    input wire gesture_cmd_valid,
+    output wire control_idle, // state==IDLE, lets the gesture front end queue a step
     output reg uart_tx_req,
     output reg bt_tx_req,
     output reg [63:0] uart_tx_pkt,
@@ -129,11 +132,12 @@ module media_control_core #(
     wire eth_event=cmd_pending && !cmd_seen;
     wire serial_source_match=!subtitle_active || (uart_cmd_source==subtitle_source);
     wire serial_event=uart_cmd_valid && serial_source_match;
+    wire gesture_event=gesture_cmd_valid && !eth_event && !serial_event;
     wire eth_blocked=eth_event && subtitle_active && (subtitle_source!=2'd0);
-    wire event_valid=eth_event || serial_event;
-    wire [1:0] event_source=eth_event?2'd0:uart_cmd_source;
+    wire event_valid=eth_event || serial_event || gesture_event;
+    wire [1:0] event_source=eth_event?2'd0:(serial_event?uart_cmd_source:2'd0);
     wire event_from_uart=(event_source!=2'd0);
-    wire [7:0] event_cmd=eth_event?cmd:uart_cmd;
+    wire [7:0] event_cmd=eth_event?cmd:(serial_event?uart_cmd:gesture_cmd);
     wire image_command=event_cmd==8'h4e || event_cmd==8'h50 || event_cmd==8'h6e || event_cmd==8'h70 ||
                        event_cmd==8'h44 || event_cmd==8'h36 || event_cmd==8'h37 || event_cmd==8'h38;
     reg arrival_seen,arrival_busy;
@@ -142,8 +146,9 @@ module media_control_core #(
         else if(!cmd_pending)begin arrival_seen<=0;arrival_busy<=0;end
         else if(!arrival_seen)begin arrival_seen<=1;arrival_busy<=view_busy;end
     end
-    wire event_accept=(state==IDLE) && !eth_event && !subtitle_ack_pulse && serial_source_match;
+    wire event_accept=(state==IDLE) && !eth_event && !gesture_event && !subtitle_ack_pulse && serial_source_match;
     assign uart_cmd_ready=event_accept;
+    assign control_idle=(state==IDLE);
     assign uart_source_lock=!subtitle_active ? 2'd0 :
                             (subtitle_source==2'd0) ? 2'd3 : subtitle_source;
     wire selected_uart_tx_ready=(pending_source==2'd2)?bt_tx_ready:uart_tx_ready;
@@ -400,7 +405,7 @@ module media_control_core #(
                     end else if(event_valid) begin
                         if(eth_event)cmd_seen<=1;
                         pending_cmd<=event_cmd;pending_uart<=event_from_uart;pending_source<=event_source;
-                        suppress_cmd_ack<=0;last_control_error<=0;subtitle_success<=0;
+                        suppress_cmd_ack<=gesture_event;last_control_error<=0;subtitle_success<=0;
                         if(VIEW_ENABLE && image_command && (view_busy || (eth_event && arrival_busy) ||
                            (!eth_event && uart_cmd_was_busy)))begin
                             last_control_error<=8;state<=PREP_ACK;
