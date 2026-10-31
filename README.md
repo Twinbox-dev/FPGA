@@ -57,6 +57,7 @@ python scripts/web_console/app.py
 | 全屏视频、统计裁剪与完整 CV | [视频实现](docs/video_fullscreen_optimization_20261030.md)、[完整 CV 验收](docs/video_statistics_full_cv_20261030.md) |
 | SD 原生模式与 HC-08 | [读卡与蓝牙](docs/native_sd_hc08.md) |
 | CV、字幕/OSD、频谱、触控 | [CV](docs/display_cv_effects_exploration.md)、[OSD](docs/osd_subtitle.md)、[DFT](docs/audio_spectrum.md)、[GT911](docs/gt911_trackpad.md) |
+| 显示板 LED 点阵（静态测试版） | [LED 矩阵](docs/led_matrix.md) |
 | 验证入口、资源、时序 | [验证](docs/verification.md)、[资源](docs/board_status.md)、[时序判读](docs/timing_report_howto.md) |
 | 典型故障与修复证据 | [多分辨率复盘](docs/multires_fix_postmortem.md)、[双板联调](docs/dual_board_live_debug_20261020.md)、[音频回卷](docs/media_sd_audio_reject_debug.md) |
 | 多窗口调试与优化历史 | [开发记录](docs/history/multiview_development_log.md) |

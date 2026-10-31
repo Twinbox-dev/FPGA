@@ -27,7 +27,11 @@ module top(
 
     // GT911 touch panel on J1 pins 31/32 (open-drain I2C)
     inout                       gt911_scl,
-    inout                       gt911_sda
+    inout                       gt911_sda,
+
+    // IS31FL3731 spectrum LED matrix (I2C, display board)
+    output                      matrix_i2c_scl,
+    inout                       matrix_i2c_sda
 );
 
 parameter MEM_DATA_BITS = 32;
@@ -67,6 +71,11 @@ parameter VIDEO_LINK_DIAGNOSTICS = 0;
 parameter PRODUCT_CV_ENABLED = 1;
 parameter PRODUCT_CV_NEIGHBORHOOD_ENABLED = 1;
 parameter PRODUCT_SPECTRUM_ENABLED = 1;
+// E1 diagnostic: enable the LED matrix with a known static level ramp so the
+// I2C/panel/column/row path can be checked independently of the live DFT
+// handoff and the transition animator still runs.
+parameter PRODUCT_LED_MATRIX_ENABLED = 1;
+parameter PRODUCT_LED_TEST_PATTERN = 1;
 
 wire Sdr_init_done;
 wire Sdr_init_ref_vld;
@@ -1347,6 +1356,75 @@ end else begin:g_spectrum_disabled
     assign spectrum_rgb=24'd0;
     assign spectrum_hit=1'b0;
 end endgenerate
+
+generate if (PRODUCT_LED_MATRIX_ENABLED) begin : g_led_matrix_enabled
+    // Reuse the HDMI spectrum DFT result for the external LED matrix.
+    wire [149:0] matrix_ch_bus;
+    wire matrix_ch_valid;
+    wire [104:0] matrix_bitmap, matrix_bitmap_selected;
+    wire matrix_audio_frame_ready, matrix_frame_ready;
+    reg matrix_frame_tick_toggle;
+    always @(posedge video_clk or posedge rst_all) begin
+        if (rst_all) matrix_frame_tick_toggle <= 1'b0;
+        else if (video_frame_start) matrix_frame_tick_toggle <= ~matrix_frame_tick_toggle;
+    end
+
+    // E1 test vector: band c = c*8 for c=0..13, band14=112, band15=120.
+    // Expected LED heights: 0,0,0,1,1,2,2,3,3,4,4,5,5,6,6.
+    localparam [127:0] LED_TEST_LEVELS = {
+        8'd120, 8'd112, 8'd104, 8'd96, 8'd88, 8'd80, 8'd72, 8'd64,
+        8'd56, 8'd48, 8'd40, 8'd32, 8'd24, 8'd16, 8'd8, 8'd0
+    };
+    reg [23:0] led_test_div;
+    reg        led_test_toggle;
+    always @(posedge sd_card_clk or posedge rst_all) begin
+        if (rst_all) begin
+            led_test_div <= 24'd0;
+            led_test_toggle <= 1'b0;
+        end else if (led_test_div == 24'hFFFFFF) begin
+            led_test_div <= 24'd0;
+            led_test_toggle <= ~led_test_toggle;
+        end else
+            led_test_div <= led_test_div + 24'd1;
+    end
+    wire [127:0] led_levels = PRODUCT_LED_TEST_PATTERN ? LED_TEST_LEVELS : spectrum_levels;
+    wire         led_done   = PRODUCT_LED_TEST_PATTERN ? led_test_toggle : spectrum_done_toggle;
+
+    audio_to_15ch u_audio_to_15ch (
+        .clk(sd_card_clk), .rst(rst_all), .levels(led_levels),
+        .done_toggle(led_done), .vol_gain(vol_gain),
+        .ch_bus(matrix_ch_bus), .ch_valid(matrix_ch_valid)
+    );
+    matrix_core_mapper #(.CLK_FREQ_HZ(100_000_000)) u_matrix_core_mapper (
+        .clk(sd_card_clk), .rst(rst_all), .ch_bus(matrix_ch_bus),
+        .ch_valid(matrix_ch_valid), .peak_hold_time(10'd250),
+        .matrix_bitmap(matrix_bitmap), .frame_ready(matrix_audio_frame_ready)
+    );
+    matrix_transition_arbiter u_matrix_transition_arbiter (
+        .clk(sd_card_clk), .rst(rst_all),
+        .hard_cut((transition_mode_effective == 2'd0) || video_mode_active),
+        .transition_type_in(transition_mode_effective),
+        .transition_direction_in(transition_direction_effective),
+        .transition_start_toggle(transition_start_effective),
+        .transition_done_toggle(transition_done_toggle),
+        .frame_tick_toggle(matrix_frame_tick_toggle),
+        .transition_duration_frames_in(7'd64),
+        .audio_bitmap(matrix_bitmap), .audio_frame_ready(matrix_audio_frame_ready),
+        .matrix_bitmap_out(matrix_bitmap_selected),
+        .frame_ready_out(matrix_frame_ready)
+    );
+    is31fl3731_i2c_master u_is31fl3731_i2c_master (
+        .clk(sd_card_clk), .rst(rst_all),
+        .visualizer_en(bar_en && !video_mode_active),
+        .vol_gain(vol_gain), .matrix_bitmap(matrix_bitmap_selected),
+        .frame_ready(matrix_frame_ready),
+        .i2c_scl(matrix_i2c_scl), .i2c_sda(matrix_i2c_sda)
+    );
+end else begin : g_led_matrix_disabled
+    assign matrix_i2c_scl = 1'b1;
+    assign matrix_i2c_sda = 1'bz;
+end endgenerate
+
 wire view_pixel_black;
 view_black_mask u_view_black_mask(.clk(video_clk),.rst(rst_all),.de(cv_de),.vs(cv_vs),
     .layout(view_video_layout),.valid_mask(view_video_mask),.black(view_pixel_black));

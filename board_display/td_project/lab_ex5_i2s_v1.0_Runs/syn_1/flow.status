@@ -1,4 +1,4 @@
-Location         : C:\Users\23506\Desktop\anlogic\boardtest\captures\resource_experiments\video_full_cv_stats_20261030\board_display\td_project\lab_ex5_i2s_v1.0_Runs\syn_1
+Location         : C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs\syn_1
 Running with     : Tang Dynasty v6.2.168116
                    Copyright (c) 2012-2025 Anlogic Inc.
 Top Model        : top
@@ -6,18 +6,18 @@ Device           : EG4S20BG256
 Speed            : NA
 
 Timing Mode      : basic
-Setup            : WNS -6581ps  TNS -6337779ps  NUM_FEPS  3898
+Setup            : WNS -7532ps  TNS -6630633ps  NUM_FEPS  4182
 Hold             : WNS   471ps  TNS        0ps  NUM_FEPS     0
 
 Flow Statistics  :
 ---------------------------------------------------------------------------------------------------
      command     |  #calls  |  wall time   |  cpu time(s)  |  used memory(mb)  |  peak memory(mb)  
 ---------------------------------------------------------------------------------------------------
-  optimize_gate  |    1     |  1m19s(60%)  |    77(60%)    |        868        |        868        
-  optimize_rtl   |    1     |   51s(39%)   |    50(39%)    |        700        |        845        
+  optimize_gate  |    1     |  1m12s(65%)  |    70(66%)    |        878        |        878        
+  optimize_rtl   |    1     |   38s(34%)   |    36(33%)    |        717        |        868        
   import_device  |    1     |    0s(0%)    |     0(0%)     |        83         |        83         
-    read_adc     |    1     |    0s(0%)    |     0(0%)     |        378        |        378        
-    read_sdc     |    3     |    0s(0%)    |     0(0%)     |        378        |        378        
+    read_adc     |    1     |    0s(0%)    |     0(0%)     |        393        |        393        
+    read_sdc     |    3     |    0s(0%)    |     0(0%)     |        393        |        393        
 ---------------------------------------------------------------------------------------------------
-      total      |    7     |    2m10s     |      127      |        868        |        868        
+      total      |    7     |    1m50s     |      106      |        878        |        878        
 ---------------------------------------------------------------------------------------------------

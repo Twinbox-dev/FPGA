@@ -15,6 +15,8 @@ set_pin_assignment	{ HDMI_DDC_SCL }	{ LOCATION = P1; IOSTANDARD = LVCMOS33;DRIVE
 set_pin_assignment	{ HDMI_DDC_SDA }	{ LOCATION = R1; IOSTANDARD = LVCMOS33;DRIVESTRENGTH = 8; PULLTYPE = PULLUP; }
 set_pin_assignment	{ gt911_scl }	{ LOCATION = M15; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = PULLUP; } # header SCL, via RN26
 set_pin_assignment	{ gt911_sda }	{ LOCATION = L16; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = PULLUP; } # header SDA, via RN26
+set_pin_assignment	{ matrix_i2c_scl }	{ LOCATION = J12; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = PULLUP; }
+set_pin_assignment	{ matrix_i2c_sda }	{ LOCATION = K11; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = PULLUP; }
 set_pin_assignment	{ HDMI_CLK_P }	{ LOCATION = K1; IOSTANDARD = LVDS33; PULLTYPE = NONE; }
 set_pin_assignment	{ HDMI_D0_P }	{ LOCATION = F5; IOSTANDARD = LVDS33; PULLTYPE = NONE; }
 set_pin_assignment	{ HDMI_D1_P }	{ LOCATION = E3; IOSTANDARD = LVDS33; PULLTYPE = NONE; }

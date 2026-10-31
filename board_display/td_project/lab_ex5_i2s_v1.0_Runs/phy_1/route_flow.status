@@ -1,4 +1,4 @@
-Location         : C:\Users\23506\Desktop\anlogic\boardtest\captures\resource_experiments\video_full_cv_stats_20261030\board_display\td_project\lab_ex5_i2s_v1.0_Runs\phy_1
+Location         : C:\Users\23506\Desktop\anlogic\board_display\td_project\lab_ex5_i2s_v1.0_Runs\phy_1
 Running with     : Tang Dynasty v6.2.168116
                    Copyright (c) 2012-2025 Anlogic Inc.
 Top Model        : top
@@ -6,17 +6,17 @@ Device           : EG4S20BG256
 Speed            : NA
 
 Timing Mode      : final
-Setup            : WNS -5699ps  TNS -4705689ps  NUM_FEPS  4121
-Hold             : WNS -3008ps  TNS  -128962ps  NUM_FEPS    86
+Setup            : WNS -9599ps  TNS -7009937ps  NUM_FEPS  5236
+Hold             : WNS -2935ps  TNS  -137010ps  NUM_FEPS   111
 
 Flow Statistics  :
 ---------------------------------------------------------------------------------------------------
      command     |  #calls  |  wall time   |  cpu time(s)  |  used memory(mb)  |  peak memory(mb)  
 ---------------------------------------------------------------------------------------------------
-      route      |    1     |  4m29s(80%)  |   386(75%)    |       1243        |       1243        
-      place      |    1     |  1m6s(19%)   |   125(24%)    |       1190        |       1191        
-    import_db    |    1     |    0s(0%)    |     0(0%)     |        277        |        277        
+      route      |    1     |  4m59s(82%)  |   417(78%)    |       1265        |       1265        
+      place      |    1     |  1m3s(17%)   |   113(21%)    |       1216        |       1216        
+    import_db    |    1     |    0s(0%)    |     0(0%)     |        283        |        283        
   import_device  |    1     |    0s(0%)    |     0(0%)     |        83         |        83         
 ---------------------------------------------------------------------------------------------------
-      total      |    4     |    5m35s     |      511      |       1243        |       1243        
+      total      |    4     |     6m2s     |      530      |       1265        |       1265        
 ---------------------------------------------------------------------------------------------------
